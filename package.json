@@ -1,0 +1,20 @@
+{
+  "name": "fair-whack",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Fair Whack internal beta: Victorian supermarket price comparison PWA",
+  "scripts": {
+    "dev": "node --experimental-sqlite dev/server.js",
+    "seed": "node --experimental-sqlite dev/seed.js",
+    "test": "node --experimental-sqlite --test test/*.test.js",
+    "pipeline": "node pipeline/run.js"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "engines": { "node": ">=20" }
+}

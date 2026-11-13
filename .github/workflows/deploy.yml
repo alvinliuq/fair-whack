@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      products: ${{ steps.check.outputs.products }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+
+      - name: Check secrets
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          INVITE_CODE: ${{ secrets.INVITE_CODE }}
+          ADMIN_CODE: ${{ secrets.ADMIN_CODE }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          missing=""
+          for v in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN APIFY_TOKEN INVITE_CODE ADMIN_CODE SESSION_SECRET; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then echo "::error::Missing GitHub secrets:$missing"; exit 1; fi
+
+      - name: Database
+        id: db
+        run: |
+          id=$(./scripts/d1-id.sh)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          sed -i "s/__D1_DATABASE_ID__/$id/" wrangler.toml
+          npx wrangler d1 migrations apply fair-whack --remote
+
+      - name: Pages project
+        run: npx wrangler pages project create fair-whack --production-branch=main || echo "Project already exists"
+
+      - name: App secrets
+        env:
+          INVITE_CODE: ${{ secrets.INVITE_CODE }}
+          ADMIN_CODE: ${{ secrets.ADMIN_CODE }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          eval "$(node scripts/vapid.js)"
+          printf '%s' "$INVITE_CODE"      | npx wrangler pages secret put INVITE_CODE --project-name fair-whack
+          printf '%s' "$ADMIN_CODE"       | npx wrangler pages secret put ADMIN_CODE --project-name fair-whack
+          printf '%s' "$SESSION_SECRET"   | npx wrangler pages secret put SESSION_SECRET --project-name fair-whack
+          printf '%s' "$VAPID_PUBLIC_KEY" | npx wrangler pages secret put VAPID_PUBLIC_KEY --project-name fair-whack
+
+      - name: Deploy site
+        run: npx wrangler pages deploy public --project-name=fair-whack --branch=main --commit-dirty=true
+
+      - name: Count products
+        id: check
+        env:
+          D1_DATABASE_ID: ${{ steps.db.outputs.id }}
+        run: |
+          n=$(node --input-type=module -e "import {makeDb} from './pipeline/d1.js'; const db=await makeDb(); const r=await db.all('SELECT COUNT(*) AS n FROM retailer_product'); console.log(r[0].n)")
+          echo "products=$n" >> "$GITHUB_OUTPUT"
+          echo "Products in database: $n"
+          echo "Site: https://fair-whack.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+
+  first-data:
+    needs: deploy
+    if: needs.deploy.outputs.products == '0'
+    uses: ./.github/workflows/pipeline.yml
+    with:
+      mode: first
+    secrets: inherit

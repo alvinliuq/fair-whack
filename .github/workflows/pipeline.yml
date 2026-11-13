@@ -1,0 +1,63 @@
+name: Pipeline
+
+on:
+  schedule:
+    - cron: '30 15 * * 2'   # Wed 02:30 Melbourne (AEDT): weekly specials + wishlist + matching
+    - cron: '0 21 * * 2'    # Wed 08:00 Melbourne (AEDT): alerts
+    - cron: '0 16 * * 0'    # Mon 03:00 Melbourne: catalogue (runs only every 4 weeks)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to run'
+        type: choice
+        options: [weekly, alerts, catalogue, first, match, status]
+        default: status
+      force:
+        description: 'Catalogue: ignore the 4-week wait'
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+
+concurrency: pipeline
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      APP_URL: https://fair-whack.pages.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Pick mode
+        id: m
+        run: |
+          mode="${{ inputs.mode }}"
+          if [ -z "$mode" ]; then
+            case "${{ github.event.schedule }}" in
+              '30 15 * * 2') mode=weekly ;;
+              '0 21 * * 2')  mode=alerts ;;
+              '0 16 * * 0')  mode=catalogue ;;
+              *) mode=status ;;
+            esac
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: Run
+        run: |
+          export D1_DATABASE_ID=$(./scripts/d1-id.sh)
+          eval "$(node scripts/vapid.js)"; export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+          extra=""; [ "${{ inputs.force }}" = "true" ] && extra="--force"
+          node pipeline/run.js ${{ steps.m.outputs.mode }} $extra 2>&1 | tee run.log
+          node pipeline/run.js status | tee -a run.log
+          { echo '```'; tail -n 60 run.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
