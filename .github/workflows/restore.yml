@@ -1,0 +1,58 @@
+name: Restore
+
+# Puts the site AND/OR the database back to a saved release (made by the Backup workflow).
+# This overwrites current data. Type RESTORE to confirm.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Release to restore, e.g. fw1.0'
+        required: true
+        default: 'fw1.0'
+      what:
+        description: 'What to restore'
+        type: choice
+        options: [code-and-data, code-only, data-only]
+        default: code-and-data
+      confirm:
+        description: 'Type RESTORE to confirm'
+        required: true
+
+concurrency: deploy
+
+jobs:
+  restore:
+    if: inputs.confirm == 'RESTORE'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Database id
+        run: |
+          id=$(./scripts/d1-id.sh)
+          sed -i "s/__D1_DATABASE_ID__/$id/" wrangler.toml
+      - name: Restore data
+        if: inputs.what != 'code-only'
+        run: |
+          gh release download "${{ inputs.name }}" --pattern "db-*.sql.gz" --repo "$GITHUB_REPOSITORY"
+          gunzip -f db-*.sql.gz
+          f=$(ls db-*.sql)
+          # Drop every table that exists now, then load the saved copy.
+          npx wrangler d1 execute fair-whack --remote --json --command "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'" > tables.json
+          node -e 'const r=JSON.parse(require("fs").readFileSync("tables.json","utf8"));const t=r[0].results.map(x=>x.name);require("fs").writeFileSync("drop.sql","PRAGMA defer_foreign_keys=TRUE;\n"+t.map(n=>`DROP TABLE IF EXISTS "${n}";`).join("\n"))'
+          cat drop.sql
+          npx wrangler d1 execute fair-whack --remote --file drop.sql --yes
+          npx wrangler d1 execute fair-whack --remote --file "$f" --yes
+      - name: Restore site
+        if: inputs.what != 'data-only'
+        run: npx wrangler pages deploy public --project-name=fair-whack --branch=main --commit-dirty=true
+      - run: echo "Restored ${{ inputs.what }} from ${{ inputs.name }}. The next push to main will deploy the newest code again." >> "$GITHUB_STEP_SUMMARY"

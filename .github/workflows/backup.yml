@@ -1,0 +1,46 @@
+name: Backup
+
+# Saves a full copy of the database (SQL) plus a point-in-time bookmark as a GitHub Release.
+# Run from Actions -> Backup -> Run workflow. The release keeps the files permanently.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Release name, e.g. fw1.0'
+        required: true
+        default: 'fw1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Export database
+        run: |
+          id=$(./scripts/d1-id.sh)
+          sed -i "s/__D1_DATABASE_ID__/$id/" wrangler.toml
+          npx wrangler d1 export fair-whack --remote --output "db-${{ inputs.name }}.sql"
+          npx wrangler d1 time-travel info fair-whack --json > "time-travel-${{ inputs.name }}.json" || echo '{}' > "time-travel-${{ inputs.name }}.json"
+          ls -la *.sql *.json
+          echo "Rows per table:" >> "$GITHUB_STEP_SUMMARY"
+          grep -oE '^INSERT INTO "?[a-z_]+' "db-${{ inputs.name }}.sql" | sed 's/INSERT INTO "\?//' | sort | uniq -c >> "$GITHUB_STEP_SUMMARY"
+          gzip -k "db-${{ inputs.name }}.sql"
+      - name: Create release
+        run: |
+          tag="${{ inputs.name }}"
+          git tag -f "$tag" && git push -f origin "refs/tags/$tag"
+          gh release delete "$tag" --yes 2>/dev/null || true
+          gh release create "$tag" "db-$tag.sql.gz" "time-travel-$tag.json" \
+            --title "Fair Whack $tag" \
+            --notes "Code at this tag plus a full database export taken $(date -u +%Y-%m-%dT%H:%MZ). Restore with Actions -> Restore."
