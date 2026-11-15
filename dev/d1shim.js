@@ -32,6 +32,13 @@ export function makeD1(file) {
 export function migrate(file) {
   const db = new DatabaseSync(file);
   const dir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../db/migrations');
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) db.exec(fs.readFileSync(path.join(dir, f), 'utf8'));
+  // Same bookkeeping table wrangler uses, so a D1 export can be loaded and migrated locally.
+  db.exec('CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)');
+  const done = new Set(db.prepare('SELECT name FROM d1_migrations').all().map((r) => r.name));
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
+    if (done.has(f)) continue;
+    db.exec(fs.readFileSync(path.join(dir, f), 'utf8'));
+    db.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(f);
+  }
   db.close();
 }

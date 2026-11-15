@@ -36,6 +36,7 @@ export async function planAlerts(db, now = new Date()) {
       JOIN retailer_product p ON p.id = li.product_id
       JOIN retailer_product o ON (o.id = p.id OR (p.canonical_product_id IS NOT NULL AND o.canonical_product_id = p.canonical_product_id))
      WHERE li.alert_mode != 'off'
+       AND o.retailer IN ('woolworths','coles')
        AND o.cur_is_special = 1
        AND o.cur_captured_at >= ?
        AND (l.retailer IS NULL OR l.retailer = o.retailer)`, [fresh]);

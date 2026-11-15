@@ -65,7 +65,8 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
     let remaining = budget.cap;
     for (const [i, r] of runs.entries()) {
       if (remaining < 0.02) { log(key, 'cap reached, stopping'); break; }
-      const share = runs.length > 1 && i < runs.length - 1 ? Math.max(0.05, Math.round((remaining * r.share) * 100) / 100) : remaining;
+      const left = runs.slice(i).reduce((s, x) => s + x.share, 0) || 1;
+      const share = i < runs.length - 1 ? Math.max(0.05, Math.round((remaining * r.share / left) * 100) / 100) : Math.round(remaining * 100) / 100;
       log(key, `run ${i + 1}/${runs.length} cap $${share}`);
       const res = await runActor(ACTORS[retailer], { ...baseInput(retailer), ...r.input }, { maxChargeUsd: share, label: `${key}_${i}` });
       cost += res.costUsd; remaining -= res.costUsd;
@@ -124,13 +125,24 @@ async function catalogue(db) {
       log(`catalogue:${r}`, `skipped, last ok run ${t.slice(0, 10)}`);
       continue;
     }
-    await scrapeJob(db, 'catalogue', r, [{ share: 1, input: { categoryUrls: AISLES[r], maxItemsPerQuery: LIMITS.aisleMaxItems } }], { extra: true });
+    // One Apify run per department size (maxItemsPerQuery applies to every URL in a run).
+    const bySize = new Map();
+    for (const a of AISLES[r]) { if (!bySize.has(a.max)) bySize.set(a.max, []); bySize.get(a.max).push(a.url); }
+    const total = AISLES[r].reduce((s, a) => s + a.max, 0);
+    const runs = [...bySize.entries()].map(([max, urls]) => ({ share: (max * urls.length) / total, input: { categoryUrls: urls, maxItemsPerQuery: max } }));
+    await scrapeJob(db, 'catalogue', r, runs, { extra: true });
+  }
+  // Products first seen up to now are the starting range; only later arrivals count as "new".
+  const b = await db.all("SELECT value FROM app_meta WHERE key = 'new_baseline_at'");
+  if (!b.length || opt.baseline) {
+    await db.run("INSERT INTO app_meta (key, value) VALUES ('new_baseline_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [new Date().toISOString()]);
+    log('new-product baseline set');
   }
 }
 
 async function match(db) {
   const r = await runMatching(db);
-  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates, ${r.clusters} canonical products`);
+  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates, ${r.clusters} canonical products, ${r.recategorised} recategorised`);
 }
 
 async function status(db) {

@@ -4,7 +4,7 @@ import { LIMITS } from './config.js';
 
 const PRODUCT_COLS = [
   'id', 'retailer', 'retailer_product_id', 'name', 'brand', 'size_text', 'size_value', 'size_unit',
-  'pack_count', 'uses_per_pack', 'gtin', 'category_path', 'category', 'image_url', 'product_url',
+  'pack_count', 'uses_per_pack', 'gtin', 'category_path', 'category', 'cat1', 'cat2', 'image_url', 'product_url',
   'family_id', 'comparable_group_id',
   'cur_price_cents', 'cur_was_cents', 'cur_unit_cents', 'cur_unit_basis', 'cur_retailer_unit_text',
   'cur_is_special', 'cur_promo_type', 'cur_promo_text', 'cur_multibuy_qty', 'cur_multibuy_cents',
@@ -17,6 +17,8 @@ const CONFLICT = `ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   ${['brand', 'size_text', 'size_value', 'size_unit', 'pack_count', 'uses_per_pack', 'gtin', 'category_path', 'image_url', 'product_url'].map(keep).join(',\n  ')},
   category = excluded.category,
+  cat1 = excluded.cat1,
+  cat2 = COALESCE(excluded.cat2, retailer_product.cat2),
   family_id = excluded.family_id,
   comparable_group_id = excluded.comparable_group_id,
   cur_price_cents = excluded.cur_price_cents,

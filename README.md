@@ -31,7 +31,7 @@ In Apify, set a monthly usage limit (Settings → Usage & billing) as a second s
 |---|---|
 | Wed 02:30 | Specials (Woolworths + Coles, ~2,500 each, half-price first), refresh of wishlisted items, matching |
 | Wed 08:00 | One merged push per tester for list items on special |
-| Mon 03:00 | Catalogue crawl (~300 items per aisle), only if 27+ days since the last one |
+| Mon 03:00 | Catalogue crawl (~10k products per store, each store's own departments), only if 27+ days since the last one |
 
 Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows spend).
 

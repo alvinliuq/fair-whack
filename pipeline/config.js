@@ -24,21 +24,26 @@ export const SPECIALS = {
   ],
 };
 
-// Monthly catalogue crawl (about 300 items per aisle).
+// Catalogue crawl every 4 weeks ("Plan A": about 10-12k products per store).
+// max = items collected from that department. Errors (wrong URL) are not charged.
+const W = 'https://www.woolworths.com.au/shop/browse/';
+const C = 'https://www.coles.com.au/browse/';
 export const AISLES = {
   woolworths: [
-    'fruit-veg', 'dairy-eggs-fridge', 'meat-seafood-deli', 'bakery', 'pantry', 'freezer',
-    'snacks-confectionery', 'drinks', 'cleaning-maintenance', 'beauty-personal-care', 'baby',
-  ].map((a) => `https://www.woolworths.com.au/shop/browse/${a}`),
+    ['fruit-veg', 600], ['poultry-meat-seafood', 500], ['deli', 400], ['dairy-eggs-fridge', 1000], ['bakery', 500],
+    ['pantry', 1500], ['freezer', 1000], ['drinks', 800], ['snacks-confectionery', 1000], ['cleaning-maintenance', 1000],
+    ['personal-care', 1000], ['beauty', 500], ['health-wellness', 600], ['baby', 500], ['pet', 500], ['lunch-box', 300],
+    ['international-foods', 400],
+  ].map(([a, max]) => ({ url: W + a, max })),
   coles: [
-    'fruit-vegetables', 'dairy-eggs-fridge', 'meat-seafood', 'bakery', 'pantry', 'frozen',
-    'chips-chocolates-snacks', 'drinks', 'household', 'health-beauty',
-  ].map((a) => `https://www.coles.com.au/browse/${a}`),
+    ['fruit-vegetables', 600], ['meat-seafood', 500], ['deli', 400], ['dairy-eggs-fridge', 1000], ['bakery', 500],
+    ['pantry', 1500], ['frozen', 1000], ['drinks', 800], ['chips-chocolates-snacks', 1000], ['household', 1000],
+    ['health-beauty', 1500], ['baby', 500], ['pet', 500],
+  ].map(([a, max]) => ({ url: C + a, max })),
 };
 
 export const LIMITS = {
   wishlistMaxItems: 500,           // per retailer per week
-  aisleMaxItems: 300,              // per aisle per monthly crawl
   catalogueEveryDays: 27,          // skip catalogue unless this long since last ok run
   excludeCategories: ['Liquor'],
 };
@@ -47,8 +52,8 @@ export const LIMITS = {
 export const RUN_CAPS_USD = {
   'specials:woolworths': 2,
   'specials:coles': 3,
-  'catalogue:woolworths': 3,
-  'catalogue:coles': 4,
+  'catalogue:woolworths': 8,
+  'catalogue:coles': 12,
   'wishlist:woolworths': 1,
   'wishlist:coles': 1,
 };

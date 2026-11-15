@@ -2,7 +2,7 @@
 // Bindings: env.DB (D1). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY.
 import {
   parseSize, unitPriceCents, unitBasisFor, parseUses, familyKey, comparableGroup, mapCategory,
-  toCents, CATEGORY_LIST, normText,
+  toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
 } from './normalize.js';
 
 const FRESH_DAYS = 8;
@@ -60,7 +60,7 @@ async function body(request) {
 const COLS = `id, retailer, name, brand, size_text, size_value, size_unit, uses_per_pack, category, image_url, product_url,
   canonical_product_id, family_id, comparable_group_id, cur_price_cents, cur_was_cents, cur_unit_cents, cur_unit_basis,
   cur_retailer_unit_text, cur_is_special, cur_promo_type, cur_promo_text, cur_multibuy_qty, cur_multibuy_cents,
-  cur_in_stock, cur_source, cur_captured_at, special_since, low12_cents, median12_cents, history_weeks, discount_flag, price_flag`;
+  cur_in_stock, cur_source, cur_captured_at, special_since, low12_cents, median12_cents, history_weeks, discount_flag, price_flag, cat1, cat2, first_seen_at`;
 
 function pub(p) {
   if (!p) return null;
@@ -76,6 +76,8 @@ function pub(p) {
     brand: p.brand,
     size: p.size_text,
     category: p.category,
+    cat1: p.cat1,
+    firstSeen: p.first_seen_at,
     image: p.image_url,
     url: p.product_url,
     canonical: p.canonical_product_id,
@@ -134,47 +136,162 @@ route('POST', '/api/login', async ({ env, request }) => {
 
 route('POST', '/api/logout', async ({ request }) => json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0, request) }), { public: true });
 
-route('GET', '/api/me', async ({ user, env }) => json({ user: { id: user.id, name: user.name, isAdmin: !!user.is_admin }, vapidPublicKey: env.VAPID_PUBLIC_KEY || null }));
+const ACT = "retailer IN ('woolworths','coles')";
+const isActive = (r) => ACTIVE_RETAILERS.includes(r);
+const AGE_RANGES = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+const GENDERS = ['male', 'female', 'other'];
+const HOUSEHOLD = ['1', '2', '3', '4', '5+'];
+const SHOP_CATEGORIES = CATEGORY_LIST.filter((c) => c !== 'Liquor');
+const parseFavs = (u) => { try { const a = JSON.parse(u.fav_categories || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+const profileOf = (u) => ({ ageRange: u.age_range, gender: u.gender, household: u.household_size, favCategories: parseFavs(u), done: !!u.profile_done_at });
+
+/** "New" = first seen after the starting range was collected, within the last 7 days (30 days once live for a month). */
+async function newWindow(env) {
+  const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'new_baseline_at'").first().catch(() => null);
+  const baseline = row?.value || null;
+  const monthly = baseline && Date.now() - Date.parse(baseline) > 30 * 86400000;
+  const days = monthly ? 30 : 7;
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  return { baseline, days, label: monthly ? 'New this month' : 'New this week', since: baseline && baseline > since ? baseline : since };
+}
+
+const SAVING_ORDER = 'CASE WHEN cur_is_special = 1 AND cur_was_cents > 0 THEN (cur_was_cents - cur_price_cents) * 1.0 / cur_was_cents ELSE 0 END DESC';
+function catOrder(retailer, names) {
+  const order = RETAILER_CATEGORY_ORDER[retailer] || SHOP_CATEGORIES;
+  const pos = (n) => { const i = order.indexOf(n); return i < 0 ? 999 : i; };
+  return names.sort((a, b) => pos(a.name) - pos(b.name) || (b.count - a.count));
+}
+
+route('GET', '/api/me', async ({ user, env }) => json({
+  user: { id: user.id, name: user.name, isAdmin: !!user.is_admin },
+  profile: profileOf(user),
+  needsProfile: !user.profile_done_at,
+  vapidPublicKey: env.VAPID_PUBLIC_KEY || null,
+}));
+
+route('GET', '/api/profile/options', async () => json({ ageRanges: AGE_RANGES, genders: GENDERS, household: HOUSEHOLD, categories: SHOP_CATEGORIES }));
+
+route('POST', '/api/profile', async ({ env, user, request }) => {
+  const b = await body(request);
+  if (!AGE_RANGES.includes(b.ageRange)) throw new HttpError(400, 'Please choose your age range');
+  if (!GENDERS.includes(b.gender)) throw new HttpError(400, 'Please choose your gender');
+  if (!HOUSEHOLD.includes(String(b.household))) throw new HttpError(400, 'Please choose how many people live in your home');
+  const favs = (Array.isArray(b.favCategories) ? b.favCategories : []).filter((c) => SHOP_CATEGORIES.includes(c));
+  if (!favs.length) throw new HttpError(400, 'Pick at least one category');
+  await env.DB.prepare('UPDATE users SET age_range = ?, gender = ?, household_size = ?, fav_categories = ?, profile_done_at = COALESCE(profile_done_at, ?) WHERE id = ?')
+    .bind(b.ageRange, b.gender, String(b.household), JSON.stringify(favs), nowIso(), user.id).run();
+  return json({ ok: true });
+});
 
 route('GET', '/api/meta', async ({ env }) => {
   const rows = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS products, MAX(cur_captured_at) AS updated,
       SUM(CASE WHEN cur_is_special = 1 AND cur_captured_at >= ? THEN 1 ELSE 0 END) AS specials
-      FROM retailer_product GROUP BY retailer`).bind(freshCut()).all()).results;
-  return json({ categories: CATEGORY_LIST, retailers: rows });
+      FROM retailer_product WHERE ${ACT} GROUP BY retailer`).bind(freshCut()).all()).results;
+  const nw = await newWindow(env);
+  return json({ categories: SHOP_CATEGORIES, retailers: rows, newSince: nw.since, newLabel: nw.label, newReady: !!nw.baseline });
 });
 
-route('GET', '/api/specials', async ({ env, url }) => {
+/** Category options. scope=deals counts current specials only; scope=all counts every product (Browse). */
+route('GET', '/api/categories', async ({ env, url }) => {
+  const retailer = url.searchParams.get('retailer');
+  const deals = url.searchParams.get('scope') === 'deals';
+  const where = deals ? `cur_is_special = 1 AND cur_captured_at >= ? AND ${ACT}` : `cur_price_cents IS NOT NULL AND ${ACT}`;
+  const binds = deals ? [freshCut()] : [];
+  if (retailer && isActive(retailer)) {
+    const rows = (await env.DB.prepare(`SELECT cat1, cat2, COUNT(*) AS n FROM retailer_product WHERE ${where} AND retailer = ? GROUP BY cat1, cat2`).bind(...binds, retailer).all()).results;
+    const top = new Map();
+    for (const r of rows) {
+      const k = r.cat1 || 'Other';
+      if (!top.has(k)) top.set(k, { name: k, count: 0, children: [] });
+      const t = top.get(k); t.count += r.n;
+      if (r.cat2) t.children.push({ name: r.cat2, count: r.n });
+    }
+    for (const t of top.values()) t.children.sort((a, b) => b.count - a.count);
+    return json({ retailer, categories: catOrder(retailer, [...top.values()]) });
+  }
+  const rows = (await env.DB.prepare(`SELECT category AS name, COUNT(*) AS count FROM retailer_product WHERE ${where} GROUP BY category`).bind(...binds).all()).results;
+  const counts = new Map(rows.map((r) => [r.name || 'Other', r.count]));
+  const list = SHOP_CATEGORIES.map((c) => ({ name: c, count: counts.get(c) || 0 })).filter((c) => c.count > 0);
+  return json({ retailer: null, categories: list });
+});
+
+/** Home "Best Deals". No store + no category = personalised ("For you"). */
+async function deals({ env, url, user }) {
   const q = url.searchParams;
-  const where = ['cur_is_special = 1', 'cur_captured_at >= ?'];
+  const where = ['cur_is_special = 1', 'cur_captured_at >= ?', ACT];
   const binds = [freshCut()];
   const retailer = q.get('retailer');
-  if (retailer && RETAILERS.includes(retailer)) { where.push('retailer = ?'); binds.push(retailer); }
   const category = q.get('category');
-  if (category) { where.push('category = ?'); binds.push(category); }
+  if (retailer && isActive(retailer)) {
+    where.push('retailer = ?'); binds.push(retailer);
+    if (category) { where.push('cat1 = ?'); binds.push(category); }
+  } else if (category) { where.push('category = ?'); binds.push(category); }
   if (q.get('half') === '1') where.push("cur_promo_type = 'half_price'");
-  if (q.get('real') === '1') where.push("COALESCE(discount_flag, '') != 'inflated'");
-  const sort = q.get('sort') || 'saving';
-  const order = {
-    saving: 'CASE WHEN cur_was_cents > 0 THEN (cur_was_cents - cur_price_cents) * 1.0 / cur_was_cents ELSE 0 END DESC, name',
-    price: 'cur_price_cents ASC',
-    unit: 'cur_unit_cents IS NULL, cur_unit_cents ASC',
-    name: 'name ASC',
-  }[sort] || 'name';
+  const sort = q.get('sort') === 'price' ? 'price' : 'saving';
+  let order = sort === 'price' ? 'cur_price_cents ASC, name' : `${SAVING_ORDER}, name`;
+  let forYou = false;
+  if (!retailer && !category && user) {
+    // Favourite categories and categories already on the tester's lists come first.
+    const favs = parseFavs(user);
+    const listCats = (await env.DB.prepare(`SELECT DISTINCT p.category FROM list_items li JOIN lists l ON l.id = li.list_id JOIN retailer_product p ON p.id = li.product_id WHERE l.user_id = ?`).bind(user.id).all()).results.map((r) => r.category).filter(Boolean);
+    const prefer = [...new Set([...favs, ...listCats])].slice(0, 12);
+    if (prefer.length) {
+      forYou = true;
+      order = `CASE WHEN category IN (${prefer.map(() => '?').join(',')}) THEN 0 ELSE 1 END, ${order}`;
+      binds.push(...prefer);
+    }
+  }
   const page = Math.max(0, parseInt(q.get('page') || '0', 10));
   const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${page * PAGE}`).bind(...binds).all()).results;
-  return json({ items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page });
+  return json({ items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page, forYou });
+}
+route('GET', '/api/deals', deals);
+route('GET', '/api/specials', deals);
+
+/** Browse a store's range: every product, filtered by the store's own categories. */
+route('GET', '/api/browse', async ({ env, url }) => {
+  const q = url.searchParams;
+  const retailer = q.get('retailer');
+  if (!isActive(retailer)) throw new HttpError(400, 'Choose Woolworths or Coles');
+  const where = ['retailer = ?', 'cur_price_cents IS NOT NULL'];
+  const binds = [retailer];
+  if (q.get('cat1')) { where.push('cat1 = ?'); binds.push(q.get('cat1')); }
+  if (q.get('cat2')) { where.push('cat2 = ?'); binds.push(q.get('cat2')); }
+  const sort = ['new', 'saving', 'price_asc', 'price_desc'].includes(q.get('sort')) ? q.get('sort') : 'new';
+  const nw = await newWindow(env);
+  if (sort === 'new') {
+    where.push('first_seen_at > ?'); binds.push(nw.since);
+    if (!nw.baseline) where.push('0'); // nothing counts as new until the starting range is in
+  }
+  const order = {
+    new: 'first_seen_at DESC, name',
+    saving: `${SAVING_ORDER}, name`,
+    price_asc: 'COALESCE(cur_price_cents, 1e12) ASC, name',
+    price_desc: 'cur_price_cents DESC, name',
+  }[sort];
+  const page = Math.max(0, parseInt(q.get('page') || '0', 10));
+  const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${page * PAGE}`).bind(...binds).all()).results;
+  return json({ items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page, newLabel: nw.label, newSince: nw.since });
 });
 
-route('GET', '/api/search', async ({ env, url }) => {
+// ----- search -----
+const SEARCH_SORTS = ['relevance', 'unit', 'saving', 'price_asc', 'price_desc'];
+const HOT_PRESET = ['milk', 'eggs', 'bread', 'coffee', 'toilet paper', 'chicken breast', 'laundry liquid', 'chocolate', 'olive oil', 'nappies'];
+const cleanQuery = (s) => normText(s).slice(0, 60).trim();
+/** Every typed word must start a word in the name or brand ("tim ta" finds Tim Tam, not inTIMate TAblets). */
+function wordMatch(tokens) {
+  const where = tokens.map(() => "((' ' || LOWER(name)) LIKE ? OR (' ' || LOWER(COALESCE(brand,''))) LIKE ?)");
+  const binds = tokens.flatMap((t) => [`% ${t}%`, `% ${t}%`]);
+  return { where, binds };
+}
+
+route('GET', '/api/search', async ({ env, url, user }) => {
   const raw = (url.searchParams.get('q') || '').trim();
-  const sort = url.searchParams.get('sort') === 'unit' ? 'unit' : 'price';
-  const retailer = url.searchParams.get('retailer');
+  const sort = SEARCH_SORTS.includes(url.searchParams.get('sort')) ? url.searchParams.get('sort') : 'relevance';
   const tokens = normText(raw).split(' ').filter((t) => t.length > 1).slice(0, 6);
   if (!tokens.length) return json({ groups: [] });
-  const where = tokens.map(() => "(LOWER(name) LIKE ? OR LOWER(COALESCE(brand,'')) LIKE ?)");
-  const binds = tokens.flatMap((t) => [`%${t}%`, `%${t}%`]);
-  if (retailer && RETAILERS.includes(retailer)) { where.push('retailer = ?'); binds.push(retailer); }
-  const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} AND cur_price_cents IS NOT NULL LIMIT 240`).bind(...binds).all()).results;
+  const { where, binds } = wordMatch(tokens);
+  const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} AND ${ACT} AND cur_price_cents IS NOT NULL LIMIT 400`).bind(...binds).all()).results;
   const groups = new Map();
   for (const r of rows) {
     const k = r.canonical_product_id || `c:${r.id}`;
@@ -186,28 +303,97 @@ route('GET', '/api/search', async ({ env, url }) => {
     const best = offers[0];
     return { id, name: best.name, brand: best.brand, size: best.size, image: offers.find((o) => o.image)?.image || null, best, offers, unitBasis: best.unitBasis };
   });
-  // Relevance first (name starts with the query), then the chosen sort.
-  const startsWith = (g) => (normText(g.name).includes(tokens.join(' ')) ? 0 : 1);
-  out.sort((a, b) => sort === 'unit'
-    ? (a.best.unit ?? 1e12) - (b.best.unit ?? 1e12)
-    : startsWith(a) - startsWith(b) || (a.best.effective ?? 1e12) - (b.best.effective ?? 1e12));
-  out = out.slice(0, 60);
+  // Relevance: whole phrase in the name > all words at the start of the name > brand match; shorter names first.
+  const phrase = tokens.join(' ');
+  const wordRes = tokens.map((t) => new RegExp(`(^| )${t.replace(/[^a-z0-9]/g, '')}( |$)`));
+  const rel = (g) => {
+    const n = normText(g.name);
+    return (wordRes.every((re) => re.test(n)) ? 0 : 4) + (n.includes(phrase) ? 0 : 2) + (n.startsWith(tokens[0]) || normText(g.brand).startsWith(tokens[0]) ? 0 : 1) + (g.offers.length > 1 ? 0 : 0.5);
+  };
+  const price = (g) => g.best.effective ?? 1e12;
+  const saving = (g) => Math.max(...g.offers.map((o) => (o.saving && o.was ? o.saving / o.was : 0)));
+  const cmp = {
+    relevance: (a, b) => rel(a) - rel(b) || a.name.length - b.name.length || price(a) - price(b),
+    unit: (a, b) => (a.best.unit ?? 1e12) - (b.best.unit ?? 1e12),
+    saving: (a, b) => saving(b) - saving(a) || price(a) - price(b),
+    price_asc: (a, b) => price(a) - price(b),
+    price_desc: (a, b) => price(b) - price(a),
+  }[sort];
+  out.sort(cmp);
+  out = out.slice(0, 80);
+  // Log once per search (not on re-sorts).
+  if (url.searchParams.get('log') !== '0') {
+    const qn = cleanQuery(raw);
+    if (qn) {
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO search_log (user_id, query, created_at) VALUES (?, ?, ?)').bind(user.id, qn, nowIso()),
+        env.DB.prepare('INSERT INTO search_history (user_id, query, last_at) VALUES (?, ?, ?) ON CONFLICT(user_id, query) DO UPDATE SET last_at = excluded.last_at').bind(user.id, qn, nowIso()),
+      ]).catch(() => {});
+    }
+  }
   return json({ groups: out, count: rows.length });
+});
+
+route('GET', '/api/suggest', async ({ env, url }) => {
+  const tokens = normText(url.searchParams.get('q') || '').split(' ').filter(Boolean).slice(0, 5);
+  if (!tokens.length || tokens.join('').length < 2) return json({ suggestions: [] });
+  const { where, binds } = wordMatch(tokens);
+  const rows = (await env.DB.prepare(`SELECT name, brand FROM retailer_product WHERE ${where.join(' AND ')} AND ${ACT} LIMIT 200`).bind(...binds).all()).results;
+  const first = tokens[0];
+  const seen = new Set(), out = [];
+  // Brands first (if typed text matches one), then product names; names starting with the text rank higher.
+  const brands = [...new Set(rows.map((r) => r.brand).filter((b) => b && normText(b).includes(tokens.join(' '))))].slice(0, 2);
+  for (const b of brands) { const k = normText(b); if (!seen.has(k)) { seen.add(k); out.push({ text: b, kind: 'brand' }); } }
+  rows.sort((a, b) => (normText(a.name).startsWith(first) ? 0 : 1) - (normText(b.name).startsWith(first) ? 0 : 1) || a.name.length - b.name.length);
+  for (const r of rows) {
+    const k = normText(r.name);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push({ text: r.name, kind: 'product' });
+    if (out.length >= 8) break;
+  }
+  return json({ suggestions: out });
+});
+
+route('GET', '/api/search/hot', async ({ env }) => {
+  const total = await env.DB.prepare('SELECT COUNT(*) AS n FROM search_log').first();
+  if ((total?.n || 0) < 30) return json({ keywords: HOT_PRESET, source: 'preset' });
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const rows = (await env.DB.prepare('SELECT query, COUNT(DISTINCT user_id) AS people, COUNT(*) AS n FROM search_log WHERE created_at >= ? GROUP BY query ORDER BY people DESC, n DESC LIMIT 10').bind(since).all()).results;
+  const words = rows.map((r) => r.query);
+  for (const w of HOT_PRESET) { if (words.length >= 10) break; if (!words.includes(w)) words.push(w); }
+  return json({ keywords: words, source: rows.length ? 'live' : 'preset' });
+});
+
+route('GET', '/api/search/history', async ({ env, user }) => {
+  const rows = (await env.DB.prepare('SELECT query FROM search_history WHERE user_id = ? ORDER BY last_at DESC LIMIT 10').bind(user.id).all()).results;
+  return json({ history: rows.map((r) => r.query) });
+});
+route('DELETE', '/api/search/history', async ({ env, user, url }) => {
+  const q = url.searchParams.get('q');
+  if (q) await env.DB.prepare('DELETE FROM search_history WHERE user_id = ? AND query = ?').bind(user.id, q).run();
+  else await env.DB.prepare('DELETE FROM search_history WHERE user_id = ?').bind(user.id).run();
+  return json({ ok: true });
+});
+
+/** Which products are on the tester's lists (for the heart buttons). */
+route('GET', '/api/saved', async ({ env, user }) => {
+  const rows = (await env.DB.prepare('SELECT li.id, li.product_id, li.alert_mode, li.target_cents, l.id AS list_id, l.name AS list_name FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ?').bind(user.id).all()).results;
+  return json({ saved: rows });
 });
 
 route('GET', '/api/product/:id', async ({ env, params, user }) => {
   const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
   if (!p) throw new HttpError(404, 'Product not found');
   const canon = p.canonical_product_id || `c:${p.id}`;
-  const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ? OR canonical_product_id = ?`).bind(p.id, canon).all()).results.map(pub).sort(sortOffers);
+  const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map(pub).sort(sortOffers);
   const sizes = p.family_id
-    ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE family_id = ? AND id != ? AND cur_price_cents IS NOT NULL ORDER BY cur_unit_cents IS NULL, cur_unit_cents LIMIT 12`).bind(p.family_id, p.id).all()).results.map(pub).filter((x) => !offers.some((o) => o.id === x.id))
+    ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE family_id = ? AND id != ? AND ${ACT} AND cur_price_cents IS NOT NULL ORDER BY cur_unit_cents IS NULL, cur_unit_cents LIMIT 12`).bind(p.family_id, p.id).all()).results.map(pub).filter((x) => !offers.some((o) => o.id === x.id))
     : [];
   const similar = p.comparable_group_id
-    ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE comparable_group_id = ? AND id != ? AND cur_price_cents IS NOT NULL AND cur_unit_basis = ? ORDER BY cur_unit_cents LIMIT 12`).bind(p.comparable_group_id, p.id, p.cur_unit_basis).all()).results.map(pub).filter((x) => !offers.some((o) => o.id === x.id))
+    ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE comparable_group_id = ? AND id != ? AND ${ACT} AND cur_price_cents IS NOT NULL AND cur_unit_basis = ? ORDER BY cur_unit_cents LIMIT 12`).bind(p.comparable_group_id, p.id, p.cur_unit_basis).all()).results.map(pub).filter((x) => !offers.some((o) => o.id === x.id))
     : [];
   const since = new Date(Date.now() - 84 * 86400000).toISOString();
-  const history = (await env.DB.prepare(`SELECT product_id, price_cents, is_special, captured_at FROM price_snapshot WHERE product_id IN (SELECT id FROM retailer_product WHERE id = ? OR canonical_product_id = ?) AND captured_at >= ? ORDER BY captured_at`).bind(p.id, canon, since).all()).results;
+  const history = (await env.DB.prepare(`SELECT product_id, price_cents, is_special, captured_at FROM price_snapshot WHERE product_id IN (SELECT id FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}) AND captured_at >= ? ORDER BY captured_at`).bind(p.id, canon, since).all()).results;
   const saved = (await env.DB.prepare(`SELECT li.id, li.alert_mode, li.target_cents, l.id AS list_id, l.name AS list_name FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ? AND li.product_id = ?`).bind(user.id, p.id).all()).results;
   return json({ product: pub(p), offers, sizes, similar, history, saved });
 });
@@ -240,7 +426,7 @@ route('GET', '/api/lists', async ({ env, user }) => {
   const twins = new Map();
   for (let i = 0; i < canons.length; i += 80) {
     const chunk = canons.slice(i, i + 80);
-    const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all()).results;
+    const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${chunk.map(() => '?').join(',')}) AND ${ACT}`).bind(...chunk).all()).results;
     for (const r of rows) {
       if (!twins.has(r.canonical_product_id)) twins.set(r.canonical_product_id, []);
       twins.get(r.canonical_product_id).push(pub(r));
@@ -261,7 +447,7 @@ route('GET', '/api/lists', async ({ env, user }) => {
 route('POST', '/api/lists', async ({ env, user, request }) => {
   const { name, retailer } = await body(request);
   const n = String(name || '').trim().slice(0, 60) || 'New list';
-  const r = RETAILERS.includes(retailer) ? retailer : null;
+  const r = isActive(retailer) ? retailer : null;
   const id = uid();
   await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, user.id, n, r, nowIso()).run();
   return json({ id, name: n, retailer: r });
@@ -271,7 +457,7 @@ route('PATCH', '/api/lists/:id', async ({ env, user, request, params }) => {
   await ownList(env, user, params.id);
   const { name, retailer } = await body(request);
   if (name !== undefined) await env.DB.prepare('UPDATE lists SET name = ? WHERE id = ?').bind(String(name).trim().slice(0, 60) || 'List', params.id).run();
-  if (retailer !== undefined) await env.DB.prepare('UPDATE lists SET retailer = ? WHERE id = ?').bind(RETAILERS.includes(retailer) ? retailer : null, params.id).run();
+  if (retailer !== undefined) await env.DB.prepare('UPDATE lists SET retailer = ? WHERE id = ?').bind(isActive(retailer) ? retailer : null, params.id).run();
   return json({ ok: true });
 });
 
@@ -317,7 +503,7 @@ route('GET', '/api/digest', async ({ env, user }) => {
       FROM list_items li JOIN lists l ON l.id = li.list_id
       JOIN retailer_product p ON p.id = li.product_id
       JOIN retailer_product o ON (o.id = p.id OR (p.canonical_product_id IS NOT NULL AND o.canonical_product_id = p.canonical_product_id))
-     WHERE l.user_id = ? AND o.cur_is_special = 1 AND o.cur_captured_at >= ?
+     WHERE l.user_id = ? AND o.cur_is_special = 1 AND o.cur_captured_at >= ? AND o.retailer IN ('woolworths','coles')
        AND (l.retailer IS NULL OR l.retailer = o.retailer)`).bind(user.id, freshCut()).all()).results;
   const best = new Map();
   for (const r of rows) {
@@ -325,7 +511,7 @@ route('GET', '/api/digest', async ({ env, user }) => {
     const prev = best.get(r.item_id);
     if (!prev || o.effective < prev.effective) best.set(r.item_id, { ...o, alertMode: r.alert_mode, target: r.target_cents });
   }
-  const top = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND cur_promo_type = 'half_price'
+  const top = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND cur_promo_type = 'half_price' AND ${ACT}
       AND COALESCE(discount_flag,'') != 'inflated' AND cur_was_cents > 0 ORDER BY (cur_was_cents - cur_price_cents) DESC LIMIT 12`).bind(freshCut()).all()).results.map(pub);
   return json({ fromYourList: [...best.values()].sort((a, b) => (b.saving || 0) - (a.saving || 0)), topHalfPrice: top });
 });
@@ -411,7 +597,9 @@ route('GET', '/api/admin/overview', async ({ env }) => {
       MAX(cur_captured_at) AS updated
       FROM retailer_product GROUP BY retailer`).bind(new Date(Date.now() - 28 * 86400000).toISOString(), freshCut()).all()).results;
   const pending = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user_reports WHERE status='pending') AS reports, (SELECT COUNT(*) FROM match_candidate WHERE status='pending') AS matches").first();
-  const users = (await env.DB.prepare(`SELECT u.name, u.created_at, (SELECT COUNT(*) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = u.id) AS items,
+  const users = (await env.DB.prepare(`SELECT u.name, u.created_at, u.age_range, u.gender, u.household_size, u.fav_categories,
+      (SELECT COUNT(*) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = u.id) AS items,
+      (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
       (SELECT COUNT(*) FROM push_subs s WHERE s.user_id = u.id) AS devices FROM users u ORDER BY u.created_at`).all()).results;
   return json({ spendUsd: spend.usd, budgetUsd: 100, runs, counts, pending, users });
 }, { admin: true });

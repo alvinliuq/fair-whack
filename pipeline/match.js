@@ -4,7 +4,7 @@
 //     or a review candidate (score between reviewFloor and autoAccept).
 //  3. Everything else is its own canonical product.
 // Manual decisions (match_method = 'manual') and rejected pairs are never overridden.
-import { nameTokens, brandKey, jaccard } from '../shared/normalize.js';
+import { nameTokens, brandKey, jaccard, mapCategory, splitCategory } from '../shared/normalize.js';
 import { MATCH } from './config.js';
 
 export function scorePair(a, b) {
@@ -119,7 +119,7 @@ export async function runMatching(db) {
   for (let offset = 0; ; offset += 5000) {
     const page = await db.all(
       `SELECT id, retailer, name, brand, size_value, size_unit, gtin, canonical_product_id, match_method,
-              family_id, comparable_group_id, category
+              family_id, comparable_group_id, category, category_path, cat1, cat2
          FROM retailer_product ORDER BY id LIMIT 5000 OFFSET ${offset}`);
     products.push(...page);
     if (page.length < 5000) break;
@@ -146,10 +146,28 @@ export async function runMatching(db) {
       candidates.map((c) => ({ ...c, status: 'pending', created_at: now })),
       'ON CONFLICT(product_a, product_b) DO NOTHING');
   }
+  // Re-apply category rules (merged category + the store's own levels) where they changed.
+  const recat = [];
+  for (const p of products) {
+    const c = mapCategory(p.category_path, p.name);
+    const { cat1, cat2 } = splitCategory(p.category_path);
+    if (c !== p.category || cat1 !== p.cat1 || (cat2 || null) !== (p.cat2 || null)) recat.push({ id: p.id, category: c, cat1, cat2 });
+  }
+  if (recat.length) {
+    await db.exec('CREATE TABLE IF NOT EXISTS _cat_tmp (id TEXT PRIMARY KEY, category TEXT, cat1 TEXT, cat2 TEXT)');
+    await db.exec('DELETE FROM _cat_tmp');
+    await db.insertRows('_cat_tmp', ['id', 'category', 'cat1', 'cat2'], recat);
+    await db.exec(`UPDATE retailer_product SET
+        category = (SELECT category FROM _cat_tmp t WHERE t.id = retailer_product.id),
+        cat1 = (SELECT cat1 FROM _cat_tmp t WHERE t.id = retailer_product.id),
+        cat2 = (SELECT cat2 FROM _cat_tmp t WHERE t.id = retailer_product.id)
+      WHERE id IN (SELECT id FROM _cat_tmp)`);
+    await db.exec('DELETE FROM _cat_tmp');
+  }
   // Refresh canonical_product (one row per cluster) for reporting.
   await db.exec(`DELETE FROM canonical_product`);
   await db.exec(`INSERT INTO canonical_product (id, gtin, display_name, brand, size_value, size_unit, family_id, comparable_group_id, category)
     SELECT canonical_product_id, MAX(gtin), MIN(name), MIN(brand), MIN(size_value), MIN(size_unit), MIN(family_id), MIN(comparable_group_id), MIN(category)
       FROM retailer_product WHERE canonical_product_id IS NOT NULL GROUP BY canonical_product_id`);
-  return { changed: assignments.length, candidates: candidates.length, clusters };
+  return { changed: assignments.length, candidates: candidates.length, clusters, recategorised: recat.length };
 }

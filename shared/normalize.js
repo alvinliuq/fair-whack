@@ -2,6 +2,24 @@
 // Pure functions only: no I/O.
 
 export const RETAILERS = ['woolworths', 'coles', 'aldi', 'costco'];
+// Stores shown in the app during the beta (ALDI and Costco data is kept but hidden).
+export const ACTIVE_RETAILERS = ['woolworths', 'coles'];
+
+/** "Pantry > Breakfast > Cereal" -> { cat1: 'Pantry', cat2: 'Breakfast' } (the retailer's own levels). */
+export function splitCategory(path) {
+  const parts = String(path || '').split(' > ').map((x) => x.trim()).filter(Boolean);
+  return { cat1: parts[0] || 'Other', cat2: parts[1] || null };
+}
+
+// Display order of each retailer's own departments (as on their websites). Unknown ones go last.
+export const RETAILER_CATEGORY_ORDER = {
+  woolworths: ['Fruit & Veg', 'Poultry, Meat & Seafood', 'Deli', 'Dairy, Eggs & Fridge', 'Bakery', 'Pantry', 'Dinner', 'Freezer',
+    'Drinks', 'Snacks & Confectionery', 'Lunch Box', 'International Foods', 'Health & Wellness', 'Beauty', 'Personal Care',
+    'Cleaning & Maintenance', 'Baby', 'Pet', 'Home & Lifestyle', 'Christmas', 'Gift Ideas', 'Container Bonus Credits'],
+  coles: ['Fruit & Vegetables', 'Meat & Seafood', 'Deli', 'Dairy, Eggs & Fridge', 'Bakery', 'Pantry', 'Frozen', 'Drinks',
+    'Chips, Chocolates & Snacks', 'Household', 'Health & Beauty', 'Health & Dietary', 'Baby', 'Pet', 'International', 'Lunchbox',
+    'Christmas', 'Bonus Credit Products', 'Deliver More Range'],
+};
 
 export function toCents(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -142,29 +160,48 @@ export function familyKey(brand, name) {
 }
 
 // ---------- categories ----------
+// Merged ("All stores") categories. A store's own top department decides when it is clear;
+// mixed departments (Lunch Box, Dinner, Deli, Christmas...) are sorted by their sub-category, then the product name.
+export const CATEGORY_LIST = ['Fruit & Veg', 'Meat & Seafood', 'Dairy, Eggs & Fridge', 'Bakery', 'Pantry', 'Frozen', 'Snacks & Sweets', 'Drinks', 'Household', 'Health & Beauty', 'Baby', 'Pet', 'Liquor', 'Other'];
 
-const CATS = [
-  ['Liquor', /liquor|beer|wine|spirits|cider|alcohol/],
-  ['Fruit & Veg', /fruit|veg|salad|herbs/],
-  ['Meat & Seafood', /meat|seafood|poultry|chicken|beef|lamb|pork|fish|deli/],
-  ['Dairy & Eggs', /dairy|eggs|milk|cheese|yoghurt|yogurt|butter|fridge/],
-  ['Bakery', /bakery|bread/],
-  ['Frozen', /frozen|freezer|ice cream/],
-  ['Snacks & Sweets', /snack|chips|confectionery|chocolate|biscuit|lollies|sweets/],
-  ['Drinks', /drink|beverage|soft drink|juice|water|coffee|tea/],
-  ['Baby', /baby/],
-  ['Pet', /pet|dog|cat /],
-  ['Health & Beauty', /health|beauty|personal care|toiletries|vitamin|pharmacy|cosmetic/],
-  ['Household', /household|cleaning|laundry|kitchen|paper|maintenance|home/],
-  ['Pantry', /pantry|international|breakfast|cereal|canned|pasta|rice|sauces|baking|spreads|condiments/],
+const DEPT = [
+  ['Liquor', /^(liquor|beer|wine|spirits)/],
+  ['Fruit & Veg', /^fruit/],
+  ['Meat & Seafood', /^(poultry|meat)/],
+  ['Dairy, Eggs & Fridge', /^dairy/],
+  ['Bakery', /^bakery/],
+  ['Pantry', /^(pantry|international)/],
+  ['Frozen', /^(frozen|freezer)/],
+  ['Snacks & Sweets', /^(snacks|chips|confectionery)/],
+  ['Drinks', /^drinks/],
+  ['Household', /^(household|cleaning)/],
+  ['Health & Beauty', /^(health and beauty|beauty|personal care|health and wellness)/],
+  ['Baby', /^baby/],
+  ['Pet', /^pet\b/],
 ];
-export const CATEGORY_LIST = ['Fruit & Veg', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery', 'Pantry', 'Frozen', 'Snacks & Sweets', 'Drinks', 'Household', 'Health & Beauty', 'Baby', 'Pet', 'Liquor', 'Other'];
+const KEYWORDS = [
+  ['Liquor', /\b(beer|wine|spirits|cider|liquor)\b/],
+  ['Pet', /\b(pet|pets|dog|dogs|cat food|cat litter|kitten|puppy)\b/],
+  ['Baby', /\b(baby|nappies|nappy|infant|toddler)\b/],
+  ['Frozen', /\b(frozen|freezer|ice cream|ice blocks?)\b/],
+  ['Pantry', /\b(canned|tinned|pasta|rice|noodles?|sauces?|spreads?|cereals?|breakfast|baking|flour|sugar|oils?|vinegar|spices?|stock|soups?|condiments?|honey|jam)\b/],
+  ['Snacks & Sweets', /\b(chocolates?|confectionery|lollies|biscuits?|cookies|chips|crisps|snacks?|popcorn|crackers|rice cakes?|bars?|sweets|licorice|nuts|cashews|almonds|marshmallows?|snacking|gifting)\b/],
+  ['Drinks', /\b(drinks?|juices?|water|cordials?|soft drinks?|kombucha|coffee|tea|bonus credits?)\b/],
+  ['Dairy, Eggs & Fridge', /\b(dairy|milk|cheeses?|yoghurts?|yogurts?|butter|cream|eggs|custard|dips?|fridge|avocado spread|ready meals?|chilled|fresh pasta)\b/],
+  ['Meat & Seafood', /\b(meats?|seafood|poultry|chicken|beef|lamb|pork|sausages?|mince|fish|salmon|prawns?|bacon|ham|salami|deli meats?)\b/],
+  ['Bakery', /\b(bakery|bread|wraps|rolls|cakes?|muffins?|croissants?|buns|pastries)\b/],
+  ['Fruit & Veg', /\b(fruit|vegetables?|veg|salads?|herbs|potatoes|tomatoes|apples|bananas|avocados?)\b/],
+  ['Health & Beauty', /\b(health|beauty|skin|hair|dental|oral|deodorants?|shower|bath|body|cosmetics?|makeup|vitamins?|supplements?|first aid|medicines?|period|razors?|shaving|sun care|personal care|dietary)\b/],
+  ['Household', /\b(household|cleaning|laundry|dishwash\w*|kitchen|paper towels?|toilet|tissues?|bin bags|garbage|home|lifestyle|pest|air fresheners?|batteries|party)\b/],
+];
 
 export function mapCategory(categoryPath, name = '') {
-  const top = normText(String(categoryPath || '').split('>')[0]);
-  for (const [cat, re] of CATS) if (re.test(top)) return cat;
-  const full = normText(`${categoryPath || ''} ${name}`);
-  for (const [cat, re] of CATS) if (re.test(full)) return cat;
+  const parts = String(categoryPath || '').split('>').map((x) => normText(x)).filter(Boolean);
+  if (parts[0]) for (const [cat, re] of DEPT) if (re.test(parts[0])) return cat;
+  // Mixed department: deepest level first, then the product name, then the top level.
+  for (const t of [...parts.slice(1).reverse(), normText(name), parts[0] || '']) {
+    for (const [cat, re] of KEYWORDS) if (re.test(t)) return cat;
+  }
   return 'Other';
 }
 
@@ -290,6 +327,7 @@ export function normaliseScraped(retailer, item, capturedAt) {
       category,
       image_url: item.image || null,
       product_url: item.url || null,
+      ...splitCategory(item.category),
       family_id: familyKey(item.brand, item.name),
       comparable_group_id: comparableGroup(item.name, item.brand, size.size_unit),
     },
