@@ -62,14 +62,23 @@ jobs:
       - name: Deploy site
         run: npx wrangler pages deploy public --project-name=fair-whack --branch=main --commit-dirty=true
 
+      # Builds the search index the first time (or after its rules change). Search still works
+      # without it, by scanning every product, so a failure here does not block the deploy.
+      - name: Search index
+        continue-on-error: true
+        env:
+          D1_DATABASE_ID: ${{ steps.db.outputs.id }}
+        run: node pipeline/run.js index --if-missing
+
       - name: Count products
         id: check
         env:
           D1_DATABASE_ID: ${{ steps.db.outputs.id }}
         run: |
-          n=$(node --input-type=module -e "import {makeDb} from './pipeline/d1.js'; const db=await makeDb(); const r=await db.all('SELECT COUNT(*) AS n FROM retailer_product'); console.log(r[0].n)")
+          # Reads one row: only "empty or not" matters here (an empty database triggers the first data load).
+          n=$(node --input-type=module -e "import {makeDb} from './pipeline/d1.js'; const db=await makeDb(); const r=await db.all('SELECT COUNT(*) AS n FROM (SELECT 1 FROM retailer_product LIMIT 1)'); console.log(r[0].n)")
           echo "products=$n" >> "$GITHUB_OUTPUT"
-          echo "Products in database: $n"
+          [ "$n" = "0" ] && echo "Database is empty: starting the first data load" || echo "Database has products"
           echo "Site: https://fair-whack.pages.dev" >> "$GITHUB_STEP_SUMMARY"
 
   first-data:

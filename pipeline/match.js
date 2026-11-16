@@ -6,6 +6,7 @@
 // Manual decisions (match_method = 'manual') and rejected pairs are never overridden.
 import { nameTokens, brandKey, jaccard, mapCategory, splitCategory } from '../shared/normalize.js';
 import { MATCH } from './config.js';
+import { syncWordIndex } from './search-index.js';
 
 export function scorePair(a, b) {
   if (a.retailer === b.retailer) return 0;
@@ -115,14 +116,16 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
 }
 
 export async function runMatching(db) {
+  // Page by id so each product is read once (OFFSET re-reads every earlier row on each page).
   const products = [];
-  for (let offset = 0; ; offset += 5000) {
+  for (let last = ''; ;) {
     const page = await db.all(
       `SELECT id, retailer, name, brand, size_value, size_unit, gtin, canonical_product_id, match_method,
               family_id, comparable_group_id, category, category_path, cat1, cat2
-         FROM retailer_product ORDER BY id LIMIT 5000 OFFSET ${offset}`);
+         FROM retailer_product WHERE id > ? ORDER BY id LIMIT 5000`, [last]);
     products.push(...page);
     if (page.length < 5000) break;
+    last = page[page.length - 1].id;
   }
   const decided = await db.all("SELECT product_a, product_b, status FROM match_candidate WHERE status IN ('approved','rejected')");
   const rejected = new Set(decided.filter((d) => d.status === 'rejected').map((d) => `${d.product_a}|${d.product_b}`));
@@ -169,5 +172,8 @@ export async function runMatching(db) {
   await db.exec(`INSERT INTO canonical_product (id, gtin, display_name, brand, size_value, size_unit, family_id, comparable_group_id, category)
     SELECT canonical_product_id, MAX(gtin), MIN(name), MIN(brand), MIN(size_value), MIN(size_unit), MIN(family_id), MIN(comparable_group_id), MIN(category)
       FROM retailer_product WHERE canonical_product_id IS NOT NULL GROUP BY canonical_product_id`);
-  return { changed: assignments.length, candidates: candidates.length, clusters, recategorised: recat.length };
+  // Search index: matching already has every product in memory, so refresh it here.
+  // A failure here must not fail the run: search falls back to scanning until the next run.
+  const index = await syncWordIndex(db, products).catch((e) => ({ error: e.message }));
+  return { changed: assignments.length, candidates: candidates.length, clusters, recategorised: recat.length, index };
 }

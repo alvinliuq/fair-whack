@@ -37,6 +37,14 @@ Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows s
 
 Budget guard: per-run caps in `pipeline/config.js`; at $80 recorded spend only specials keep running; at $95 everything stops.
 
+## Database reads (Cloudflare D1 free plan: 5 million rows read a day)
+
+The free plan stops the database for the rest of the day (until 00:00 UTC) once the limit is hit, so the app avoids reading every product:
+
+- **Search and suggestions** read `word_index` (word → products) instead of scanning `retailer_product`. The pipeline's matching step keeps it up to date; a deploy builds it if it is missing. Rebuild by hand: **Actions → Pipeline → Run workflow → `match`**.
+- **Store totals, category counts, deal and browse pages** are saved in `api_cache` for 6 hours. Every pipeline run that changes data empties it.
+- If either table is missing or empty the app still works, by reading the products directly (slow path).
+
 ## Local
 
 ```bash

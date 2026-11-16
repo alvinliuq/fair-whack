@@ -4,6 +4,7 @@
 //   node pipeline/run.js catalogue   monthly aisle crawl (skips unless 27+ days since last ok run; --force to override)
 //   node pipeline/run.js alerts      send merged wishlist pushes
 //   node pipeline/run.js match       re-run matching only
+//   node pipeline/run.js index       rebuild the search index only (--if-missing: skip when it is up to date)
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
 import { makeDb } from './d1.js';
@@ -11,6 +12,7 @@ import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { runMatching } from './match.js';
 import { sendAlerts } from './alerts.js';
+import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
 import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD, BUDGET } from './config.js';
 
 const args = process.argv.slice(2);
@@ -142,8 +144,16 @@ async function catalogue(db) {
 
 async function match(db) {
   const r = await runMatching(db);
-  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates, ${r.clusters} canonical products, ${r.recategorised} recategorised`);
+  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates, ${r.clusters} canonical products, ${r.recategorised} recategorised`);  log('search index:', r.index.error ? `NOT updated: ${r.index.error}` : `${r.index.rows} rows, ${r.index.written} written, ${r.index.removed} removed`);
 }
+
+async function index(db) {
+  if (opt['if-missing'] && await indexIsCurrent(db)) { log('search index: up to date, nothing to do'); return false; }
+  const r = await syncWordIndex(db, await loadIndexProducts(db));
+  log('search index:', `${r.rows} rows, ${r.written} written, ${r.removed} removed`);
+  return true;
+}
+
 
 async function status(db) {
   const spent = await spentUsd(db);
@@ -160,6 +170,11 @@ else if (mode === 'wishlist') await wishlist(db);
 else if (mode === 'catalogue') { await catalogue(db); await match(db); }
 else if (mode === 'first') { await catalogue(db); await specials(db); await match(db); }
 else if (mode === 'match') await match(db);
+else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);
 else { console.error(`Unknown mode ${mode}`); process.exit(2); }
+// Anything that changed products or prices makes the saved API answers out of date.
+if (!['alerts', 'status'].includes(mode)) {
+  await clearApiCache(db).then(() => log('api cache cleared'), (e) => log('api cache NOT cleared:', e.message));
+}

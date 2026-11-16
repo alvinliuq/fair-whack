@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const dbFile = process.env.LOCAL_DB || path.join(root, 'dev', 'local.db');
-const fx = path.join(root, 'dev', 'fixtures');
+const fx = process.env.SEED_FIXTURE_DIR || path.join(root, 'dev', 'fixtures'); // tests point this at a temp folder
 for (const f of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) if (fs.existsSync(f)) fs.rmSync(f);
 fs.mkdirSync(fx, { recursive: true });
 migrate(dbFile);
