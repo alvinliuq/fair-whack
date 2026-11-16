@@ -37,6 +37,16 @@ Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows s
 
 Budget guard: per-run caps in `pipeline/config.js`; at $80 recorded spend only specials keep running; at $95 everything stops.
 
+## Matching products across stores
+
+Every pipeline run links the same product at Woolworths and Coles (`pipeline/match.js`), then reviews what it could not decide (`pipeline/review.js`):
+
+- **Linked automatically:** same brand and size, names at least 90% alike. Best pairs are linked first, so an exact twin beats a near one, and names with different numbers ("85% Cocoa" / "90% Cocoa") never match.
+- **Reviewed automatically:** pairs that are less alike are linked only when all three hold: same size, names more than 90% alike once plurals and spelling variants are evened out, and the two stores' photos are highly alike (thresholds in `pipeline/config.js` → `REVIEW`).
+- **Left for a person:** everything else, in **Admin → Possible matches**. Nothing is rejected automatically.
+
+See what a run would change without changing anything: **Actions → Pipeline → Run workflow → `review`** (leave "apply" off) and read the log.
+
 ## Managing testers
 
 Sign in with the admin code, then **More → Admin → Testers**. The table shows when each tester was last active (refreshed at most once an hour). **Manage** on a row offers:
