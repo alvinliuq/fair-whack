@@ -3,15 +3,15 @@
 //   node pipeline/run.js weekly      specials (both retailers) + wishlist refresh + matching + flags
 //   node pipeline/run.js catalogue   monthly aisle crawl (skips unless 27+ days since last ok run; --force to override)
 //   node pipeline/run.js alerts      send merged wishlist pushes
-//   node pipeline/run.js match       re-run matching only
-//   node pipeline/run.js review      decide the possible-matches queue by size, name and photo (dry run; --apply to link)
+//   node pipeline/run.js match       re-run matching and the automatic review of possible matches
+//   node pipeline/run.js review      dry run of matching + the automatic review (size, name, photo); --apply does it
 //   node pipeline/run.js index       rebuild the search index only (--if-missing: skip when it is up to date)
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
 import { makeDb } from './d1.js';
 import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
-import { runMatching } from './match.js';
+import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
 import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
@@ -144,9 +144,29 @@ async function catalogue(db) {
   }
 }
 
+const report = (r) => {
+  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates (${r.removedFromQueue} cleared from the queue), ${r.clusters} canonical products, ${r.recategorised} recategorised`);
+  log('search index:', r.index.error ? `NOT updated: ${r.index.error}` : `${r.index.rows} rows, ${r.index.written} written, ${r.index.removed} removed`);
+};
+
+/** Matching, then the automatic review of what is left in the queue (size + name + photo). */
 async function match(db) {
-  const r = await runMatching(db);
-  log('match:', `${r.changed} products re-linked, ${r.candidates} review candidates, ${r.clusters} canonical products, ${r.recategorised} recategorised`);  log('search index:', r.index.error ? `NOT updated: ${r.index.error}` : `${r.index.rows} rows, ${r.index.written} written, ${r.index.removed} removed`);
+  const plan = await planMatching(db);
+  report(await runMatching(db, plan));
+  // The review needs photos from the stores' sites; if that fails, the queue simply waits for a person.
+  const r = await runReview(db, plan, { apply: true, log }).catch((e) => { log('review: skipped,', e.message); return null; });
+  if (r?.approved) report(await runMatching(db)); // link the pairs just approved
+}
+
+/** Dry run: what matching and the review would change, without changing anything. */
+async function review(db) {
+  const plan = await planMatching(db);
+  const ch = linkChanges(plan);
+  log(`match (dry run): Woolworths products with a Coles twin: ${ch.linkedBefore} now, ${ch.linkedAfter} after; ${ch.gained.length} gain a twin, ${ch.lost.length} lose theirs, ${ch.changed.length} switch twin`);
+  for (const [kind, list] of [['GAIN', ch.gained], ['LOSE', ch.lost], ['SWITCH', ch.changed]]) for (const line of list.slice(0, 400)) log(`${kind}\t${line}`);
+  log(`match (dry run): queue ${plan.pending.length} now, ${plan.candidates.length} after`);
+  await runReview(db, plan, { apply: false, allPhotos: !!opt['all-photos'], log });
+  log('dry run: nothing was changed');
 }
 
 async function index(db) {
@@ -172,11 +192,7 @@ else if (mode === 'wishlist') await wishlist(db);
 else if (mode === 'catalogue') { await catalogue(db); await match(db); }
 else if (mode === 'first') { await catalogue(db); await specials(db); await match(db); }
 else if (mode === 'match') await match(db);
-else if (mode === 'review') {
-  const r = await runReview(db, { apply: !!opt.apply, log });
-  if (r.applied && r.approved) await match(db); // re-link products using the newly approved pairs
-  else process.exit(0);
-}
+else if (mode === 'review') { if (opt.apply) await match(db); else { await review(db); process.exit(0); } }
 else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);

@@ -64,3 +64,33 @@ test('decide: all three checks, and one new partner per product', () => {
     5: 'size differs', 6: 'name not alike enough', 7: 'photo missing',
   });
 });
+
+import { computeMatches, scorePair, linkChanges } from '../pipeline/match.js';
+
+test('matching: exact twin wins over a near one, numbers must agree, queue skips products that have a twin', () => {
+  const p = (id, name, size = 180, extra = {}) => ({ id, retailer: id.split(':')[0], name, brand: 'Cadbury', size_value: size, size_unit: 'g', gtin: null, canonical_product_id: `c:${id}`, match_method: 'self', ...extra });
+  const products = [
+    // Loaded in an order that used to link "Dairy Milk" to "Dairy Milk Snack" first.
+    p('coles:1', 'Cadbury Dairy Milk Snack Chocolate Block 180g'),
+    p('coles:2', 'Cadbury Dairy Milk Chocolate Block 180g'),
+    p('woolworths:1', 'Cadbury Dairy Milk Chocolate Block'),
+    p('woolworths:2', 'Cadbury Dairy Milk Snack Chocolate Block'),
+    // Different numbers: never the same product.
+    p('woolworths:3', 'Cadbury Old Gold 70% Cocoa Dark Chocolate', 100), p('coles:3', 'Cadbury Old Gold Dark Chocolate 45% Cocoa 100g', 100),
+    // Nobody has a twin yet and the names are only fairly alike: goes to the queue.
+    p('woolworths:4', 'Cadbury Roses Chocolate Gift Tin', 225), p('coles:4', 'Cadbury Roses Chocolate Gift Assorted', 225),
+  ];
+  assert.equal(scorePair(products[4], products[5]), 0);
+  const r = computeMatches(products);
+  assert.equal(r.canonOf.get('woolworths:1'), r.canonOf.get('coles:2'));
+  assert.equal(r.canonOf.get('woolworths:2'), r.canonOf.get('coles:1'));
+  assert.notEqual(r.canonOf.get('woolworths:1'), r.canonOf.get('coles:1'));
+  assert.notEqual(r.canonOf.get('woolworths:3'), r.canonOf.get('coles:3'));
+  assert.deepEqual(r.candidates.map((c) => `${c.product_a}|${c.product_b}`), ['coles:4|woolworths:4']);
+  const ch = linkChanges({ products, canonOf: r.canonOf });
+  assert.deepEqual([ch.linkedBefore, ch.linkedAfter, ch.gained.length], [0, 2, 2]);
+  // A pair a person rejected stays apart, and one they approved stays together.
+  const again = computeMatches(products, new Set(['coles:2|woolworths:1']), [['coles:4', 'woolworths:4']]);
+  assert.notEqual(again.canonOf.get('woolworths:1'), again.canonOf.get('coles:2'));
+  assert.equal(again.canonOf.get('woolworths:4'), again.canonOf.get('coles:4'));
+});

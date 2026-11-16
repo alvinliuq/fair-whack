@@ -125,8 +125,8 @@ export function normText(s) {
     .trim();
 }
 
-/** Name tokens without size words, brand, or stop words. */
-export function nameTokens(name, brand) {
+/** Words of a name with the brand and size/pack wording removed (numbers kept). */
+function nameWords(name, brand) {
   let s = normText(name);
   const b = normText(brand);
   if (b && s.startsWith(b + ' ')) s = s.slice(b.length + 1);
@@ -138,9 +138,25 @@ export function nameTokens(name, brand) {
   for (let t of s.split(' ')) {
     if (!t) continue;
     if (ABBR[t]) t = ABBR[t];
-    for (const p of t.split(' ')) if (p && !STOP.has(p) && !/^\d+$/.test(p)) out.push(p);
+    for (const p of t.split(' ')) if (p) out.push(p);
   }
   return out;
+}
+
+/** Name tokens without size words, brand, or stop words. */
+export function nameTokens(name, brand) {
+  return nameWords(name, brand).filter((p) => !STOP.has(p) && !/^\d+$/.test(p));
+}
+
+/** Numbers in a name that are not a size or pack count: "85" in "85% Cocoa", "7" in "Size 7", "43" in "Blend 43". */
+export function nameNumbers(name, brand) {
+  return [...new Set(nameWords(name, brand).filter((p) => /^\d+$/.test(p)))];
+}
+
+/** True when each name has a number the other lacks ("85% Cocoa" vs "90% Cocoa", "Size 4" vs "Size 5"). */
+export function numbersConflict(a, b) {
+  const A = nameNumbers(a.name, a.brand), B = nameNumbers(b.name, b.brand);
+  return A.some((x) => !B.includes(x)) && B.some((x) => !A.includes(x));
 }
 
 export function brandKey(brand) { return normText(brand).replace(/\s+/g, ''); }

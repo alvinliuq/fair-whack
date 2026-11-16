@@ -1,10 +1,11 @@
 // Cross-retailer matching (spec section 6.5).
 //  1. Same GTIN -> same canonical product.
 //  2. Same brand + same size + similar name -> auto link (score >= MATCH.autoAccept)
-//     or a review candidate (score between reviewFloor and autoAccept).
+//     or a review candidate (score between reviewFloor and autoAccept). Best-scoring pairs are linked
+//     first, and a product gets at most one partner per store, so an exact twin always beats a near one.
 //  3. Everything else is its own canonical product.
 // Manual decisions (match_method = 'manual') and rejected pairs are never overridden.
-import { nameTokens, brandKey, jaccard, mapCategory, splitCategory } from '../shared/normalize.js';
+import { nameTokens, brandKey, jaccard, mapCategory, splitCategory, numbersConflict } from '../shared/normalize.js';
 import { MATCH } from './config.js';
 import { syncWordIndex } from './search-index.js';
 
@@ -14,6 +15,7 @@ export function scorePair(a, b) {
   if (Math.abs(a.size_value - b.size_value) / Math.max(a.size_value, b.size_value) > 0.01) return 0;
   const ba = brandKey(a.brand), bb = brandKey(b.brand);
   if (ba !== bb) return 0; // both blank is allowed (fresh produce), scored on name alone
+  if (numbersConflict(a, b)) return 0; // "85% Cocoa" is not "90% Cocoa", "Size 4" is not "Size 5"
   const ta = nameTokens(a.name, a.brand), tb = nameTokens(b.name, b.brand);
   let s = jaccard(ta, tb);
   // Identical token sets score 1; tiny bonus when one is a subset of the other (word-order / filler differences).
@@ -70,7 +72,10 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
     if (!blocks.has(key)) blocks.set(key, []);
     blocks.get(key).push(p);
   }
-  const candidates = [];
+  // Score every cross-store pair in a block, then link from the best score down. Linking in whatever
+  // order the products happened to load let "Dairy Milk" pair with "Dairy Milk Snack" (0.95) before its
+  // exact twin (1.0) was looked at, which then could not be linked.
+  const scored = [];
   for (const group of blocks.values()) {
     if (group.length < 2 || group.length > 200) continue;
     for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
@@ -79,17 +84,26 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
       const [x, y] = a.id < b.id ? [a, b] : [b, a];
       if (rejectedPairs.has(`${x.id}|${y.id}`)) continue;
       const s = scorePair(x, y);
-      if (s >= MATCH.autoAccept) {
-        // Do not merge two products from the same retailer through a chain.
-        const rx = find(x.id), ry = find(y.id);
-        const clash = rx !== ry && [...rset.get(ry)].some((r) => rset.get(rx).has(r));
-        if (clash) { candidates.push({ product_a: x.id, product_b: y.id, score: s }); continue; }
-        union(x.id, y.id);
-        for (const id of [x.id, y.id]) if (!method.has(id) || method.get(id).c < s) method.set(id, { m: 'rule', c: s });
-      } else if (s >= MATCH.reviewFloor) {
-        candidates.push({ product_a: x.id, product_b: y.id, score: s });
-      }
+      if (s >= MATCH.reviewFloor) scored.push({ x, y, s });
     }
+  }
+  scored.sort((p, q) => q.s - p.s || (p.x.id < q.x.id ? -1 : p.x.id > q.x.id ? 1 : p.y.id < q.y.id ? -1 : 1));
+  // True when linking x and y would put two products of one store in the same cluster.
+  const clash = (x, y) => {
+    const rx = find(x.id), ry = find(y.id);
+    return rx !== ry && [...rset.get(ry)].some((r) => rset.get(rx).has(r));
+  };
+  for (const { x, y, s } of scored) {
+    if (s < MATCH.autoAccept || clash(x, y)) continue;
+    union(x.id, y.id);
+    for (const id of [x.id, y.id]) if (!method.has(id) || method.get(id).c < s) method.set(id, { m: 'rule', c: s });
+  }
+  // Review candidates: unlinked pairs where neither product already has a partner in the other's store.
+  // (A product that has its twin does not need a person to look at its near misses.)
+  const candidates = [];
+  for (const { x, y, s } of scored) {
+    if (find(x.id) === find(y.id) || clash(x, y)) continue;
+    candidates.push({ product_a: x.id, product_b: y.id, score: s });
   }
 
   // Build assignments. Canonical id = "c:" + smallest member id (stable).
@@ -100,11 +114,13 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
     members.get(r).push(id);
   }
   const assignments = [];
+  const canonOf = new Map(); // every product id -> its canonical id after this run
   for (const ids of members.values()) {
     ids.sort();
     const manualCanon = ids.map((id) => byId.get(id)).find((p) => p.match_method === 'manual' && p.canonical_product_id)?.canonical_product_id;
     const canon = manualCanon || `c:${ids[0]}`;
     for (const id of ids) {
+      canonOf.set(id, canon);
       const p = byId.get(id);
       const m = p.match_method === 'manual' ? { m: 'manual', c: 1 } : ids.length === 1 ? { m: 'self', c: 1 } : method.get(id) || { m: 'rule', c: 0.9 };
       if (p.canonical_product_id !== canon || p.match_method !== m.m) {
@@ -112,25 +128,55 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
       }
     }
   }
-  return { assignments, candidates, clusters: members.size };
+  return { assignments, candidates, clusters: members.size, canonOf };
 }
 
-export async function runMatching(db) {
+/** Read everything matching needs and work out the result, without changing the database. */
+export async function planMatching(db) {
   // Page by id so each product is read once (OFFSET re-reads every earlier row on each page).
   const products = [];
   for (let last = ''; ;) {
     const page = await db.all(
-      `SELECT id, retailer, name, brand, size_value, size_unit, gtin, canonical_product_id, match_method,
+      `SELECT id, retailer, name, brand, size_value, size_unit, size_text, image_url, gtin, canonical_product_id, match_method,
               family_id, comparable_group_id, category, category_path, cat1, cat2
          FROM retailer_product WHERE id > ? ORDER BY id LIMIT 5000`, [last]);
     products.push(...page);
     if (page.length < 5000) break;
     last = page[page.length - 1].id;
   }
-  const decided = await db.all("SELECT product_a, product_b, status FROM match_candidate WHERE status IN ('approved','rejected')");
-  const rejected = new Set(decided.filter((d) => d.status === 'rejected').map((d) => `${d.product_a}|${d.product_b}`));
-  const approved = decided.filter((d) => d.status === 'approved').map((d) => [d.product_a, d.product_b]);
-  const { assignments, candidates, clusters } = computeMatches(products, rejected, approved);
+  const rows = await db.all('SELECT id, product_a, product_b, status FROM match_candidate');
+  const rejected = new Set(rows.filter((d) => d.status === 'rejected').map((d) => `${d.product_a}|${d.product_b}`));
+  const approved = rows.filter((d) => d.status === 'approved').map((d) => [d.product_a, d.product_b]);
+  const pending = rows.filter((d) => d.status === 'pending');
+  return { products, pending, ...computeMatches(products, rejected, approved) };
+}
+
+/** Which products gain, lose or change their partner in the other store under a plan. */
+export function linkChanges(plan) {
+  const group = (canonOfId) => {
+    const m = new Map();
+    for (const p of plan.products) { const c = canonOfId(p); if (!c) continue; if (!m.has(c)) m.set(c, []); m.get(c).push(p); }
+    return m;
+  };
+  const before = group((p) => p.canonical_product_id), after = group((p) => plan.canonOf.get(p.id));
+  const partners = (g, p, c) => (g.get(c) || []).filter((o) => o.retailer !== p.retailer).map((o) => o.id).sort().join(',');
+  const out = { gained: [], lost: [], changed: [], linkedBefore: 0, linkedAfter: 0 };
+  const byId = new Map(plan.products.map((p) => [p.id, p]));
+  for (const p of plan.products) {
+    if (p.retailer !== 'woolworths') continue; // count each link once, from the Woolworths side
+    const b = partners(before, p, p.canonical_product_id), a = partners(after, p, plan.canonOf.get(p.id));
+    if (b) out.linkedBefore++;
+    if (a) out.linkedAfter++;
+    if (a === b) continue;
+    const names = (ids) => ids.split(',').filter(Boolean).map((id) => byId.get(id)?.name).join(' + ');
+    (b && a ? out.changed : a ? out.gained : out.lost).push(`${p.name}  |  was: ${names(b) || '-'}  |  now: ${names(a) || '-'}`);
+  }
+  return out;
+}
+
+export async function runMatching(db, plan = null) {
+  plan ||= await planMatching(db);
+  const { products, assignments, candidates, clusters } = plan;
 
   if (assignments.length) {
     await db.exec('CREATE TABLE IF NOT EXISTS _match_tmp (id TEXT PRIMARY KEY, canonical_product_id TEXT, match_method TEXT, match_confidence REAL)');
@@ -142,6 +188,13 @@ export async function runMatching(db) {
         match_confidence = (SELECT match_confidence FROM _match_tmp t WHERE t.id = retailer_product.id)
       WHERE id IN (SELECT id FROM _match_tmp)`);
     await db.exec('DELETE FROM _match_tmp');
+  }
+  // The review queue is exactly the current candidates: drop pending pairs that are now linked,
+  // or where one product has found its partner. Nothing a person decided is touched.
+  const wanted = new Set(candidates.map((c) => `${c.product_a}|${c.product_b}`));
+  const stale = plan.pending.filter((d) => !wanted.has(`${d.product_a}|${d.product_b}`)).map((d) => Number(d.id));
+  for (let i = 0; i < stale.length; i += 300) {
+    await db.exec(`DELETE FROM match_candidate WHERE status = 'pending' AND id IN (${stale.slice(i, i + 300).join(',')})`);
   }
   if (candidates.length) {
     const now = new Date().toISOString();
@@ -175,5 +228,5 @@ export async function runMatching(db) {
   // Search index: matching already has every product in memory, so refresh it here.
   // A failure here must not fail the run: search falls back to scanning until the next run.
   const index = await syncWordIndex(db, products).catch((e) => ({ error: e.message }));
-  return { changed: assignments.length, candidates: candidates.length, clusters, recategorised: recat.length, index };
+  return { changed: assignments.length, candidates: candidates.length, removedFromQueue: stale.length, clusters, recategorised: recat.length, index };
 }
