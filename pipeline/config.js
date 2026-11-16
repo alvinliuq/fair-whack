@@ -71,6 +71,14 @@ export const MATCH = {
   reviewFloor: 0.6,    // between floor and autoAccept: send to admin review
 };
 
+// Automatic review of the "possible matches" queue (pipeline/review.js). A pair is linked only when
+// the size is the same, the names are more than nameMin alike, and the photos pass both photo checks.
+export const REVIEW = {
+  nameMin: 0.9,
+  shapeMin: 0.7,     // photo layout (perceptual hash), 1 = identical
+  colourMin: 0.85,   // photo colours, 1 = identical
+};
+
 export const ALERTS = {
   maxPushesPerUserPerDay: 1,
   appUrl: process.env.APP_URL || 'https://fair-whack.pages.dev',

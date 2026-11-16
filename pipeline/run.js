@@ -4,6 +4,7 @@
 //   node pipeline/run.js catalogue   monthly aisle crawl (skips unless 27+ days since last ok run; --force to override)
 //   node pipeline/run.js alerts      send merged wishlist pushes
 //   node pipeline/run.js match       re-run matching only
+//   node pipeline/run.js review      decide the possible-matches queue by size, name and photo (dry run; --apply to link)
 //   node pipeline/run.js index       rebuild the search index only (--if-missing: skip when it is up to date)
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
@@ -12,6 +13,7 @@ import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { runMatching } from './match.js';
 import { sendAlerts } from './alerts.js';
+import { runReview } from './review.js';
 import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
 import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD, BUDGET } from './config.js';
 
@@ -170,6 +172,11 @@ else if (mode === 'wishlist') await wishlist(db);
 else if (mode === 'catalogue') { await catalogue(db); await match(db); }
 else if (mode === 'first') { await catalogue(db); await specials(db); await match(db); }
 else if (mode === 'match') await match(db);
+else if (mode === 'review') {
+  const r = await runReview(db, { apply: !!opt.apply, log });
+  if (r.applied && r.approved) await match(db); // re-link products using the newly approved pairs
+  else process.exit(0);
+}
 else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);

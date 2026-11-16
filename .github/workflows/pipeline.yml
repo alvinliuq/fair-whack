@@ -10,10 +10,14 @@ on:
       mode:
         description: 'What to run'
         type: choice
-        options: [weekly, alerts, catalogue, first, match, status]
+        options: [weekly, alerts, catalogue, first, match, review, status]
         default: status
       force:
         description: 'Catalogue: ignore the 4-week wait'
+        type: boolean
+        default: false
+      apply:
+        description: 'Review: link the pairs that pass (off = dry run, report only)'
         type: boolean
         default: false
   workflow_call:
@@ -58,6 +62,7 @@ jobs:
           export D1_DATABASE_ID=$(./scripts/d1-id.sh)
           eval "$(node scripts/vapid.js)"; export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
           extra=""; [ "${{ inputs.force }}" = "true" ] && extra="--force"
+          [ "${{ inputs.apply }}" = "true" ] && extra="$extra --apply"
           node pipeline/run.js ${{ steps.m.outputs.mode }} $extra 2>&1 | tee run.log
           node pipeline/run.js status | tee -a run.log
           { echo '```'; tail -n 60 run.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
