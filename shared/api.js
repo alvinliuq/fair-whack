@@ -7,6 +7,7 @@ import {
 import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-index.js';
 
 const FRESH_DAYS = 8;
+const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
 const PAGE = 40;
 const RETAILERS = ['woolworths', 'coles', 'aldi', 'costco'];
 
@@ -154,6 +155,10 @@ route('POST', '/api/login', async ({ env, request }) => {
   if (!isUser) throw new HttpError(401, 'That invite code is not right');
   const id = 'u:' + normText(cleanName).replace(/\s+/g, '-');
   const existing = await env.DB.prepare('SELECT id, is_admin FROM users WHERE id = ?').bind(id).first();
+  if (!existing && !isAdmin) {
+    const removed = await env.DB.prepare('SELECT id FROM removed_users WHERE id = ?').bind(id).first().catch(() => null);
+    if (removed) throw new HttpError(403, 'This name has been removed from the beta. Please contact the organiser.');
+  }
   if (!existing) {
     await env.DB.prepare('INSERT INTO users (id, name, is_admin, created_at) VALUES (?, ?, ?, ?)').bind(id, cleanName, isAdmin ? 1 : 0, nowIso()).run();
     await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, NULL, ?)').bind(uid(), id, 'My list', nowIso()).run();
@@ -668,7 +673,7 @@ function manualUpsert(env, { retailer, name, brand, size_text, price_cents, was_
   return { id, stmts };
 }
 
-route('GET', '/api/admin/overview', async ({ env }) => {
+route('GET', '/api/admin/overview', async ({ env, user }) => {
   const spend = await env.DB.prepare('SELECT COALESCE(SUM(cost_usd),0) AS usd FROM pipeline_runs').first();
   const runs = (await env.DB.prepare('SELECT id, mode, retailer, started_at, finished_at, status, items, cost_usd, message FROM pipeline_runs ORDER BY id DESC LIMIT 20').all()).results;
   const counts = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS products,
@@ -679,11 +684,82 @@ route('GET', '/api/admin/overview', async ({ env }) => {
       MAX(cur_captured_at) AS updated
       FROM retailer_product GROUP BY retailer`).bind(new Date(Date.now() - 28 * 86400000).toISOString(), freshCut()).all()).results;
   const pending = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user_reports WHERE status='pending') AS reports, (SELECT COUNT(*) FROM match_candidate WHERE status='pending') AS matches").first();
-  const users = (await env.DB.prepare(`SELECT u.name, u.created_at, u.age_range, u.gender, u.household_size, u.fav_categories,
+  const users = (await env.DB.prepare(`SELECT u.id, u.name, u.is_admin, u.created_at, u.last_active_at, u.age_range, u.gender, u.household_size, u.fav_categories,
       (SELECT COUNT(*) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = u.id) AS items,
       (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
       (SELECT COUNT(*) FROM push_subs s WHERE s.user_id = u.id) AS devices FROM users u ORDER BY u.created_at`).all()).results;
-  return json({ spendUsd: spend.usd, budgetUsd: 100, runs, counts, pending, users });
+  const removed = (await env.DB.prepare('SELECT id, name, removed_at FROM removed_users ORDER BY removed_at DESC').all().catch(() => ({ results: [] }))).results;
+  return json({ spendUsd: spend.usd, budgetUsd: 100, runs, counts, pending, users, removed, me: user.id });
+}, { admin: true });
+
+// ----- admin: testers -----
+/**
+ * action = remove:  delete the tester, their lists and alert devices; block the name from signing in again.
+ * action = restore: let a removed name sign in again (they start with an empty account).
+ * action = merge:   move everything from `id` into `into`, then delete `id` (for one person who used two names).
+ */
+route('POST', '/api/admin/users', async ({ env, user, request }) => {
+  const { action, id, into } = await body(request);
+  const db = env.DB;
+  if (action === 'restore') {
+    await db.prepare('DELETE FROM removed_users WHERE id = ?').bind(String(id || '')).run();
+    return json({ ok: true });
+  }
+  if (action !== 'remove' && action !== 'merge') throw new HttpError(400, 'action must be remove, merge or restore');
+  const src = await db.prepare('SELECT * FROM users WHERE id = ?').bind(String(id || '')).first();
+  if (!src) throw new HttpError(404, 'Tester not found');
+  if (src.id === user.id) throw new HttpError(400, 'You cannot remove or merge the account you are signed in with');
+
+  if (action === 'remove') {
+    await db.batch([
+      db.prepare('DELETE FROM list_items WHERE list_id IN (SELECT id FROM lists WHERE user_id = ?)').bind(src.id),
+      db.prepare('DELETE FROM lists WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM push_subs WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM push_log WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM search_history WHERE user_id = ?').bind(src.id),
+      // Search counts stay (they feed the popular searches) but no longer point at a person.
+      db.prepare('UPDATE search_log SET user_id = NULL WHERE user_id = ?').bind(src.id),
+      db.prepare('INSERT INTO removed_users (id, name, removed_at, removed_by) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET removed_at = excluded.removed_at, removed_by = excluded.removed_by').bind(src.id, src.name, nowIso(), user.id),
+      // Sessions are checked against this table on every request, so this signs them out at once.
+      db.prepare('DELETE FROM users WHERE id = ?').bind(src.id),
+    ]);
+    return json({ ok: true });
+  }
+
+  const dst = await db.prepare('SELECT * FROM users WHERE id = ?').bind(String(into || '')).first();
+  if (!dst) throw new HttpError(404, 'Choose the tester to merge into');
+  if (dst.id === src.id) throw new HttpError(400, 'Choose two different testers');
+  const lists = (await db.prepare('SELECT id, user_id, name, retailer FROM lists WHERE user_id IN (?, ?) ORDER BY created_at').bind(src.id, dst.id).all()).results;
+  const same = (a, b) => a.name.trim().toLowerCase() === b.name.trim().toLowerCase() && (a.retailer || '') === (b.retailer || '');
+  const stmts = [];
+  for (const l of lists.filter((x) => x.user_id === src.id)) {
+    const twin = lists.find((x) => x.user_id === dst.id && same(x, l));
+    if (!twin) { stmts.push(db.prepare('UPDATE lists SET user_id = ? WHERE id = ?').bind(dst.id, l.id)); continue; }
+    // Same list on both accounts: move the items across; an item on both keeps the target's alert settings.
+    stmts.push(
+      db.prepare('UPDATE OR IGNORE list_items SET list_id = ? WHERE list_id = ?').bind(twin.id, l.id),
+      db.prepare('DELETE FROM list_items WHERE list_id = ?').bind(l.id),
+      db.prepare('DELETE FROM lists WHERE id = ?').bind(l.id),
+    );
+  }
+  stmts.push(
+    db.prepare('UPDATE push_subs SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('UPDATE OR IGNORE push_log SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('DELETE FROM push_log WHERE user_id = ?').bind(src.id),
+    db.prepare(`INSERT INTO search_history (user_id, query, last_at) SELECT ?, query, last_at FROM search_history WHERE user_id = ?
+        ON CONFLICT(user_id, query) DO UPDATE SET last_at = MAX(last_at, excluded.last_at)`).bind(dst.id, src.id),
+    db.prepare('DELETE FROM search_history WHERE user_id = ?').bind(src.id),
+    db.prepare('UPDATE search_log SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('UPDATE user_reports SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    // Keep the earlier join date and the later activity; fill in the profile if the target never did theirs.
+    db.prepare(`UPDATE users SET created_at = MIN(created_at, ?), last_active_at = NULLIF(MAX(COALESCE(last_active_at, ''), COALESCE(?, '')), ''),
+        age_range = COALESCE(age_range, ?), gender = COALESCE(gender, ?), household_size = COALESCE(household_size, ?),
+        fav_categories = COALESCE(fav_categories, ?), profile_done_at = COALESCE(profile_done_at, ?) WHERE id = ?`)
+      .bind(src.created_at, src.last_active_at, src.age_range, src.gender, src.household_size, src.fav_categories, src.profile_done_at, dst.id),
+    db.prepare('DELETE FROM users WHERE id = ?').bind(src.id),
+  );
+  await db.batch(stmts);
+  return json({ ok: true });
 }, { admin: true });
 
 route('GET', '/api/admin/reports', async ({ env }) => {
@@ -800,6 +876,9 @@ export async function handle(request, env) {
       user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
       if (!user) return err(401, 'Please sign in');
       if (r.admin && !user.is_admin) return err(403, 'Admins only');
+      if (!user.last_active_at || Date.now() - Date.parse(user.last_active_at) > ACTIVE_STAMP_MS) {
+        await env.DB.prepare('UPDATE users SET last_active_at = ? WHERE id = ?').bind(nowIso(), id).run().catch(() => {});
+      }
     }
     return await r.handler({ request, env, url, params, user });
   } catch (e) {

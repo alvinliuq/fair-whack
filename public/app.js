@@ -1,4 +1,4 @@
-// Fair Whack beta (FW1.1) — single-page app (no build step).
+// Fair Whack beta — single-page app (no build step).
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco' };
@@ -590,10 +590,12 @@ views.admin = async () => {
         <p class="small muted">At $80, only weekly specials keep running. At $95, everything stops. Apify's own figures are the final word.</p></div>
       <h2>Products</h2><div class="card" style="overflow-x:auto"><table class="t"><tr><th>Store</th><th>Products</th><th>Last 28d</th><th>Specials</th><th>Matched</th><th>Updated</th></tr>
         ${counts.map((c) => `<tr><td>${RET[c.retailer] || c.retailer}</td><td class="num">${c.products}</td><td class="num">${c.fresh28}</td><td class="num">${c.specials}</td><td class="num">${c.matched}</td><td>${ago(c.updated)}</td></tr>`).join('')}</table></div>
-      <h2>Testers <span class="small muted">${o.users.length}</span></h2>
+      <div class="row"><h2 style="flex:1;justify-content:flex-start;gap:8px">Testers <span class="small muted">${o.users.length}</span></h2><button class="btn small ghost" id="csv">Download list (CSV)</button></div>
       <div class="card small stack"><div><b>Age</b> ${tally('age_range', AGE_LABEL)}</div><div><b>Gender</b> ${tally('gender', GENDER_LABEL)}</div><div><b>Household</b> ${tally('household_size', HOUSE_LABEL)}</div></div>
-      <div class="card" style="overflow-x:auto;margin-top:10px"><table class="t"><tr><th>Name</th><th>Age</th><th>Gender</th><th>Home</th><th>Watching</th><th>Searches</th><th>Alerts</th></tr>
-        ${o.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${AGE_LABEL[u.age_range] || '—'}</td><td>${GENDER_LABEL[u.gender] || '—'}</td><td>${HOUSE_LABEL[u.household_size] || '—'}</td><td class="num">${u.items}</td><td class="num">${u.searches ?? 0}</td><td>${u.devices ? '🔔' : '—'}</td></tr>`).join('')}</table></div>
+      <div class="card" style="overflow-x:auto;margin-top:10px"><table class="t"><tr><th>Name</th><th>Last active</th><th>Age</th><th>Gender</th><th>Home</th><th>Watching</th><th>Searches</th><th>Alerts</th><th></th></tr>
+        ${o.users.map((u) => `<tr><td>${esc(u.name)}${u.is_admin ? ' <span class="small muted">admin</span>' : ''}</td><td>${ago(u.last_active_at) || '—'}</td><td>${AGE_LABEL[u.age_range] || '—'}</td><td>${GENDER_LABEL[u.gender] || '—'}</td><td>${HOUSE_LABEL[u.household_size] || '—'}</td><td class="num">${u.items}</td><td class="num">${u.searches ?? 0}</td><td>${u.devices ? '🔔' : '—'}</td><td>${u.id === o.me ? '<span class="small muted">you</span>' : `<button class="btn small ghost" data-u="${esc(u.id)}">Manage</button>`}</td></tr>`).join('')}</table></div>
+      ${o.removed.length ? `<div class="card small stack" style="margin-top:10px"><div><b>Removed</b> <span class="muted">These names cannot sign in.</span></div>
+        ${o.removed.map((r) => `<div class="row"><span style="flex:1">${esc(r.name)} <span class="muted">removed ${ago(r.removed_at)}</span></span><button class="btn small ghost" data-back="${esc(r.id)}">Allow back</button></div>`).join('')}</div>` : ''}
       <h2>Possible matches <span class="small muted">${o.pending.matches} pending</span></h2>
       <div class="stack">${mt.matches.length ? mt.matches.map((m) => `<div class="card"><div class="pair">
         <div><span class="ret ${m.a_retailer}">${RET[m.a_retailer]}</span><div class="small">${esc(m.a_name)} ${esc(m.a_size || '')}</div><b class="num">${money(m.a_price)}</b></div>
@@ -602,8 +604,54 @@ views.admin = async () => {
       <h2>Data runs</h2><div class="card" style="overflow-x:auto"><table class="t"><tr><th>When</th><th>Job</th><th>Status</th><th>Items</th><th>$</th><th>Note</th></tr>
         ${o.runs.map((r) => `<tr><td>${ago(r.started_at)}</td><td>${r.mode} ${r.retailer || ''}</td><td>${r.status}</td><td class="num">${r.items ?? ''}</td><td class="num">${(r.cost_usd || 0).toFixed(2)}</td><td class="small">${esc((r.message || '').slice(0, 140))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet</td></tr>'}</table></div>`;
     app.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => { await api(`/api/admin/matches/${b.dataset.m}`, { method: 'POST', body: { action: b.dataset.a } }); toast('Saved'); views.admin(); }));
+    app.querySelectorAll('[data-u]').forEach((b) => (b.onclick = () => testerSheet(o.users.find((u) => u.id === b.dataset.u), o.users.filter((u) => u.id !== b.dataset.u))));
+    app.querySelectorAll('[data-back]').forEach((b) => (b.onclick = async () => { await api('/api/admin/users', { method: 'POST', body: { action: 'restore', id: b.dataset.back } }); toast('They can sign in again'); views.admin(); }));
+    $('#csv').onclick = () => downloadTesters(o.users);
   } catch (e) { fail(e); }
 };
+
+/** Admin: remove a tester, or merge two names used by the same person. Both ask for confirmation. */
+function testerSheet(u, others) {
+  const main = () => sheet(`<h3>${esc(u.name)}</h3>
+    <p class="small muted" style="margin-top:-6px">Joined ${ago(u.created_at) || '—'} · last active ${ago(u.last_active_at) || '—'} · watching ${u.items} item${u.items === 1 ? '' : 's'}</p>
+    ${others.length ? `<div class="field"><label for="into">Same person as another tester? Move this tester's lists and alerts to</label>
+      <select id="into"><option value="">Choose a tester…</option>${others.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>
+      <button class="btn ghost" id="merge" style="width:100%;margin-top:8px">Merge into the chosen tester</button>` : ''}
+    <div class="err" id="e"></div>
+    <button class="btn danger" id="rm" style="width:100%;margin-top:14px">Remove from the beta</button>`, (s, close) => {
+    const run = async (body, done) => { try { await api('/api/admin/users', { method: 'POST', body }); close(); toast(done); views.admin(); } catch (e) { close(); toast(e.message); } };
+    const ask = (title, note, yes, body, done) => sheet(`<h3>${esc(u.name)}</h3><div class="confirm"><b>${title}</b><span class="small muted">${note}</span>
+      <div class="row"><button class="btn light" id="no" style="flex:1">Cancel</button><button class="btn danger-solid" id="yes" style="flex:1">${yes}</button></div></div>`, (c) => {
+      $('#no', c).onclick = main;
+      $('#yes', c).onclick = () => run(body, done);
+    });
+    if ($('#merge', s)) $('#merge', s).onclick = () => {
+      const into = others.find((x) => x.id === $('#into', s).value);
+      if (!into) { $('#e', s).textContent = 'Choose the tester to merge into'; return; }
+      ask(`Merge ${esc(u.name)} into ${esc(into.name)}?`, `${esc(into.name)} keeps everything from both. The name "${esc(u.name)}" is deleted and is signed out. This cannot be undone.`,
+        'Merge', { action: 'merge', id: u.id, into: into.id }, `Merged into ${into.name}`);
+    };
+    $('#rm', s).onclick = () => ask(`Remove ${esc(u.name)} from the beta?`, 'Their lists and alerts are deleted and they are signed out straight away. They cannot sign in again with this name unless you allow it.',
+      'Remove', { action: 'remove', id: u.id }, `${u.name} removed`);
+  });
+  main();
+}
+
+/** Admin: the tester table as a CSV file (opens in Excel or Numbers). */
+function downloadTesters(users) {
+  const day = (iso) => (iso ? iso.slice(0, 10) : '');
+  const favs = (u) => { try { return (JSON.parse(u.fav_categories || '[]') || []).join('; '); } catch { return ''; } };
+  const rows = [['Name', 'Admin', 'Joined', 'Last active', 'Age', 'Gender', 'Household', 'Favourite categories', 'Items watched', 'Searches', 'Alert devices'],
+    ...users.map((u) => [u.name, u.is_admin ? 'yes' : '', day(u.created_at), day(u.last_active_at), AGE_LABEL[u.age_range] || '', GENDER_LABEL[u.gender] || '', HOUSE_LABEL[u.household_size] || '', favs(u), u.items, u.searches ?? 0, u.devices])];
+  // Quote every cell; a leading ' stops spreadsheet apps treating a typed name as a formula.
+  const cell = (v) => { let t = String(v ?? ''); if (/^[=+\-@]/.test(t)) t = `'${t}`; return `"${t.replace(/"/g, '""')}"`; };
+  const csv = '\ufeff' + rows.map((r) => r.map(cell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `fair-whack-testers-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 
 // ---------- router ----------
 async function route() {

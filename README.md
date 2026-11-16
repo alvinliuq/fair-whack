@@ -37,6 +37,15 @@ Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows s
 
 Budget guard: per-run caps in `pipeline/config.js`; at $80 recorded spend only specials keep running; at $95 everything stops.
 
+## Managing testers
+
+Sign in with the admin code, then **More → Admin → Testers**. The table shows when each tester was last active (refreshed at most once an hour). **Manage** on a row offers:
+
+- **Merge into another tester** — for one person who signed in under two names. Lists, alerts and search history move to the tester you choose; the other name is deleted.
+- **Remove from the beta** — deletes their lists and alerts, signs them out at once, and blocks that name. **Allow back** (under "Removed") lifts the block; they start again with an empty account.
+
+**Download list (CSV)** saves the table for Excel or Numbers. Everyone shares one invite code, so a removed person could still sign in under a different name: change `INVITE_CODE` and redeploy if that matters.
+
 ## Database reads (Cloudflare D1 free plan: 5 million rows read a day)
 
 The free plan stops the database for the rest of the day (until 00:00 UTC) once the limit is hit, so the app avoids reading every product:
