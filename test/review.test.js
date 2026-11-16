@@ -94,3 +94,17 @@ test('matching: exact twin wins over a near one, numbers must agree, queue skips
   assert.notEqual(again.canonOf.get('woolworths:1'), again.canonOf.get('coles:2'));
   assert.equal(again.canonOf.get('woolworths:4'), again.canonOf.get('coles:4'));
 });
+
+test('decide: near-identical photos let names 60% alike pass; otherwise they wait for a person', () => {
+  const t = { nameMin: 0.9, shapeMin: 0.7, colourMin: 0.85, near: { nameMin: 0.6, shapeMin: 0.94, colourMin: 0.97 } };
+  const pair = (id, a, b, sim) => ({ id, a: P(`woolworths:${id}`, a), b: P(`coles:${id}`, b), sim });
+  const { approve, reasons } = decide([
+    pair(1, 'Acme Macaroni No 38', 'Acme Macaroni Pasta No 38', { shape: 0.97, colour: 0.99 }),
+    pair(2, 'Acme Country Grains Bread', 'Acme Country Grains Sandwich Slice Bread Loaf', { shape: 0.9, colour: 0.99 }),
+    pair(3, 'Acme Sliced Peach', 'Acme Sliced Peaches', { shape: 0.8, colour: 0.9 }),
+    pair(4, 'Acme Lemon Dish Liquid Fresh', 'Acme Lime Dish Liquid Burst', { shape: 1, colour: 1 }),
+    pair(5, 'Acme Dark Chocolate 70% Cocoa', 'Acme Dark Chocolate 85% Cocoa', { shape: 1, colour: 1 }),
+  ], t);
+  assert.deepEqual(approve.map((r) => [r.id, r.strict]), [[3, true], [1, false]]);
+  assert.deepEqual(Object.fromEntries(reasons), { 2: 'name under 90% and photos not near-identical', 4: 'name not alike enough', 5: 'numbers in the names differ' });
+});

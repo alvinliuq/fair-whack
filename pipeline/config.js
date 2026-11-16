@@ -77,6 +77,9 @@ export const REVIEW = {
   nameMin: 0.9,
   shapeMin: 0.7,     // photo layout (perceptual hash), 1 = identical
   colourMin: 0.85,   // photo colours, 1 = identical
+  // Second way to pass: the two stores show almost the same photo. Then the names only need to be
+  // 60% alike (same size and brand still required). Catches "Macaroni No 38" / "Macaroni Pasta No 38".
+  near: { nameMin: 0.6, shapeMin: 0.94, colourMin: 0.97 },
 };
 
 export const ALERTS = {

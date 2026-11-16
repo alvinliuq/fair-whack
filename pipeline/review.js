@@ -2,6 +2,7 @@
 //   1. same pack size            (already true for every candidate; re-checked here)
 //   2. names more than 90% alike (nameSimilarity below)
 //   3. photos highly alike       (image-sim.js: shape and colour)
+// or, when the two photos are almost identical, names at least 60% alike (REVIEW.near in config.js).
 // A pair is linked only when all three pass (and the names do not carry different numbers).
 // Nothing is rejected here: pairs that do not pass stay in the queue for a person to decide.
 import { nameTokens, brandKey, numbersConflict } from '../shared/normalize.js';
@@ -62,13 +63,17 @@ export function decide(rows, t = REVIEW) {
     else if (!sameSize(r.a, r.b)) why = 'size differs';
     else if (brandKey(r.a.brand) !== brandKey(r.b.brand)) why = 'brand differs';
     else if (numbersConflict(r.a, r.b)) why = 'numbers in the names differ';
-    else if (name <= t.nameMin) why = 'name not alike enough';
+    else if (t.near ? name < t.near.nameMin : name <= t.nameMin) why = 'name not alike enough';
     else if (!r.sim) why = 'photo missing';
-    else if (!photosAlike(r.sim, t)) why = 'photos differ';
+    else {
+      r.strict = name > t.nameMin && photosAlike(r.sim, t);
+      const near = !!t.near && r.sim.shape >= t.near.shapeMin && r.sim.colour >= t.near.colourMin;
+      if (!r.strict && !near) why = name > t.nameMin ? 'photos differ' : 'name under 90% and photos not near-identical';
+    }
     if (why) reasons.set(r.id, why); else pass.push(r);
   }
-  // One new partner per product: best pairs first.
-  pass.sort((x, y) => (y.name + y.sim.shape + y.sim.colour) - (x.name + x.sim.shape + x.sim.colour));
+  // One new partner per product: pairs passing the strict rule first, then the best of the rest.
+  pass.sort((x, y) => (y.strict - x.strict) || (y.name + y.sim.shape + y.sim.colour) - (x.name + x.sim.shape + x.sim.colour));
   const used = new Set(), approve = [];
   for (const r of pass) {
     if (used.has(r.a.id) || used.has(r.b.id)) { reasons.set(r.id, 'a better pair uses one of these products'); continue; }
@@ -96,7 +101,7 @@ export async function runReview(db, plan, { apply = false, allPhotos = false, lo
   const first = decide(rows.map((r) => ({ ...r })));
   const need = rows.filter((r) => allPhotos || first.reasons.get(r.id) === 'photo missing');
   const urls = need.flatMap((r) => [r.a.image_url, r.b.image_url]);
-  log(`review: ${rows.length} pairs in the queue, ${need.length} pass size and name; fetching ${new Set(urls.filter(Boolean)).size} photos`);
+  log(`review: ${rows.length} pairs in the queue, ${need.length} need their photos compared; fetching ${new Set(urls.filter(Boolean)).size} photos`);
   const photos = await describeAll(urls, { onProgress: (n, total) => log(`  photos ${n}/${total}`) });
   const failed = [...photos.values()].filter((d) => !d).length;
   if (failed) log(`review: ${failed} photos could not be read`);
@@ -105,10 +110,10 @@ export async function runReview(db, plan, { apply = false, allPhotos = false, lo
   const { approve, reasons } = decide(rows);
   for (const r of rows) {
     if (!allPhotos && !need.includes(r)) continue; // keep the log to the pairs that were actually looked at
-    log(`CAND\t${reasons.get(r.id) || 'LINK'}\t${r.score}\t${r.name}\t${r.sim ? r.sim.shape : ''}\t${r.sim ? r.sim.colour : ''}\t${r.a.name} [${r.a.size_text || ''}] | ${r.b.name} [${r.b.size_text || ''}]`);
+    log(`CAND\t${reasons.get(r.id) || (r.strict ? 'LINK' : 'LINK-PHOTO')}\t${r.score}\t${r.name}\t${r.sim ? r.sim.shape : ''}\t${r.sim ? r.sim.colour : ''}\t${r.a.name} [${r.a.size_text || ''}] | ${r.b.name} [${r.b.size_text || ''}]`);
   }
   const tally = {}; for (const why of reasons.values()) tally[why] = (tally[why] || 0) + 1;
-  log(`review: ${approve.length} pairs pass all three checks; left for a person: ${JSON.stringify(tally)}`);
+  log(`review: ${approve.length} pairs pass (${approve.filter((r) => r.strict).length} by name over 90%, ${approve.filter((r) => !r.strict).length} by near-identical photo); left for a person: ${JSON.stringify(tally)}`);
   if (apply && approve.length) {
     for (const r of approve) {
       await db.run("UPDATE match_candidate SET status = 'approved', decided_by = 'auto-review' WHERE status = 'pending' AND product_a = ? AND product_b = ?", [r.a.id, r.b.id]);
