@@ -593,7 +593,7 @@ views.admin = async () => {
       <div class="row"><h2 style="flex:1;justify-content:flex-start;gap:8px">Testers <span class="small muted">${o.users.length}</span></h2><button class="btn small ghost" id="csv">Download list (CSV)</button></div>
       <div class="card small stack"><div><b>Age</b> ${tally('age_range', AGE_LABEL)}</div><div><b>Gender</b> ${tally('gender', GENDER_LABEL)}</div><div><b>Household</b> ${tally('household_size', HOUSE_LABEL)}</div></div>
       <div class="card" style="overflow-x:auto;margin-top:10px"><table class="t"><tr><th>Name</th><th>Last active</th><th>Age</th><th>Gender</th><th>Home</th><th>Watching</th><th>Searches</th><th>Alerts</th><th></th></tr>
-        ${o.users.map((u) => `<tr><td>${esc(u.name)}${u.is_admin ? ' <span class="small muted">admin</span>' : ''}</td><td>${ago(u.last_active_at) || '—'}</td><td>${AGE_LABEL[u.age_range] || '—'}</td><td>${GENDER_LABEL[u.gender] || '—'}</td><td>${HOUSE_LABEL[u.household_size] || '—'}</td><td class="num">${u.items}</td><td class="num">${u.searches ?? 0}</td><td>${u.devices ? '🔔' : '—'}</td><td>${u.id === o.me ? '<span class="small muted">you</span>' : `<button class="btn small ghost" data-u="${esc(u.id)}">Manage</button>`}</td></tr>`).join('')}</table></div>
+        ${o.users.map((u) => `<tr><td>${esc(u.name)}${u.is_admin ? ' <span class="small muted">admin</span>' : ''}${u.is_design ? ' <span class="small muted">design review</span>' : ''}</td><td>${ago(u.last_active_at) || '—'}</td><td>${AGE_LABEL[u.age_range] || '—'}</td><td>${GENDER_LABEL[u.gender] || '—'}</td><td>${HOUSE_LABEL[u.household_size] || '—'}</td><td class="num">${u.items}</td><td class="num">${u.searches ?? 0}</td><td>${u.devices ? '🔔' : '—'}</td><td>${u.id === o.me ? '<span class="small muted">you</span>' : `<button class="btn small ghost" data-u="${esc(u.id)}">Manage</button>`}</td></tr>`).join('')}</table></div>
       ${o.removed.length ? `<div class="card small stack" style="margin-top:10px"><div><b>Removed</b> <span class="muted">These names cannot sign in.</span></div>
         ${o.removed.map((r) => `<div class="row"><span style="flex:1">${esc(r.name)} <span class="muted">removed ${ago(r.removed_at)}</span></span><button class="btn small ghost" data-back="${esc(r.id)}">Allow back</button></div>`).join('')}</div>` : ''}
       <h2>Possible matches <span class="small muted">${o.pending.matches} pending</span></h2>
@@ -641,8 +641,8 @@ function testerSheet(u, others) {
 function downloadTesters(users) {
   const day = (iso) => (iso ? iso.slice(0, 10) : '');
   const favs = (u) => { try { return (JSON.parse(u.fav_categories || '[]') || []).join('; '); } catch { return ''; } };
-  const rows = [['Name', 'Admin', 'Joined', 'Last active', 'Age', 'Gender', 'Household', 'Favourite categories', 'Items watched', 'Searches', 'Alert devices'],
-    ...users.map((u) => [u.name, u.is_admin ? 'yes' : '', day(u.created_at), day(u.last_active_at), AGE_LABEL[u.age_range] || '', GENDER_LABEL[u.gender] || '', HOUSE_LABEL[u.household_size] || '', favs(u), u.items, u.searches ?? 0, u.devices])];
+  const rows = [['Name', 'Admin', 'Design review', 'Joined', 'Last active', 'Age', 'Gender', 'Household', 'Favourite categories', 'Items watched', 'Searches', 'Alert devices'],
+    ...users.map((u) => [u.name, u.is_admin ? 'yes' : '', u.is_design ? 'yes' : '', day(u.created_at), day(u.last_active_at), AGE_LABEL[u.age_range] || '', GENDER_LABEL[u.gender] || '', HOUSE_LABEL[u.household_size] || '', favs(u), u.items, u.searches ?? 0, u.devices])];
   // Quote every cell; a leading ' stops spreadsheet apps treating a typed name as a formula.
   const cell = (v) => { let t = String(v ?? ''); if (/^[=+\-@]/.test(t)) t = `'${t}`; return `"${t.replace(/"/g, '""')}"`; };
   const csv = '\ufeff' + rows.map((r) => r.map(cell).join(',')).join('\r\n');

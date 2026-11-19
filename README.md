@@ -19,6 +19,7 @@ Add these **GitHub → Settings → Secrets and variables → Actions → New re
 | `APIFY_TOKEN` | Apify Console → Settings → API & Integrations → Personal API token |
 | `INVITE_CODE` | Code testers type to sign in |
 | `ADMIN_CODE` | Code that signs you in as admin (different from the invite code) |
+| `DESIGN_CODE` *(optional)* | Code for design reviewers. Signs in to a separate "design review" account (never a tester's account, never admin). Delete the secret and redeploy to end the review; anyone signed in with it is signed out |
 | `SESSION_SECRET` | Any long random string (40+ characters). Also used to derive the push-notification keys, so don't change it later |
 
 Then **Actions → Deploy → Run workflow**. The first deploy creates the database, publishes the site at `https://fair-whack.pages.dev` (Cloudflare may add a suffix if the name is taken — see the Deploy log) and starts the first data collection.

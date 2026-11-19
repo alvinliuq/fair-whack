@@ -1,5 +1,5 @@
 // Fair Whack API — Cloudflare Pages Function (single router).
-// Bindings: env.DB (D1). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY.
+// Bindings: env.DB (D1). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional).
 import {
   parseSize, unitPriceCents, unitBasisFor, parseUses, familyKey, comparableGroup, mapCategory,
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
@@ -150,17 +150,20 @@ route('POST', '/api/login', async ({ env, request }) => {
   const { code, name } = await body(request);
   const cleanName = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
   if (!cleanName) throw new HttpError(400, 'Please enter your name');
-  const isAdmin = env.ADMIN_CODE && safeEqual(String(code || '').trim(), env.ADMIN_CODE);
-  const isUser = isAdmin || (env.INVITE_CODE && safeEqual(String(code || '').trim(), env.INVITE_CODE));
+  const typed = String(code || '').trim();
+  const isAdmin = env.ADMIN_CODE && safeEqual(typed, env.ADMIN_CODE);
+  // Design review code (optional secret): its own "d:" accounts, never admin, never a tester's account.
+  const isDesign = !isAdmin && !!env.DESIGN_CODE && safeEqual(typed, env.DESIGN_CODE);
+  const isUser = isAdmin || isDesign || (env.INVITE_CODE && safeEqual(typed, env.INVITE_CODE));
   if (!isUser) throw new HttpError(401, 'That invite code is not right');
-  const id = 'u:' + normText(cleanName).replace(/\s+/g, '-');
+  const id = (isDesign ? 'd:' : 'u:') + normText(cleanName).replace(/\s+/g, '-');
   const existing = await env.DB.prepare('SELECT id, is_admin FROM users WHERE id = ?').bind(id).first();
   if (!existing && !isAdmin) {
     const removed = await env.DB.prepare('SELECT id FROM removed_users WHERE id = ?').bind(id).first().catch(() => null);
     if (removed) throw new HttpError(403, 'This name has been removed from the beta. Please contact the organiser.');
   }
   if (!existing) {
-    await env.DB.prepare('INSERT INTO users (id, name, is_admin, created_at) VALUES (?, ?, ?, ?)').bind(id, cleanName, isAdmin ? 1 : 0, nowIso()).run();
+    await env.DB.prepare('INSERT INTO users (id, name, is_admin, is_design, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, cleanName, isAdmin ? 1 : 0, isDesign ? 1 : 0, nowIso()).run();
     await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, NULL, ?)').bind(uid(), id, 'My list', nowIso()).run();
   } else if (isAdmin && !existing.is_admin) {
     await env.DB.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(id).run();
@@ -684,7 +687,7 @@ route('GET', '/api/admin/overview', async ({ env, user }) => {
       MAX(cur_captured_at) AS updated
       FROM retailer_product GROUP BY retailer`).bind(new Date(Date.now() - 28 * 86400000).toISOString(), freshCut()).all()).results;
   const pending = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user_reports WHERE status='pending') AS reports, (SELECT COUNT(*) FROM match_candidate WHERE status='pending') AS matches").first();
-  const users = (await env.DB.prepare(`SELECT u.id, u.name, u.is_admin, u.created_at, u.last_active_at, u.age_range, u.gender, u.household_size, u.fav_categories,
+  const users = (await env.DB.prepare(`SELECT u.id, u.name, u.is_admin, u.is_design, u.created_at, u.last_active_at, u.age_range, u.gender, u.household_size, u.fav_categories,
       (SELECT COUNT(*) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = u.id) AS items,
       (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
       (SELECT COUNT(*) FROM push_subs s WHERE s.user_id = u.id) AS devices FROM users u ORDER BY u.created_at`).all()).results;
@@ -875,6 +878,8 @@ export async function handle(request, env) {
       if (!id) return err(401, 'Please sign in');
       user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
       if (!user) return err(401, 'Please sign in');
+      // Removing the DESIGN_CODE secret ends every design review session, not just new sign-ins.
+      if (user.is_design && !env.DESIGN_CODE) return err(401, 'This design review has ended');
       if (r.admin && !user.is_admin) return err(403, 'Admins only');
       if (!user.last_active_at || Date.now() - Date.parse(user.last_active_at) > ACTIVE_STAMP_MS) {
         await env.DB.prepare('UPDATE users SET last_active_at = ? WHERE id = ?').bind(nowIso(), id).run().catch(() => {});

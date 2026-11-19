@@ -12,6 +12,7 @@ const env = {
   DB: makeD1(dbFile),
   INVITE_CODE: process.env.INVITE_CODE || 'beta',
   ADMIN_CODE: process.env.ADMIN_CODE || 'admin',
+  DESIGN_CODE: process.env.DESIGN_CODE || 'design',
   SESSION_SECRET: process.env.SESSION_SECRET || 'dev-secret',
   VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
 };
