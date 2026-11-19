@@ -3,6 +3,9 @@ const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco' };
 const STORES = ['woolworths', 'coles'];
+// Store logo files: put official artwork in public/icons/stores/ and list it here. Until then a coloured badge shows.
+const STORE_LOGOS = { woolworths: null, coles: null };
+const storeLogo = (r, cls = '') => `<span class="slogo ${r} ${cls}" aria-hidden="true">${STORE_LOGOS[r] ? `<img src="${STORE_LOGOS[r]}" alt="">` : `<b>${(RET[r] || '?')[0]}</b>`}</span>`;
 const MARK = '<svg class="mark" viewBox="34 57 100 102" aria-hidden="true"><polygon points="76,59 89,79 111,66 108,91 132,101 113,115 124,138 99,134 88,157 76,136 52,145 58,119 36,106 58,92 52,68" fill="#C8F169"/><path d="M84 82v37M69 106l15 16 15-16" fill="none" stroke="#5B2BE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const state = { me: null, profile: null, needsProfile: false, meta: null, vapid: null, saved: new Map(), products: new Map(), listOpen: {} };
 
@@ -222,7 +225,7 @@ function renderMine(el, d) {
   const all = d.fromYourList || [];
   const per = d.byStore || all;
   const pool = sel.length === STORES.length ? all : per.filter((o) => sel.includes(o.retailer));
-  const toggles = `<div class="toggles" role="group" aria-label="Stores">${STORES.map((r) => `<button type="button" class="toggle" data-store="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}
+  const toggles = `<div class="toggles" role="group" aria-label="Stores">${STORES.map((r) => `<button type="button" class="toggle ${r}" data-store="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}
     ${sel.length && all.length ? `<span class="count">${pool.length} on special</span>` : ''}</div>`;
   let body;
   if (!all.length) body = `<div class="rail-empty"><b>Nothing from your list is on special this week</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
@@ -311,13 +314,13 @@ views.browse = async (q, store) => {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
     app.innerHTML = `<h1>Browse</h1><p class="lead">Walk the aisles of each store, see what's new, and tap ♡ to track prices on anything.</p>
-      <div class="stores">${STORES.map((r) => `<a class="storecard ${r}" href="#/browse/${r}"><span class="dot"></span><b>${RET[r]}</b><span class="muted small">${count(r).toLocaleString('en-AU')} products · ${esc(meta.newLabel || 'New this week')}</span><span class="go">›</span></a>`).join('')}</div>`;
+      <div class="stores">${STORES.map((r) => `<a class="storecard ${r}" href="#/browse/${r}">${storeLogo(r)}<span class="sc-t"><b>${RET[r]}</b><span class="muted small">${count(r).toLocaleString('en-AU')} products · ${esc(meta.newLabel || 'New this week')}</span></span><span class="go">›</span></a>`).join('')}</div>`;
     return;
   }
   const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: ['new', 'saving', 'price_asc', 'price_desc'].includes(q.get('sort')) ? q.get('sort') : 'saving' };
   const link = (patch) => `#/browse/${store}${qs({ ...f, ...patch })}`;
   const newLabel = state.meta?.newLabel || 'New this week';
-  app.innerHTML = `<div class="row"><a href="#/browse" class="back" aria-label="All stores">‹</a><h1 style="margin:0"><span class="ret ${store} big"></span>${RET[store]}</h1></div>
+  app.innerHTML = `<div class="row"><a href="#/browse" class="back" aria-label="All stores">‹</a><h1 style="margin:0;display:flex;align-items:center;gap:10px">${storeLogo(store, 'sm')}${RET[store]}</h1></div>
     <div id="c1" style="margin-top:10px"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
     <div class="chips sorts">${[['new', newLabel], ['saving', 'Biggest saving'], ['price_asc', 'Price: low to high'], ['price_desc', 'Price: high to low']].map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}">${l}</a>`).join('')}</div>
     <div id="res"></div>`;
@@ -577,10 +580,10 @@ function sparkline(history) {
   const W = 320, H = 80, P = 6;
   const x = (t) => P + ((Date.parse(t) - t0) / (t1 - t0)) * (W - 2 * P);
   const y = (c) => H - P - ((c - lo) / span) * (H - 2 * P);
-  const col = { woolworths: 'var(--grape)', coles: 'var(--ink)' };
+  const col = { woolworths: 'var(--woolworths)', coles: 'var(--coles)' };
   const dash = { coles: ' stroke-dasharray="5 4"' };
   const lines = Object.entries(byRet).map(([r, hs]) => `<polyline fill="none" stroke="${col[r] || '#888'}"${dash[r] || ''} stroke-width="2.5" stroke-linejoin="round" points="${hs.map((h) => `${x(h.captured_at).toFixed(1)},${y(h.price_cents).toFixed(1)}`).join(' ')}"/>`).join('');
-  const legend = Object.keys(byRet).length > 1 ? `<div class="spark-legend">${Object.keys(byRet).map((r) => `<span><i class="${r === 'coles' ? 'dash' : ''}"></i>${RET[r] || r}</span>`).join('')}</div>` : '';
+  const legend = Object.keys(byRet).length > 1 ? `<div class="spark-legend">${Object.keys(byRet).map((r) => `<span><i class="${r} ${r === 'coles' ? 'dash' : ''}"></i>${RET[r] || r}</span>`).join('')}</div>` : '';
   return `${legend}<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price over the last 12 weeks">${lines}</svg>
     <div class="row small muted"><span>${new Date(t0).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span><span class="spacer"></span><span>Low ${money(lo)} · High ${money(hi)}</span></div>`;
 }

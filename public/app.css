@@ -11,8 +11,8 @@
   --ticket-ink: #1B1530;
   --save: #4A1FC4;
   --warn: #B42318;
-  --woolworths: #1B1530;
-  --coles: #1B1530;
+  --woolworths: #178841;
+  --coles: #D81E26;
   --aldi: #1B1530;
   --costco: #1B1530;
   --r: 14px;
@@ -383,3 +383,24 @@ h1 { letter-spacing: -.025em; }
 .scanner .manual input { flex: 1; min-width: 0; border: 0; border-radius: 12px; padding: 12px; font-size: 16px; }
 .scanner .msg { position: relative; z-index: 2; margin: auto 20px; background: rgba(255, 255, 255, .1); border-radius: 14px; padding: 16px; text-align: center; font-size: 14.5px; line-height: 1.45; }
 .scanner .shade[hidden], .scanner .msg[hidden] { display: none; }
+
+/* FW1.2.1: store colours back as markers next to store names, plus store badges on Browse */
+.ret::before { display: inline-block; content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #999); flex: none; }
+.ret { gap: 5px; }
+.chip.on .ret::before, .toggle[aria-pressed="true"] .ret::before { box-shadow: 0 0 0 2px #fff; }
+.toggle .ret { padding: 0; background: none; }
+.storecard { flex-direction: row; align-items: center; gap: 14px; border-left: 6px solid var(--c); }
+.storecard .sc-t { display: flex; flex-direction: column; gap: 4px; }
+.slogo { width: 48px; height: 48px; border-radius: 14px; flex: none; display: grid; place-items: center; background: var(--c); color: #fff; overflow: hidden; }
+.slogo b { font-family: var(--display); font-size: 24px; font-weight: 800; line-height: 1; }
+.slogo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.slogo.sm { width: 34px; height: 34px; border-radius: 10px; }
+.slogo.sm b { font-size: 17px; }
+.slogo.woolworths { --c: var(--woolworths); }
+.slogo.coles { --c: var(--coles); }
+.spark-legend i.woolworths { border-top-color: var(--woolworths); }
+.spark-legend i.coles { border-top-color: var(--coles); }
+.toggle.woolworths { --c: var(--woolworths); }
+.toggle.coles { --c: var(--coles); }
+.toggle .tick { border-color: var(--c); border-width: 2px; }
+.toggle[aria-pressed="true"] .tick { background: var(--c); border-color: #fff; color: #fff; }
