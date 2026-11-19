@@ -1,5 +1,5 @@
 // Fair Whack API — Cloudflare Pages Function (single router).
-// Bindings: env.DB (D1). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional).
+// Bindings: env.DB (D1), env.AI (Workers AI, photo search). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional).
 import {
   parseSize, unitPriceCents, unitBasisFor, parseUses, familyKey, comparableGroup, mapCategory,
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
@@ -411,6 +411,104 @@ route('GET', '/api/search', async ({ env, url, user }) => {
   return json({ groups: out, count: rows.length });
 });
 
+// ----- search by photo or barcode (FW1.2) -----
+/** First query (most specific first) that finds at least one product; null if none do. */
+async function firstHit(env, queries) {
+  const seen = new Set();
+  for (const q of queries) {
+    const tokens = searchTokens(q || '', 6);
+    const key = tokens.join(' ');
+    if (!tokens.length || seen.has(key)) continue;
+    seen.add(key);
+    const rows = await findProducts(env, tokens, 'id', 1, ' AND cur_price_cents IS NOT NULL');
+    if (rows.length) return tokens.join(' ');
+  }
+  return null;
+}
+const SIZE_WORD = /^\d+(\.\d+)?(g|kg|ml|l|pk|pack|x\d+)?$/;
+/** Search phrases from a product's brand, name and size, from most to least specific. */
+function phrasesFor(brand, name, size) {
+  const b = normText(brand || ''), n = normText(name || '').replace(new RegExp(`^${b.replace(/[^a-z0-9 ]/g, '')} `), '');
+  const words = n.split(' ').filter((w) => w && !SIZE_WORD.test(w));
+  const sz = normText(size || '').replace(/\s+/g, '');
+  return [
+    [b, n, sz].join(' '), [b, words.join(' ')].join(' '), [b, words.slice(0, 3).join(' ')].join(' '),
+    [b, words.slice(0, 2).join(' ')].join(' '), words.slice(0, 3).join(' '), words.slice(0, 2).join(' '),
+  ].map((x) => x.trim()).filter(Boolean);
+}
+
+const VISION_PROMPT = 'This photo shows a product sold in an Australian supermarket. Identify it from the packaging. '
+  + 'Reply with JSON only, no other words: {"brand": "...", "product": "...", "size": "..."}. '
+  + 'Use the words printed on the pack, e.g. {"brand": "Arnott\'s", "product": "Tim Tam Original", "size": "200g"}. '
+  + 'Leave a field empty if you cannot read it. If it is not a grocery product, reply {"brand": "", "product": "", "size": ""}.';
+
+async function readPhoto(env, bytes) {
+  if (!env.AI) throw new HttpError(503, "Photo search isn't switched on yet");
+  const image = [...bytes];
+  const llama = '@cf/meta/llama-3.2-11b-vision-instruct';
+  const tryLlama = () => env.AI.run(llama, { messages: [{ role: 'user', content: VISION_PROMPT }], image, max_tokens: 120, temperature: 0.1 });
+  let out;
+  try {
+    out = await tryLlama();
+  } catch (e) {
+    // Meta's licence has to be accepted once per Cloudflare account before the model answers.
+    if (/agree|licen[cs]e/i.test(String(e?.message || e))) {
+      await env.AI.run(llama, { prompt: 'agree' }).catch(() => {});
+      out = await tryLlama().catch(() => null);
+    }
+    if (!out) out = await env.AI.run('@cf/llava-hf/llava-1.5-7b-hf', { prompt: VISION_PROMPT, image, max_tokens: 120 }).catch(() => null);
+  }
+  const text = String(out?.response ?? out?.description ?? '').trim();
+  const m = text.match(/\{[\s\S]*\}/);
+  let r = {};
+  try { r = m ? JSON.parse(m[0]) : {}; } catch { r = {}; }
+  const clip = (v) => String(v || '').replace(/["{}]/g, '').trim().slice(0, 60);
+  if (!m && text) r = { product: text.split('\n')[0] };
+  return { brand: clip(r.brand), product: clip(r.product), size: clip(r.size) };
+}
+
+route('POST', '/api/search/photo', async ({ env, request }) => {
+  const { image } = await body(request);
+  const b64 = String(image || '').replace(/^data:image\/\w+;base64,/, '');
+  if (!b64 || b64.length > 2_000_000) throw new HttpError(400, 'Please choose a smaller photo');
+  let bytes;
+  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { throw new HttpError(400, 'That photo could not be read'); }
+  const seen = await readPhoto(env, bytes);
+  const label = [seen.brand, seen.product, seen.size].filter(Boolean).join(' ');
+  if (!seen.product && !seen.brand) return json({ found: false, label: '' });
+  const query = await firstHit(env, phrasesFor(seen.brand, seen.product, seen.size));
+  return json({ found: !!query, query, label });
+});
+
+/** Same barcode written as EAN-13, UPC-A, GTIN-14 or without leading zeros. */
+export function barcodeForms(code) {
+  const c = String(code || '').replace(/\D/g, '');
+  if (c.length < 8 || c.length > 14) return [];
+  const bare = c.replace(/^0+/, '');
+  return [...new Set([c, bare, bare.padStart(12, '0'), bare.padStart(13, '0'), bare.padStart(14, '0')])].filter((x) => x.length >= 8);
+}
+
+route('GET', '/api/search/barcode', async ({ env, url }) => {
+  const forms = barcodeForms(url.searchParams.get('code'));
+  if (!forms.length) throw new HttpError(400, 'That barcode number does not look right');
+  const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE gtin IN (${forms.map(() => '?').join(',')}) AND ${ACT} AND cur_price_cents IS NOT NULL`)
+    .bind(...forms).all()).results.map(pub).sort(sortOffers);
+  if (rows.length) return json({ found: true, productId: rows[0].id, name: rows[0].name });
+  // Not in our data under that barcode: look the name up in Open Food Facts, then search by name.
+  let off = null;
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${forms[0]}.json?fields=product_name,product_name_en,brands,quantity`, {
+      headers: { 'User-Agent': 'FairWhack/1.2 (internal beta)' }, cf: { cacheTtl: 86400 },
+    });
+    if (r.ok) { const d = await r.json(); if (d.status === 1) off = d.product; }
+  } catch { off = null; }
+  if (!off) return json({ found: false });
+  const brand = String(off.brands || '').split(',')[0].trim();
+  const name = off.product_name_en || off.product_name || '';
+  const query = await firstHit(env, phrasesFor(brand, name, off.quantity));
+  return json({ found: !!query, query, label: [brand, name, off.quantity].filter(Boolean).join(' ') });
+});
+
 route('GET', '/api/suggest', async ({ env, url }) => {
   // A single trailing letter ("tim t") is ignored until a second letter is typed.
   const tokens = searchTokens(url.searchParams.get('q') || '', 5);
@@ -592,18 +690,23 @@ route('GET', '/api/digest', async ({ env, user }) => {
   const cut = freshCut();
   const onSpecial = [...offers.values()].filter((o) => o.cur_is_special === 1 && o.cur_captured_at >= cut && isActive(o.retailer));
   const best = new Map();
+  const byStore = new Map(); // one entry per list item and store, so Home can show one store or both
   for (const it of items) {
     for (const r of onSpecial) {
       if (r.id !== it.product_id && !(it.canon && r.canonical_product_id === it.canon)) continue;
       if (it.list_retailer && it.list_retailer !== r.retailer) continue;
-      const o = pub(r);
+      const o = { ...pub(r), alertMode: it.alert_mode, target: it.target_cents, itemId: it.item_id };
       const prev = best.get(it.item_id);
-      if (!prev || o.effective < prev.effective) best.set(it.item_id, { ...o, alertMode: it.alert_mode, target: it.target_cents });
+      if (!prev || o.effective < prev.effective) best.set(it.item_id, o);
+      const k = `${it.item_id}|${r.retailer}`;
+      const ps = byStore.get(k);
+      if (!ps || o.effective < ps.effective) byStore.set(k, o);
     }
   }
   const top = await cached(env, 'digest-top', async () => (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND cur_promo_type = 'half_price' AND ${ACT}
       AND COALESCE(discount_flag,'') != 'inflated' AND cur_was_cents > 0 ORDER BY (cur_was_cents - cur_price_cents) DESC LIMIT 12`).bind(cut).all()).results.map(pub));
-  return json({ fromYourList: [...best.values()].sort((a, b) => (b.saving || 0) - (a.saving || 0)), topHalfPrice: top });
+  const bySaving = (a, b) => (b.saving || 0) - (a.saving || 0);
+  return json({ fromYourList: [...best.values()].sort(bySaving), byStore: [...byStore.values()].sort(bySaving), topHalfPrice: top });
 });
 
 // ----- push -----

@@ -3,6 +3,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco' };
 const STORES = ['woolworths', 'coles'];
+const MARK = '<svg class="mark" viewBox="34 57 100 102" aria-hidden="true"><polygon points="76,59 89,79 111,66 108,91 132,101 113,115 124,138 99,134 88,157 76,136 52,145 58,119 36,106 58,92 52,68" fill="#C8F169"/><path d="M84 82v37M69 106l15 16 15-16" fill="none" stroke="#5B2BE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const state = { me: null, profile: null, needsProfile: false, meta: null, vapid: null, saved: new Map(), products: new Map(), listOpen: {} };
 
 // ---------- utils ----------
@@ -128,13 +129,14 @@ function chips(items, current, href, { all = 'All', cls = '' } = {}) {
 }
 
 /** Paged product grid with "Load more". */
-function pagedGrid(el, fetchPage, empty) {
+function pagedGrid(el, fetchPage, empty, keep = () => true) {
   let page = 0;
   const load = async () => {
     const d = await fetchPage(page);
-    if (page === 0) el.innerHTML = d.items.length ? '<div class="grid" data-g></div>' : `<div class="empty">${empty}</div>`;
+    const items = d.items.filter(keep);
+    if (page === 0) el.innerHTML = items.length || d.more ? '<div class="grid" data-g></div>' : `<div class="empty">${empty}</div>`;
     const g = el.querySelector('[data-g]');
-    if (g) g.insertAdjacentHTML('beforeend', d.items.map(tile).join(''));
+    if (g) g.insertAdjacentHTML('beforeend', items.map(tile).join(''));
     el.querySelector('[data-more]')?.remove();
     if (d.more) {
       el.insertAdjacentHTML('beforeend', '<p class="center" data-more><button class="btn light">Load more</button></p>');
@@ -152,11 +154,12 @@ const views = {};
 views.login = () => {
   document.body.classList.add('anon');
   app.innerHTML = `<form class="login stack" id="f">
-    <img class="logo" src="/icons/icon-192.png" alt="">
+    ${MARK}
     <h1>Fair Whack</h1>
+    <p class="tagline">Same trolley. Less whack.</p>
     <p class="lead">Compare Woolworths and Coles prices, and get told when the things you buy go on special. Internal beta.</p>
     <div class="field"><label for="name">Your name</label><input id="name" name="name" autocomplete="name" placeholder="e.g. Sam Nguyen" required></div>
-    <div class="field"><label for="code">Invite code</label><input id="code" name="code" autocomplete="off" autocapitalize="off" required></div>
+    <div class="field"><label for="code">Invite or design code</label><input id="code" name="code" autocomplete="off" autocapitalize="off" required></div>
     <div class="err" id="err"></div>
     <button class="btn block">Sign in</button>
     <p class="small muted">Use the same name on every device to keep your lists. Prices are collected weekly and may differ in store.</p>
@@ -208,7 +211,33 @@ views.welcome = async () => {
   };
 };
 
-// ----- Home: your list + Best Deals -----
+// ----- Home: your list (swipe rail, store toggles) + Bargains you're missing -----
+const HOME_STORES = 'fw_home_stores';
+function homeStores() {
+  try { const v = JSON.parse(localStorage.getItem(HOME_STORES)); if (Array.isArray(v)) return v.filter((r) => STORES.includes(r)); } catch {}
+  return [...STORES];
+}
+function renderMine(el, d) {
+  const sel = homeStores();
+  const all = d.fromYourList || [];
+  const per = d.byStore || all;
+  const pool = sel.length === STORES.length ? all : per.filter((o) => sel.includes(o.retailer));
+  const toggles = `<div class="toggles" role="group" aria-label="Stores">${STORES.map((r) => `<button type="button" class="toggle" data-store="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}
+    ${sel.length && all.length ? `<span class="count">${pool.length} on special</span>` : ''}</div>`;
+  let body;
+  if (!all.length) body = `<div class="rail-empty"><b>Nothing from your list is on special this week</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
+  else if (!sel.length) body = '<div class="rail-empty"><b>Pick a store</b>Choose Woolworths, Coles or both to see your specials.</div>';
+  else if (!pool.length) body = `<div class="rail-empty"><b>Nothing at ${RET[sel[0]]} this week</b>${all.length} of your items are on special at the other store.</div>`;
+  else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
+  el.innerHTML = toggles + body;
+  el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
+    const cur = homeStores();
+    const next = cur.includes(b.dataset.store) ? cur.filter((r) => r !== b.dataset.store) : [...cur, b.dataset.store];
+    try { localStorage.setItem(HOME_STORES, JSON.stringify(STORES.filter((r) => next.includes(r)))); } catch {}
+    renderMine(el, d);
+  }));
+}
+
 views.home = async (q) => {
   const f = { store: STORES.includes(q.get('store')) ? q.get('store') : '', cat: q.get('cat') || '', sort: q.get('sort') === 'price' ? 'price' : '' };
   const link = (patch) => `#/${qs({ ...f, ...patch })}`;
@@ -219,9 +248,10 @@ views.home = async (q) => {
     <h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
     <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
     ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}
-    <h2>On special from your list <a href="#/lists">My List</a></h2>
+    <div class="sec-head"><h2>On special from your list</h2><a href="#/lists">My List ›</a></div>
     <div id="mine"><div class="skeleton" style="height:120px"></div></div>
-    <h2 id="deals">Best Deals</h2>
+    <div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
+    <p class="sec-sub">Specials not on your list yet · tap ♡ to watch</p>
     <div class="chips"><a class="chip ${!f.store ? 'on' : ''}" href="${link({ store: '', cat: '' })}">All stores</a>${STORES.map((r) => `<a class="chip store ${f.store === r ? 'on' : ''}" href="${link({ store: r, cat: '' })}"><span class="ret ${r}"></span>${RET[r]}</a>`).join('')}</div>
     <div id="cats"></div>
     <div class="row" style="margin:2px 0 12px"><span class="small muted" id="dlabel"></span><span class="spacer"></span>
@@ -229,15 +259,12 @@ views.home = async (q) => {
     <div id="res"></div>`;
   app.querySelectorAll('[data-sort]').forEach((b) => (b.onclick = () => (location.hash = link({ sort: b.dataset.sort }))));
   if (q.get('store') || q.get('cat') || q.get('sort')) setTimeout(() => $('#deals')?.scrollIntoView({ block: 'start' }), 0);
-  api('/api/digest').then((d) => {
-    $('#mine').innerHTML = d.fromYourList.length ? `<div class="grid">${d.fromYourList.map(tile).join('')}</div>`
-      : `<div class="card flat empty" style="padding:18px"><b>Nothing from your list is on special this week</b>Tap 🧡 on any product to watch it.<p><a class="btn small" href="#/browse">Browse products</a></p></div>`;
-  }).catch((e) => fail(e, $('#mine')));
+  api('/api/digest').then((d) => renderMine($('#mine'), d)).catch((e) => fail(e, $('#mine')));
   api(`/api/categories${qs({ scope: 'deals', retailer: f.store })}`).then((c) => {
     $('#cats').innerHTML = chips(c.categories, f.cat, (name) => link({ cat: name }), { all: f.store ? `All ${RET[f.store]} aisles` : 'All categories' });
   }).catch(() => {});
   const d = await pagedGrid($('#res'), (page) => api(`/api/deals${qs({ retailer: f.store, category: f.cat, sort: f.sort || 'saving', page })}`),
-    '<b>No deals here right now</b>Try another store or category.');
+    '<b>No deals here right now</b>Try another store or category.', (p) => !state.saved.has(p.id));
   if (d && $('#dlabel')) $('#dlabel').textContent = d.forYou ? 'Picked for you first' : '';
 };
 
@@ -246,7 +273,7 @@ views.browse = async (q, store) => {
   if (!STORES.includes(store)) {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
-    app.innerHTML = `<h1>Browse</h1><p class="lead">Walk the aisles of each store, see what's new, and tap 🧡 to track prices on anything.</p>
+    app.innerHTML = `<h1>Browse</h1><p class="lead">Walk the aisles of each store, see what's new, and tap ♡ to track prices on anything.</p>
       <div class="stores">${STORES.map((r) => `<a class="storecard ${r}" href="#/browse/${r}"><span class="dot"></span><b>${RET[r]}</b><span class="muted small">${count(r).toLocaleString('en-AU')} products · ${esc(meta.newLabel || 'New this week')}</span><span class="go">›</span></a>`).join('')}</div>`;
     return;
   }
@@ -272,13 +299,21 @@ views.browse = async (q, store) => {
 // ----- Search & Compare -----
 const SEARCH_SORTS = [['relevance', 'Best match'], ['unit', 'Unit price'], ['saving', 'Biggest saving'], ['price_asc', 'Price: low to high'], ['price_desc', 'Price: high to low']];
 
+const ICON_CAM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+const ICON_LIB = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>';
+const ICON_BAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5a1 1 0 0 1 1-1h3M17 4h3a1 1 0 0 1 1 1v3M21 16v3a1 1 0 0 1-1 1h-3M7 20H4a1 1 0 0 1-1-1v-3M7 8v8M10 8v8M13.5 8v8M17 8v8"/></svg>';
+
 function searchBox(term) {
   return `<form id="sf" class="searchbox" role="search" autocomplete="off">
-    <input type="search" name="q" value="${esc(term)}" placeholder="Search products or brands" enterkeyhint="search" aria-label="Search products or brands" aria-autocomplete="list" aria-controls="sugg">
-    <ul id="sugg" class="suggest" role="listbox" hidden></ul></form>`;
+    <div class="sb-field"><input type="search" name="q" value="${esc(term)}" placeholder="Search products or brands" enterkeyhint="search" aria-label="Search products or brands" aria-autocomplete="list" aria-controls="sugg">
+    <ul id="sugg" class="suggest" role="listbox" hidden></ul></div>
+    <button type="button" class="sb-tool" id="sb-photo" aria-label="Search with a photo">${ICON_CAM}</button>
+    <button type="button" class="sb-tool" id="sb-scan" aria-label="Scan a barcode">${ICON_BAR}</button></form>`;
 }
 function bindSearchBox() {
   const form = $('#sf'), input = form.q, list = $('#sugg');
+  $('#sb-photo').onclick = photoSearch;
+  $('#sb-scan').onclick = () => openScanner().catch((e) => toast(e.message));
   const go = (v) => { v = v.trim(); if (!v) return; list.hidden = true; input.blur(); location.hash = `#/search?q=${encodeURIComponent(v)}`; };
   form.onsubmit = (e) => { e.preventDefault(); go(input.value); };
   let timer, seq = 0;
@@ -301,9 +336,15 @@ function bindSearchBox() {
 views.search = async (q) => {
   const term = q.get('q') || '';
   const sort = SEARCH_SORTS.some(([k]) => k === q.get('sort')) ? q.get('sort') : 'relevance';
-  app.innerHTML = `<h1>Search &amp; Compare</h1>${searchBox(term)}<div id="body"></div>`;
+  app.innerHTML = `<h1>Search &amp; Compare</h1>${searchBox(term)}<div id="via"></div><div id="body"></div>`;
   bindSearchBox();
   const body = $('#body');
+  const via = state.via && state.via.query === term ? state.via : null;
+  if (via) {
+    $('#via').innerHTML = `<div class="via">${via.thumb ? `<img src="${via.thumb}" alt="">` : `<span class="sb-tool" style="width:40px;height:40px;border:0;background:#fff">${ICON_BAR}</span>`}
+      <span>${via.kind === 'photo' ? 'From your photo' : `Barcode ${esc(via.code)}`}${via.label ? `: <b>${esc(via.label)}</b>` : ''}</span><span class="spacer"></span><button class="linkbtn" id="via-edit">Edit</button></div>`;
+    $('#via-edit').onclick = () => { const i = $('#sf input'); i.focus(); i.select(); };
+  }
   if (!term) {
     body.innerHTML = `<h2>Hot Keywords</h2><div id="hot" class="chips wrap"><span class="chip">…</span></div><div id="hist"></div>`;
     api('/api/search/hot').then((h) => { $('#hot').innerHTML = h.keywords.map((t) => `<a class="chip" href="#/search?q=${encodeURIComponent(t)}">${esc(t)}</a>`).join(''); }).catch(() => {});
@@ -330,6 +371,165 @@ views.search = async (q) => {
   } catch (e) { fail(e, $('#res')); }
 };
 
+// ----- search by photo -----
+function pickFile(capture) {
+  return new Promise((resolve) => {
+    const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*' });
+    if (capture) input.setAttribute('capture', 'environment');
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = () => { resolve(input.files[0] || null); input.remove(); };
+    input.click();
+  });
+}
+/** Shrink a photo to at most `max` px on its longest side, as a JPEG data URL. */
+async function shrink(file, max = 768) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('That photo could not be opened')); i.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return { dataUrl: c.toDataURL('image/jpeg', 0.82), canvas: c };
+  } finally { URL.revokeObjectURL(url); }
+}
+function photoSearch() {
+  sheet(`<h3>Search with a photo</h3><p class="small muted" style="margin-top:-6px">Snap the front of the pack. We'll work out what it is and compare prices.</p>
+    <div class="pick"><button id="ph-cam"><span class="ic">${ICON_CAM}</span><span>Take a photo<small>Opens your camera</small></span></button>
+    <button id="ph-lib"><span class="ic">${ICON_LIB}</span><span>Choose from your photos<small>Pick a photo you already have</small></span></button></div>`, (s, close) => {
+    const go = async (capture) => {
+      const file = await pickFile(capture);
+      if (!file) return;
+      close();
+      runPhoto(file);
+    };
+    $('#ph-cam', s).onclick = () => go(true);
+    $('#ph-lib', s).onclick = () => go(false);
+  });
+}
+async function runPhoto(file) {
+  let close = () => {};
+  try {
+    const { dataUrl } = await shrink(file);
+    close = sheet(`<div class="busy"><img src="${dataUrl}" alt=""><div class="spin"></div><b>Looking at your photo…</b><span class="small muted">This takes a few seconds.</span></div>`);
+    const r = await api('/api/search/photo', { method: 'POST', body: { image: dataUrl } });
+    if (r.found) {
+      close();
+      state.via = { kind: 'photo', query: r.query, label: r.label, thumb: (await shrink(file, 120)).dataUrl };
+      location.hash = `#/search?q=${encodeURIComponent(r.query)}`;
+      return;
+    }
+    close();
+    notFoundSheet(r.label ? `We think it's <b>${esc(r.label)}</b>, but couldn't find it at Woolworths or Coles.` : "We couldn't recognise a product in that photo.", r.label, photoSearch, 'Try another photo');
+  } catch (e) { close(); toast(e.message); }
+}
+function notFoundSheet(msg, guess, retry, retryLabel, tip = 'Tip: get the brand name and product name in the shot, in good light.') {
+  sheet(`<h3>No match yet</h3><p>${msg}</p>${tip ? `<p class="small muted">${tip}</p>` : ''}
+    <form id="nf" class="stack"><div class="field"><label for="nfq">Search by name instead</label><input id="nfq" name="q" value="${esc(guess || '')}" placeholder="e.g. Tim Tam"></div>
+    <div class="row"><button type="button" class="btn light" id="nf-retry">${esc(retryLabel)}</button><button class="btn" style="flex:1">Search</button></div></form>`, (s, close) => {
+    $('#nf-retry', s).onclick = () => { close(); retry(); };
+    $('#nf', s).onsubmit = (e) => { e.preventDefault(); const v = $('#nfq', s).value.trim(); if (!v) return; close(); location.hash = `#/search?q=${encodeURIComponent(v)}`; };
+  });
+}
+
+// ----- scan a barcode -----
+async function openScanner() {
+  const { decodeImage, validBarcode } = await import('/barcode.js?v=4');
+  const ov = document.createElement('div');
+  ov.className = 'scanner';
+  ov.setAttribute('role', 'dialog');
+  ov.setAttribute('aria-label', 'Scan a barcode');
+  ov.innerHTML = `<video playsinline muted autoplay></video><div class="shade"><div class="frame"></div></div>
+    <div class="top"><b>Scan a barcode</b><button class="x" aria-label="Close">✕</button></div>
+    <div class="msg" hidden></div>
+    <div class="bottom"><p class="hint">Line the barcode up inside the box</p>
+      <form class="manual"><input inputmode="numeric" pattern="[0-9]*" placeholder="Or type the numbers" aria-label="Barcode number"><button class="btn ticket">Go</button></form>
+      <button type="button" class="linkbtn" style="color:#E9E3FF;margin-top:12px" data-photo>Scan from a photo instead</button></div>`;
+  document.body.appendChild(ov);
+  const video = $('video', ov), msg = $('.msg', ov);
+  let stream = null, timer = null, done = false, last = null;
+  const stop = () => { done = true; clearTimeout(timer); stream?.getTracks().forEach((t) => t.stop()); stream = null; };
+  const close = () => { stop(); ov.remove(); };
+  const say = (html) => { msg.hidden = false; msg.innerHTML = html; $('.shade', ov).hidden = true; };
+  $('.x', ov).onclick = close;
+  const found = async (code) => {
+    if (done) return;
+    stop();
+    navigator.vibrate?.(60);
+    say(`<div class="spin" style="margin:0 auto 10px"></div>Found <b>${esc(code)}</b>. Looking it up…`);
+    try {
+      const r = await api(`/api/search/barcode?code=${encodeURIComponent(code)}`);
+      if (r.found && r.productId) { close(); location.hash = `#/p/${encodeURIComponent(r.productId)}`; return; }
+      if (r.found && r.query) { close(); state.via = { kind: 'barcode', code, query: r.query, label: r.label }; location.hash = `#/search?q=${encodeURIComponent(r.query)}`; return; }
+      close();
+      notFoundSheet(`We don't have barcode <b>${esc(code)}</b> yet. Not every product's barcode is in our data during the beta.`, '', () => openScanner().catch((e) => toast(e.message)), 'Scan again', '');
+    } catch (e) { close(); toast(e.message); }
+  };
+  $('.manual', ov).onsubmit = (e) => {
+    e.preventDefault();
+    const v = $('.manual input', ov).value.replace(/\D/g, '');
+    if (!validBarcode(v)) { toast('Check the numbers: a barcode has 8, 12 or 13 digits'); return; }
+    found(v);
+  };
+  $('[data-photo]', ov).onclick = async () => {
+    const file = await pickFile(false);
+    if (!file) return;
+    const { canvas } = await shrink(file, 1600);
+    const ctx = canvas.getContext('2d');
+    const hit = decodeImage(ctx.getImageData(0, 0, canvas.width, canvas.height), { lines: 61, from: 0.05, to: 0.95 });
+    if (hit) found(hit.code); else toast("Couldn't read a barcode in that photo. Try a closer, sharper shot.");
+  };
+  if (!navigator.mediaDevices?.getUserMedia) { say('This browser can\'t open the camera here. Type the numbers under the barcode, or scan from a photo.'); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (e) {
+    say(e.name === 'NotAllowedError'
+      ? '<b>Camera access is off for Fair Whack.</b><br>Allow the camera when asked, or turn it on in your phone\'s settings for this app. Meanwhile, type the numbers under the barcode below.'
+      : 'The camera could not start. Type the numbers under the barcode below, or scan from a photo.');
+    return;
+  }
+  if (done) { stop(); return; }
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  try { stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch {}
+  let detector = null;
+  if ('BarcodeDetector' in window) {
+    try {
+      const fmts = await window.BarcodeDetector.getSupportedFormats();
+      if (fmts.includes('ean_13')) detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter((f) => fmts.includes(f)) });
+    } catch { detector = null; }
+  }
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const tick = async () => {
+    if (done) return;
+    try {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      let code = null;
+      if (vw && detector) {
+        const r = await detector.detect(video);
+        code = r[0]?.rawValue || null;
+        if (code && code.length === 12) code = `0${code}`;
+      } else if (vw) {
+        // The middle band of the frame, matching the on-screen box, at up to 1280 px wide.
+        const cw = Math.round(vw * 0.9), ch = Math.round(vh * 0.34);
+        const k = Math.min(1, 1280 / cw);
+        canvas.width = Math.round(cw * k); canvas.height = Math.round(ch * k);
+        ctx.drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, canvas.width, canvas.height);
+        const hit = decodeImage(ctx.getImageData(0, 0, canvas.width, canvas.height), { lines: 17, from: 0.1, to: 0.9 });
+        code = hit ? hit.code : null;
+        if (hit && hit.votes >= 3) last = code; // seen on several lines at once: accept straight away
+      }
+      if (code && validBarcode(code)) {
+        if (code === last || detector) return found(code);
+        last = code;
+      }
+    } catch {}
+    timer = setTimeout(tick, 120);
+  };
+  tick();
+}
+
 function sparkline(history) {
   if (history.length < 2) return '<p class="small muted">Price history builds up week by week.</p>';
   const byRet = {};
@@ -340,9 +540,11 @@ function sparkline(history) {
   const W = 320, H = 80, P = 6;
   const x = (t) => P + ((Date.parse(t) - t0) / (t1 - t0)) * (W - 2 * P);
   const y = (c) => H - P - ((c - lo) / span) * (H - 2 * P);
-  const col = { woolworths: 'var(--woolworths)', coles: 'var(--coles)' };
-  const lines = Object.entries(byRet).map(([r, hs]) => `<polyline fill="none" stroke="${col[r] || '#888'}" stroke-width="2" stroke-linejoin="round" points="${hs.map((h) => `${x(h.captured_at).toFixed(1)},${y(h.price_cents).toFixed(1)}`).join(' ')}"/>`).join('');
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price over the last 12 weeks">${lines}</svg>
+  const col = { woolworths: 'var(--grape)', coles: 'var(--ink)' };
+  const dash = { coles: ' stroke-dasharray="5 4"' };
+  const lines = Object.entries(byRet).map(([r, hs]) => `<polyline fill="none" stroke="${col[r] || '#888'}"${dash[r] || ''} stroke-width="2.5" stroke-linejoin="round" points="${hs.map((h) => `${x(h.captured_at).toFixed(1)},${y(h.price_cents).toFixed(1)}`).join(' ')}"/>`).join('');
+  const legend = Object.keys(byRet).length > 1 ? `<div class="spark-legend">${Object.keys(byRet).map((r) => `<span><i class="${r === 'coles' ? 'dash' : ''}"></i>${RET[r] || r}</span>`).join('')}</div>` : '';
+  return `${legend}<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price over the last 12 weeks">${lines}</svg>
     <div class="row small muted"><span>${new Date(t0).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span><span class="spacer"></span><span>Low ${money(lo)} · High ${money(hi)}</span></div>`;
 }
 
@@ -405,7 +607,7 @@ function readOpts(s) {
 function addToListSheet(p, lists, done) {
   sheet(`<h3>Add “${esc(p.name)}” to…</h3>
     <div class="stack">${lists.map((l, i) => `<label class="opt ${i === 0 ? 'on' : ''}" data-l><input type="radio" name="list" value="${l.id}" ${i === 0 ? 'checked' : ''}><div><b>${esc(l.name)}</b><span>${l.retailer ? `${RET[l.retailer]} only` : 'Any store'} · ${l.items.length} item${l.items.length === 1 ? '' : 's'}</span></div></label>`).join('')}</div>
-    <p class="small muted">You'll be told when it goes on special. Change this later from the 🧡.</p>
+    <p class="small muted">You'll be told when it goes on special. Change this later from the ♡.</p>
     <div class="err" id="e"></div><button class="btn block" id="ok">Add to list</button>`, (s, close) => {
     s.querySelectorAll('[data-l]').forEach((o) => o.addEventListener('click', () => { s.querySelectorAll('[data-l]').forEach((x) => x.classList.remove('on')); o.classList.add('on'); }));
     $('#ok', s).onclick = async () => {
@@ -457,7 +659,7 @@ views.lists = async () => {
             <div class="small"><span class="ret ${i.best.retailer}">${RET[i.best.retailer]}</span> ${i.best.special ? (i.best.promoType === 'half_price' ? '<span class="badge b-half">½ PRICE</span>' : '<span class="badge b-promo">Special</span>') : ''} <span class="muted">· ${MODE_LABEL[i.alertMode]}${i.alertMode === 'target' && i.target ? ` ${money(i.target)}` : ''}</span></div></a>
           <div style="text-align:right"><div class="num" style="font-weight:800">${money(i.best.effective)}</div>${i.best.was ? `<div class="small muted num" style="text-decoration:line-through">${money(i.best.was)}</div>` : ''}</div>
           ${heart(i.product)}
-        </div>`; }).join('')}</div>` : '<div class="empty" style="padding:14px">Empty. Tap 🧡 on any product to add it here.</div>'}
+        </div>`; }).join('')}</div>` : '<div class="empty" style="padding:14px">Empty. Tap ♡ on any product to add it here.</div>'}
       </details>`; }).join('')}
       <button class="btn ghost block" id="newlist">+ New list</button>
       <div id="pushbox" style="margin-top:14px"></div>`;
@@ -548,7 +750,7 @@ views.more = () => {
       ${state.me?.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
       <button id="logout"><span class="ic">↩︎</span><span>Sign out<span class="sub">Signed in as ${esc(state.me?.name)}</span></span></button>
     </div>
-    <p class="small muted center" style="margin-top:20px">Fair Whack FW1.1 internal beta · for testers only · please don't share screenshots outside the team</p>`;
+    <p class="small muted center" style="margin-top:20px">Fair Whack FW1.2 internal beta · for testers only · please don't share screenshots outside the team</p>`;
   $('#logout').onclick = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 };
 
@@ -572,6 +774,7 @@ views.about = () => {
     <p><b>Browse</b> uses each store's own aisles, so it looks like their website. <b>“All stores”</b> uses a combined set of categories.</p>
     <p><b>“New”</b> means we saw the product for the first time this week (this month once the beta has run for a month).</p>
     <p><b>Unit prices</b> are worked out by us (per 100g, per litre or per item) so different sizes compare fairly. <b>Per use</b> uses the count printed on the pack, e.g. “40 washes”.</p>
+    <p><b>Photo and barcode search:</b> a photo is read by an AI model to work out the product name, then searched like typed words; it isn't kept. Barcodes are matched to the stores' own barcode data, then to Open Food Facts by name. Not every product has a barcode in our data yet.</p>
     <p><b>“12-wk low”</b> means the lowest price we've seen in 12 weeks. <b>“Was price inflated”</b> means the “was” price is more than 10% above what it usually sold for.</p>
     <p>Prices can change or differ in store. Always check before you buy. This beta is for internal testing only and is not connected to or endorsed by any supermarket.</p></div>`;
 };
