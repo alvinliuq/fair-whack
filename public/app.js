@@ -252,20 +252,57 @@ views.home = async (q) => {
     <div id="mine"><div class="skeleton" style="height:120px"></div></div>
     <div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
     <p class="sec-sub">Specials not on your list yet · tap ♡ to watch</p>
-    <div class="chips"><a class="chip ${!f.store ? 'on' : ''}" href="${link({ store: '', cat: '' })}">All stores</a>${STORES.map((r) => `<a class="chip store ${f.store === r ? 'on' : ''}" href="${link({ store: r, cat: '' })}"><span class="ret ${r}"></span>${RET[r]}</a>`).join('')}</div>
-    <div id="cats"></div>
-    <div class="row" style="margin:2px 0 12px"><span class="small muted" id="dlabel"></span><span class="spacer"></span>
-      <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="price" class="${f.sort === 'price' ? 'on' : ''}">Price</button></div></div>
-    <div id="res"></div>`;
-  app.querySelectorAll('[data-sort]').forEach((b) => (b.onclick = () => (location.hash = link({ sort: b.dataset.sort }))));
+    <div id="dealsbox">
+      <div class="chips" id="stores"><a class="chip ${!f.store ? 'on' : ''}" data-f-store="" href="${link({ store: '', cat: '' })}">All stores</a>${STORES.map((r) => `<a class="chip store ${f.store === r ? 'on' : ''}" data-f-store="${r}" href="${link({ store: r, cat: '' })}"><span class="ret ${r}"></span>${RET[r]}</a>`).join('')}</div>
+      <div id="cats"></div>
+      <div class="row" style="margin:2px 0 12px"><span class="small muted" id="dlabel"></span><span class="spacer"></span>
+        <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="price" class="${f.sort === 'price' ? 'on' : ''}">Price</button></div></div>
+      <div id="res"></div>
+    </div>`;
   if (q.get('store') || q.get('cat') || q.get('sort')) setTimeout(() => $('#deals')?.scrollIntoView({ block: 'start' }), 0);
   api('/api/digest').then((d) => renderMine($('#mine'), d)).catch((e) => fail(e, $('#mine')));
-  api(`/api/categories${qs({ scope: 'deals', retailer: f.store })}`).then((c) => {
+
+  // Filters only reload this section: the address is updated without re-running the whole page.
+  const remember = () => history.replaceState(null, '', link({}));
+  const mark = (sel, attr, val) => app.querySelectorAll(sel).forEach((el) => el.classList.toggle('on', el.getAttribute(attr) === val));
+  const loadCats = () => api(`/api/categories${qs({ scope: 'deals', retailer: f.store })}`).then((c) => {
     $('#cats').innerHTML = chips(c.categories, f.cat, (name) => link({ cat: name }), { all: f.store ? `All ${RET[f.store]} aisles` : 'All categories' });
+    $('#cats').querySelectorAll('a.chip').forEach((a) => a.setAttribute('data-f-cat', new URLSearchParams(a.getAttribute('href').split('?')[1] || '').get('cat') || ''));
   }).catch(() => {});
-  const d = await pagedGrid($('#res'), (page) => api(`/api/deals${qs({ retailer: f.store, category: f.cat, sort: f.sort || 'saving', page })}`),
-    '<b>No deals here right now</b>Try another store or category.', (p) => !state.saved.has(p.id));
-  if (d && $('#dlabel')) $('#dlabel').textContent = d.forYou ? 'Picked for you first' : '';
+  const loadDeals = async () => {
+    const res = $('#res');
+    if (!res) return;
+    res.style.minHeight = `${res.offsetHeight}px`; // keep the page from jumping while it reloads
+    const box = document.createElement('div'); // a fresh box per load, so a slow earlier answer can't overwrite a newer one
+    res.replaceChildren(box);
+    const d = await pagedGrid(box, (page) => api(`/api/deals${qs({ retailer: f.store, category: f.cat, sort: f.sort || 'saving', page })}`),
+      '<b>No deals here right now</b>Try another store or category.', (p) => !state.saved.has(p.id));
+    if (box.isConnected) { res.style.minHeight = ''; if ($('#dlabel')) $('#dlabel').textContent = d?.forYou ? 'Picked for you first' : ''; }
+  };
+  $('#dealsbox').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-f-store], [data-f-cat], [data-sort]');
+    if (!a) return;
+    e.preventDefault();
+    if (a.hasAttribute('data-f-store')) {
+      if (f.store === a.dataset.fStore) return;
+      f.store = a.dataset.fStore; f.cat = '';
+      mark('#stores .chip', 'data-f-store', f.store);
+      $('#cats').innerHTML = '';
+      loadCats();
+    } else if (a.hasAttribute('data-f-cat')) {
+      if (f.cat === a.dataset.fCat) return;
+      f.cat = a.dataset.fCat;
+      mark('#cats .chip', 'data-f-cat', f.cat);
+    } else {
+      if (f.sort === a.dataset.sort) return;
+      f.sort = a.dataset.sort;
+      mark('.seg button', 'data-sort', f.sort);
+    }
+    remember();
+    loadDeals();
+  });
+  loadCats();
+  await loadDeals();
 };
 
 // ----- Browse a store's full range -----
