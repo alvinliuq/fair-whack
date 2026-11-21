@@ -9,7 +9,7 @@ on:
       mode:
         description: 'plans = refresh plans in the database; sample = save a data sample to the energy-sample branch'
         type: choice
-        options: [plans, sample]
+        options: [plans, check, sample]
         default: plans
 
 permissions:
@@ -30,12 +30,18 @@ jobs:
         with:
           node-version: 22
       - name: Plans
-        if: inputs.mode != 'sample'
+        if: inputs.mode != 'sample' && inputs.mode != 'check'
         run: |
           npm install --no-audit --no-fund
           export D1_DATABASE_ID=$(./scripts/d1-id.sh)
           node pipeline/energy.js 2>&1 | tee run.log
           { echo '```'; tail -n 60 run.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check
+        if: inputs.mode == 'check'
+        run: |
+          npm install --no-audit --no-fund
+          export D1_DATABASE_ID=$(./scripts/d1-id.sh)
+          node pipeline/energy-check.js
       - name: Sample
         if: inputs.mode == 'sample'
         run: |
