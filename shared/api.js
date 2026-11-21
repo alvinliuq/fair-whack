@@ -5,7 +5,8 @@ import {
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
 } from './normalize.js';
 import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-index.js';
-import { cleanSection, sectionById } from '../public/household.js';
+import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
+import { compare } from './energy.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
@@ -236,7 +237,9 @@ function householdAnswers(user, data) {
   about.members = members;
   const favs = parseFavs(user);
   if (favs.length) about.favs = favs;
-  return { ...about, ...(data.fuel || {}), ...(data.bills || {}) };
+  const bills = { ...(data.bills || {}) };
+  for (const k of ['elec_retailer', 'gas_retailer']) if (RETAILER_ALIASES[bills[k]]) bills[k] = RETAILER_ALIASES[bills[k]];
+  return { ...about, ...(data.fuel || {}), ...bills };
 }
 
 route('GET', '/api/household', async ({ env, user }) => json({
@@ -279,6 +282,42 @@ route('DELETE', '/api/household/:section', async ({ env, user, params }) => {
   await env.DB.prepare(`INSERT INTO household (user_id, data, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`).bind(user.id, JSON.stringify(data), nowIso()).run();
   return json({ ok: true, answers: householdAnswers(user, data) });
+});
+
+// ----- Bills (FW2.0b): compare Victorian electricity and gas plans for the household -----
+route('GET', '/api/bills/estimate', async ({ env, user, url }) => {
+  const fuel = url.searchParams.get('fuel') === 'gas' ? 'G' : 'E';
+  const a = householdAnswers(user, await readHousehold(env, user.id));
+  const bills = SECTIONS.find((s) => s.id === 'bills');
+  const missing = bills.questions.filter((q) => q.star && (!q.show || q.show(a)) && q.group !== (fuel === 'E' ? 'gas' : 'elec')
+    && progress({ questions: [q] }, a).starsLeft > 0).map((q) => q.label);
+  const pc = a.address?.postcode;
+  if (!/^3\d{3}$/.test(pc || '')) return json({ ready: false, needAddress: true, missing });
+  if (fuel === 'G' && a.has_gas !== 'yes') return json({ ready: false, noGas: a.has_gas === 'no', missing });
+  const updated = (await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'energy_updated_at'").first().catch(() => null))?.value || null;
+  const rows = (await env.DB.prepare('SELECT networks, model FROM energy_plan WHERE fuel = ? AND postcodes LIKE ?').bind(fuel, `%,${pc},%`).all()).results;
+  if (!rows.length) return json({ ready: false, noPlans: true, updated, missing });
+  const valid = fuel === 'E' ? ELEC_NETWORKS : GAS_NETWORKS;
+  const counts = {};
+  for (const r of rows) for (const n of r.networks.split('|').filter((x) => valid.includes(x))) counts[n] = (counts[n] || 0) + 1;
+  const networks = Object.keys(counts).sort((x, y) => counts[y] - counts[x]);
+  const key = fuel === 'E' ? 'elec_network' : 'gas_network';
+  const network = networks.includes(a[key]) ? a[key] : networks[0];
+  const plans = rows.filter((r) => !network || r.networks.includes(`|${network}|`)).map((r) => JSON.parse(r.model));
+  const result = compare(fuel, plans, a, user.household_size);
+  return json({ ready: missing.length === 0, missing, networks, network, chosen: networks.includes(a[key]), updated, ...result });
+});
+
+route('POST', '/api/bills/network', async ({ env, user, request }) => {
+  const b = await body(request);
+  const fuel = b.fuel === 'gas' ? 'gas' : 'elec';
+  const valid = fuel === 'elec' ? ELEC_NETWORKS : GAS_NETWORKS;
+  if (!valid.includes(b.network)) throw new HttpError(400, 'Unknown network');
+  const data = await readHousehold(env, user.id);
+  data.bills = { ...(data.bills || {}), [`${fuel}_network`]: b.network };
+  await env.DB.prepare(`INSERT INTO household (user_id, data, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`).bind(user.id, JSON.stringify(data), nowIso()).run();
+  return json({ ok: true });
 });
 
 route('GET', '/api/meta', async ({ env }) => json(await cached(env, 'meta', async () => {

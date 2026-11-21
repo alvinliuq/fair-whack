@@ -80,3 +80,11 @@ npm test
 - **Search by photo:** `POST /api/search/photo` sends a resized JPEG to Workers AI (`[ai]` binding in `wrangler.toml`, model `@cf/meta/llama-3.2-11b-vision-instruct`, licence accepted automatically on first use, LLaVA as fallback). Photos are not stored.
 - **Scan a barcode:** `public/barcode.js` decodes EAN-13 / UPC-A / EAN-8 from the camera (iPhone Safari has no BarcodeDetector). `GET /api/search/barcode` matches `retailer_product.gtin` in any leading-zero form, then falls back to an Open Food Facts name lookup.
 - **Restore FW1.1:** branch `release-fw1.1`.
+
+## Bills: electricity and gas plans (FW2.0)
+
+Every Sunday 04:00 Melbourne, **Actions → Energy** downloads Victorian residential electricity and gas plans from the
+Australian Energy Regulator (the same data as Energy Made Easy and Victorian Energy Compare; free, no key) into `energy_plan`.
+Run it by hand: **Actions → Energy → Run workflow → `plans`**. The calculator is `shared/energy.js`: it turns the household
+profile (More → Your profile → Save more on Bills) into yearly usage, matches it to the last bill when one is entered,
+and prices every eligible plan at the home's postcode, including GST.

@@ -784,13 +784,13 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=2'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  if (!profMod) { profMod = await import('/profile.js?v=3'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
 views.profile = async (q, section) => (section ? (await prof()).editor(section) : (await prof()).hub());
 views.fuel = async () => (await prof()).modulePage('fuel');
-views.bills = async () => (await prof()).modulePage('bills');
+views.bills = async (q) => (await prof()).modulePage('bills', q);
 
 views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">One notification when items on your list go on special. Usually Wednesday around 8am, never more than once a day.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
 

@@ -11,11 +11,21 @@ export const ADULT_BANDS = AGE_BANDS.slice(3).map((b) => b.v);
 export const MEMBER_GENDERS = [o('male', 'Male'), o('female', 'Female'), o('other', 'Other'), o('na', 'Prefer not to say')];
 export const MAX_MEMBERS = 12;
 
-const ELEC_RETAILERS = ['AGL', 'Origin', 'EnergyAustralia', 'Red Energy', 'Lumo Energy', 'Alinta Energy', 'Simply Energy', 'Powershop',
-  'Momentum Energy', 'Dodo', 'Tango Energy', 'GloBird Energy', 'OVO Energy', 'Amber', 'Sumo', '1st Energy', 'Energy Locals', 'ReAmped Energy', 'CovaU'];
-const GAS_RETAILERS = ['AGL', 'Origin', 'EnergyAustralia', 'Red Energy', 'Lumo Energy', 'Alinta Energy', 'Simply Energy',
-  'Momentum Energy', 'Dodo', 'Tango Energy', 'GloBird Energy', 'Sumo'];
-const retailerOpts = (list) => [...list.map((n) => o(n, n)), o('other', 'Another company'), o('unsure', 'Not sure')];
+// Retailers with Victorian residential plans in the AER data (value = AER brand code).
+export const RETAILERS = [['1st-energy', '1st Energy'], ['actewagl', 'ActewAGL'], ['agl', 'AGL'], ['alinta', 'Alinta Energy'], ['amber', 'Amber'],
+  ['blue-nrg', 'Blue NRG'], ['covau', 'CovaU'], ['diamond', 'Diamond Energy'], ['dodo', 'Dodo'], ['energy-locals', 'Energy Locals'],
+  ['energyaustralia', 'EnergyAustralia'], ['engie', 'ENGIE / Simply Energy'], ['flipped', 'Flipped Energy'], ['flow-power', 'Flow Power'],
+  ['globird', 'GloBird Energy'], ['kogan', 'Kogan Energy'], ['lumo', 'Lumo Energy'], ['momentum', 'Momentum Energy'], ['nectr', 'Nectr'],
+  ['next-business', 'Next Business Energy'], ['origin', 'Origin'], ['ovo-energy', 'OVO Energy'], ['powershop', 'Powershop'], ['red-energy', 'Red Energy'],
+  ['sumo-power', 'Sumo'], ['sumo-gas', 'Sumo Gas'], ['tango', 'Tango Energy']];
+// Names saved before FW2.0b → AER codes.
+export const RETAILER_ALIASES = { AGL: 'agl', Origin: 'origin', EnergyAustralia: 'energyaustralia', 'Red Energy': 'red-energy', 'Lumo Energy': 'lumo',
+  'Alinta Energy': 'alinta', 'Simply Energy': 'engie', Powershop: 'powershop', 'Momentum Energy': 'momentum', Dodo: 'dodo', 'Tango Energy': 'tango',
+  'GloBird Energy': 'globird', 'OVO Energy': 'ovo-energy', Amber: 'amber', Sumo: 'sumo-power', '1st Energy': '1st-energy', 'Energy Locals': 'energy-locals',
+  CovaU: 'covau', 'ReAmped Energy': 'other' };
+const retailerOpts = () => [...RETAILERS.map(([v, l]) => o(v, l)), o('other', 'Another company'), o('unsure', 'Not sure')];
+export const ELEC_NETWORKS = ['Citipower', 'Powercor', 'Jemena', 'United Energy', 'AusNet Services (electricity)'];
+export const GAS_NETWORKS = ['Australian Gas Networks', 'AusNet Services (gas)', 'Multinet'];
 export const FUEL_BRANDS = ['7-Eleven', 'Ampol', 'BP', 'Shell / Reddy Express', 'United', 'Mobil', 'Liberty', 'Metro', 'Costco', 'Apco'];
 
 const HOURS = [o('0', 'None'), o('1-3', '1–3 h'), o('4-6', '4–6 h'), o('7+', '7 h or more')];
@@ -76,7 +86,7 @@ export const SECTIONS = [
       { id: 'bedrooms', group: 'home', type: 'single', star: true, label: 'Bedrooms', options: [o('1', '1'), o('2', '2'), o('3', '3'), o('4', '4'), o('5+', '5 or more')] },
       { id: 'tenure', group: 'home', type: 'single', label: 'Do you own or rent?', options: [o('own', 'Own'), o('rent', 'Rent')] },
 
-      { id: 'elec_retailer', group: 'elec', type: 'single', star: true, label: 'Your electricity company', options: retailerOpts(ELEC_RETAILERS), select: true },
+      { id: 'elec_retailer', group: 'elec', type: 'single', star: true, label: 'Your electricity company', options: retailerOpts(), select: true },
       { id: 'elec_bill', group: 'elec', type: 'form', label: 'Your last electricity bill', hint: 'Makes the estimate much more accurate.', fields: [
         { id: 'amount', type: 'money', label: 'Amount ($)' }, { id: 'days', type: 'int', label: 'Days covered', min: 1, max: 400 }], unknown: 'I don’t remember' },
       { id: 'tariff', group: 'elec', type: 'single', label: 'How are you charged?', options: [o('flat', 'Same price all day'), o('tou', 'Peak and off-peak (time of use)'), o('unsure', 'Not sure')] },
@@ -110,10 +120,12 @@ export const SECTIONS = [
         { id: 'people', type: 'choice', label: 'How many people', options: [o('1', '1'), o('2', '2'), o('3+', '3 or more')], show: (v) => v.has === 'yes' },
         { id: 'days', type: 'choice', label: 'Days a week each', options: [o('1', '1'), o('2', '2'), o('3', '3'), o('4', '4'), o('5', '5')], show: (v) => v.has === 'yes' }] },
       { id: 'concession', group: 'elec', type: 'single', label: 'Concession card', options: [o('pension', 'Pensioner Concession Card'), o('hcc', 'Health Care Card'), o('none', 'None')] },
+      { id: 'elec_network', group: 'elec', type: 'single', label: 'Electricity network', options: ELEC_NETWORKS.map((n) => o(n, n)), show: () => false },
+      { id: 'gas_network', group: 'gas', type: 'single', label: 'Gas network', options: GAS_NETWORKS.map((n) => o(n, n)), show: () => false },
       { id: 'meter_upload', group: 'elec', type: 'later', label: 'Upload your smart meter data', hint: 'Coming with Bills: the most accurate estimate, from your real usage.' },
 
       { id: 'has_gas', group: 'gas', type: 'single', star: true, label: 'Is your home connected to mains gas?', options: [o('yes', 'Yes'), o('no', 'No'), o('unsure', 'Not sure')] },
-      { id: 'gas_retailer', group: 'gas', type: 'single', star: true, label: 'Your gas company', options: retailerOpts(GAS_RETAILERS), select: true, show: (a) => a.has_gas === 'yes' },
+      { id: 'gas_retailer', group: 'gas', type: 'single', star: true, label: 'Your gas company', options: retailerOpts(), select: true, show: (a) => a.has_gas === 'yes' },
       { id: 'gas_bill', group: 'gas', type: 'form', label: 'Your last gas bill', show: (a) => a.has_gas === 'yes', fields: [
         { id: 'amount', type: 'money', label: 'Amount ($)' }, { id: 'days', type: 'int', label: 'Days covered', min: 1, max: 400 }], unknown: 'I don’t remember' },
       { id: 'gas_heating', group: 'gas', type: 'single', star: true, label: 'Gas heating', show: (a) => a.has_gas === 'yes', options: [o('ducted', 'Ducted gas heating'), o('space', 'Gas wall or space heater'), o('no', 'No gas heating')] },
@@ -207,7 +219,7 @@ export function cleanSection(sectionId, input, categories = []) {
     const raw = input[q.id];
     if (raw === undefined || raw === null) continue;
     let v;
-    if (q.type === 'single') v = optVals(q.options).includes(String(raw)) ? String(raw) : undefined;
+    if (q.type === 'single') { const x = RETAILER_ALIASES[raw] && q.id.endsWith('_retailer') ? RETAILER_ALIASES[raw] : String(raw); v = optVals(q.options).includes(x) ? x : undefined; }
     else if (q.type === 'multi') {
       const allowed = q.options === 'categories' ? categories : optVals(q.options);
       let arr = (Array.isArray(raw) ? raw : []).map(String).filter((x, i, a) => allowed.includes(x) && a.indexOf(x) === i);

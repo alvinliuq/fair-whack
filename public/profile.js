@@ -1,13 +1,13 @@
 // FW2.0: More page (Save More), profile hub and the three profile sections. Loaded on demand from app.js.
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
-} from './household.js?v=2';
+} from './household.js?v=3';
 import { attachAutocomplete } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
 export const MODULES = [
   { id: 'fuel', title: 'Fuel', icon: '⛽', blurb: 'Cheapest fuel near you and along your routes', profile: 'fuel', live: false },
-  { id: 'bills', title: 'Bills', icon: '⚡', blurb: 'Electricity and gas plans compared for your home', profile: 'bills', live: false },
+  { id: 'bills', title: 'Bills', icon: '⚡', blurb: 'Electricity and gas plans compared for your home', profile: 'bills', live: true },
 ];
 const PRIVACY = 'This information is only used to work out savings for you. It is never shared with anyone. You can change or clear it at any time.';
 
@@ -50,6 +50,7 @@ export async function more() {
     </div>
     <p class="small muted center" style="margin-top:20px">Fair Whack FW2.0 internal beta · for testers only · please don't share screenshots outside the team</p>`;
   document.getElementById('logout').onclick = ctx.logout;
+  billsSummary().then((t) => { const el = document.querySelector('.save-card[href="#/bills"] span:not(.ic)'); if (t && el) el.textContent = t.short; }).catch(() => {});
   try {
     const d = await load(true);
     const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
@@ -59,7 +60,24 @@ export async function more() {
 }
 
 // ---------- Fuel / Bills (placeholders until each module ships) ----------
-export async function modulePage(id) {
+const $m = (n) => `$${Math.round(n).toLocaleString('en-AU')}`;
+let summaryP = null;
+/** Monthly savings across electricity and gas, for the More card and the profile. */
+async function billsSummary(force) {
+  if (!summaryP || force) {
+    summaryP = Promise.all(['elec', 'gas'].map((f) => ctx.api(`/api/bills/estimate?fuel=${f}`).catch(() => null))).then(([e, g]) => {
+      const save = (r) => (r?.best?.length && r.current?.total ? Math.max(0, (r.current.total - r.best[0].year) / 12) : null);
+      const se = save(e), sg = save(g);
+      if (se == null && sg == null) return null;
+      const tot = (se || 0) + (sg || 0);
+      return { e: se, g: sg, short: tot >= 1 ? `Save about ${$m(tot)} a month` : 'Your plans look good' };
+    });
+  }
+  return summaryP;
+}
+
+export async function modulePage(id, q) {
+  if (id === 'bills') return billsPage(q);
   const { app, esc } = ctx;
   const m = MODULES.find((x) => x.id === id);
   const s = sectionById(m.profile);
@@ -73,11 +91,13 @@ export async function modulePage(id) {
 }
 
 // ---------- profile hub ----------
-function sectionCard(s, a, esc) {
+function sectionCard(s, a, esc, summary) {
   const p = progress(s, a);
   const live = MODULES.find((m) => m.profile === s.id)?.live !== false;
+  let unlockedText = s.unlocked;
+  if (s.id === 'bills') unlockedText = summary ? `Switching could save about ${$m(summary.e || 0)} a month on electricity${summary.g != null ? ` and ${$m(summary.g)} on gas` : ''}. See Bills.` : 'All set. See your savings in Bills.';
   const status = p.unlocked
-    ? (live ? s.unlocked : `All set. Your savings estimate will show here when ${s.id === 'fuel' ? 'Fuel' : 'Bills'} launches.`)
+    ? (live ? unlockedText : `All set. Your savings estimate will show here when ${s.id === 'fuel' ? 'Fuel' : 'Bills'} launches.`)
     : s.locked(p.starsLeft);
   return `<a class="card sec-card" href="#/profile/${s.id}">
     <div class="row"><b>${esc(s.title)}</b><span class="muted small">${p.done}/${p.total} answered</span></div>
@@ -89,11 +109,12 @@ export async function hub() {
   const { app, esc } = ctx;
   app.innerHTML = '<a class="back" href="#/more">‹ More</a><h1>Your profile</h1><p class="muted">Loading…</p>';
   const d = await load(true);
+  const sum = progress(sectionById('bills'), d.answers).unlocked ? await billsSummary(true).catch(() => null) : null;
   const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>Your profile</h1>
     <p class="lead">The more you tell us, the better we can match specials and plans to your home, and the more you can save. Everything here is optional.</p>
     <div class="card"><div class="row"><b>${p}% complete</b></div>${bar(p)}<p class="small muted">${esc(nextTip(d))}</p></div>
-    ${SECTIONS.map((s) => sectionCard(s, d.answers, esc)).join('')}
+    ${SECTIONS.map((s) => sectionCard(s, d.answers, esc, s.id === 'bills' ? sum : null)).join('')}
     <p class="small muted">${PRIVACY}</p>`;
 }
 
@@ -265,4 +286,61 @@ export async function editor(id) {
   addEventListener('beforeunload', leave);
   addEventListener('hashchange', () => removeEventListener('beforeunload', leave), { once: true });
   render();
+}
+
+// ---------- Bills ----------
+async function billsPage(q) {
+  const { app, esc, api, toast } = ctx;
+  const fuel = q?.get('fuel') === 'gas' ? 'gas' : 'elec';
+  const unit = fuel === 'gas' ? 'MJ' : 'kWh';
+  app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>⚡ Bills</h1>
+    <div class="seg wide" role="tablist"><a href="#/bills" class="${fuel === 'elec' ? 'on' : ''}">Electricity</a><a href="#/bills?fuel=gas" class="${fuel === 'gas' ? 'on' : ''}">Gas</a></div>
+    <div id="bl"><p class="muted">Comparing plans…</p></div>`;
+  let r;
+  try { r = await api(`/api/bills/estimate?fuel=${fuel}`); } catch (e) { document.getElementById('bl').innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  const el = document.getElementById('bl');
+  const finish = (title, text, href = '#/profile/bills', cta = 'Finish your home profile') =>
+    `<div class="card"><b>${title}</b><p class="small muted" style="margin:6px 0 10px">${text}</p><a class="btn small" href="${href}">${cta}</a></div>`;
+  if (r.needAddress) { el.innerHTML = finish('Add your home address', 'We need your postcode to find the plans available at your home.', '#/profile/about', 'Add your address'); return; }
+  if (r.noGas) { el.innerHTML = '<div class="card"><b>No mains gas</b><p class="small muted" style="margin:6px 0 0">Your profile says your home isn’t connected to mains gas, so there’s nothing to compare. Change this in Save more on Bills if that’s wrong.</p></div>'; return; }
+  if (fuel === 'gas' && r.ready === false && !r.best) { el.innerHTML = finish('Tell us about your gas', 'Is your home on mains gas, and what do you use it for?'); return; }
+  if (r.noPlans) { el.innerHTML = '<div class="card"><b>No plans found for your postcode yet</b><p class="small muted" style="margin:6px 0 0">Plan data is refreshed every Sunday. If your postcode is right, let us know.</p></div>'; return; }
+  const cur = r.current?.total, best = r.best || [];
+  const save = cur && best[0] ? Math.max(0, cur - best[0].year) : 0;
+  const basis = { bill: 'from your last bill', retailer: `a typical ${esc(r.current?.brand || '')} plan, estimated for your home`, standing: 'the standard default offer, estimated for your home', typical: 'a typical plan, estimated for your home' }[r.current?.basis] || '';
+  const net = r.networks?.length > 1 ? `<div class="card net"><b>Which ${fuel === 'gas' ? 'gas' : 'electricity'} network is on your bill?</b>
+      <p class="small muted" style="margin:4px 0 8px">Your postcode is served by more than one. It’s printed on your bill as the “distributor”.</p>
+      <div class="pills">${r.networks.map((n) => `<button type="button" class="pill-btn ${n === r.network ? 'on' : ''}" data-net="${esc(n)}">${esc(n.replace(/ \((electricity|gas)\)/, ''))}</button>`).join('')}</div>
+      ${r.chosen ? '' : '<p class="small muted" style="margin:8px 0 0">Showing the more common one for now.</p>'}</div>` : '';
+  const parts = r.usage?.parts || [];
+  const totParts = parts.reduce((x, p) => x + p[1], 0) || 1;
+  el.innerHTML = `
+    ${r.missing?.length ? `<div class="card warn-card"><b>${r.missing.length} more answer${r.missing.length > 1 ? 's' : ''} for an accurate estimate</b><p class="small" style="margin:4px 0 8px">${r.missing.map(esc).join(' · ')}</p><a class="btn small" href="#/profile/bills">Answer now</a></div>` : ''}
+    ${net}
+    <div class="card hero-save">
+      ${save >= 12 ? `<span class="small">You could save about</span><b>${$m(save / 12)} a month</b><span class="small">${$m(save)} a year by switching to ${esc(best[0].brandName)}</span>`
+        : ['bill', 'retailer'].includes(r.current?.basis) ? `<b>You’re on a good deal</b><span class="small">None of the ${r.count} plan${r.count === 1 ? '' : 's'} we checked is clearly cheaper for your home.</span>`
+        : `<span class="small">Cheapest plan for your home</span><b>${$m(best[0].month)} a month</b><span class="small">Tell us your retailer or add a bill to see what you’d save.</span>`}
+      <p class="small muted" style="margin:10px 0 0">Now: about ${$m(cur / 12)} a month (${basis}).</p>
+    </div>
+    <h2 class="sec-title">Cheapest plans for your home</h2>
+    ${best.map((b, i) => `<div class="card plan">
+      <div class="row"><span class="rank">${i + 1}</span><div class="pn"><b>${esc(b.brandName)}</b><span class="small muted">${esc(b.name)}</span></div>
+        <div class="pp"><b>${$m(b.month)}</b><span class="small muted">/month</span></div></div>
+      <div class="tags"><span class="tag">${b.tariff}</span>${b.type !== 'MARKET' ? '<span class="tag">Default offer</span>' : ''}${b.cl ? '<span class="tag">Controlled load</span>' : ''}
+        ${cur && cur - b.year >= 12 ? `<span class="tag good">Save ${$m(cur - b.year)}/yr</span>` : ''}</div>
+      <p class="small muted" style="margin:6px 0 0">${$m(b.year)} a year · supply ${b.supplyDay.toFixed(0)}¢/day${b.condDisc ? ` · includes ${$m(b.condDisc)} of conditional discounts` : ''}${b.fit ? ` · ${$m(b.fit)} solar credits` : ''}</p>
+      ${b.url ? `<p class="small" style="margin:6px 0 0"><a href="${esc(b.url)}" target="_blank" rel="noopener">View plan on ${esc(b.brandName)} ›</a></p>` : ''}
+    </div>`).join('')}
+    <h2 class="sec-title">Your estimated use</h2>
+    <div class="card"><div class="row"><b>${(r.usage?.units || 0).toLocaleString('en-AU')} ${unit} a year</b><span class="small muted">${r.usage?.fromBill ? 'matched to your bill' : 'from your profile'}</span></div>
+      ${parts.map(([k, v]) => `<div class="ub"><span>${esc(k)}</span><i style="width:${Math.max(2, Math.round((v / totParts) * 100))}%"></i><em>${v.toLocaleString('en-AU')}</em></div>`).join('')}
+      ${r.usage?.solarKwh ? `<p class="small muted">Solar panels make about ${r.usage.solarKwh.toLocaleString('en-AU')} kWh a year; part of it is used at home and the rest earns feed-in credits.</p>` : ''}
+      ${r.usage?.fromBill ? '' : '<p class="small" style="margin:8px 0 0"><a href="#/profile/bills">Add your last bill</a> for a sharper estimate.</p>'}
+    </div>
+    <p class="small muted" style="margin-top:14px">Estimates for the next 12 months, including GST. They leave out one-off sign-up credits, concessions and fees for paper bills or late payment, and can’t know every detail of your home. Check the plan with the retailer before you switch. Not financial advice.
+    ${r.count} ${fuel === 'gas' ? 'gas' : 'electricity'} plan${r.count === 1 ? '' : 's'} compared on the ${esc((r.network || '').replace(/ \((electricity|gas)\)/, ''))} network. Plan data: Australian Energy Regulator${r.updated ? `, updated ${new Date(r.updated).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}` : ''}. You can also compare at <a href="https://compare.energy.vic.gov.au" target="_blank" rel="noopener">Victorian Energy Compare</a>.</p>`;
+  el.querySelectorAll('[data-net]').forEach((b) => (b.onclick = async () => {
+    try { await api('/api/bills/network', { method: 'POST', body: { fuel, network: b.dataset.net } }); summaryP = null; billsPage(q); } catch (e) { toast(e.message); }
+  }));
 }

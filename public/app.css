@@ -452,3 +452,26 @@ h1 { letter-spacing: -.025em; }
 .ac-list b { display: block; font-size: 14px; }
 .ac-list span { display: block; font-size: 12.5px; color: var(--ink-3); }
 .ac-by { font-size: 11px; color: var(--ink-3); text-align: right; padding: 4px 10px 6px; }
+/* Bills */
+.seg.wide { display: flex; background: #EEEAF8; border-radius: 12px; padding: 3px; margin: 6px 0 12px; }
+.seg.wide a { flex: 1; text-align: center; padding: 8px 0; border-radius: 9px; text-decoration: none; font-weight: 700; font-size: 14px; color: var(--ink-2); }
+.seg.wide a.on { background: #fff; color: var(--grape-d); box-shadow: var(--shadow); }
+.hero-save { background: var(--grape); color: #fff; display: flex; flex-direction: column; gap: 2px; }
+.hero-save b { font-family: var(--display); font-size: 30px; line-height: 1.15; }
+.hero-save .muted { color: #DCD3FF; }
+.warn-card { border: 1.5px solid var(--lime); margin-bottom: 10px; }
+.card.net { margin-bottom: 10px; }
+.pill-btn { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+.pill-btn.on { background: var(--grape); border-color: var(--grape); color: #fff; }
+.card.plan { margin-bottom: 10px; }
+.plan .rank { width: 26px; height: 26px; border-radius: 50%; background: var(--lilac-soft); color: var(--grape-d); display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none; }
+.plan .pn { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.plan .pn .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan .pp { text-align: right; display: flex; flex-direction: column; }
+.plan .pp b { font-family: var(--display); font-size: 20px; }
+.plan .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag { font-size: 11.5px; font-weight: 700; background: #F1EEF8; color: var(--ink-2); border-radius: 999px; padding: 3px 9px; }
+.tag.good { background: var(--lime); color: var(--ink); }
+.ub { display: grid; grid-template-columns: 130px 1fr 54px; align-items: center; gap: 8px; font-size: 12.5px; margin-top: 8px; }
+.ub i { display: block; height: 8px; background: var(--lilac); border-radius: 99px; }
+.ub em { font-style: normal; text-align: right; color: var(--ink-3); }
