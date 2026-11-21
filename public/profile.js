@@ -14,6 +14,10 @@ const PRIVACY = 'This information is only used to work out savings for you. It i
 let ctx; // { api, esc, toast, app, state, HOME_STORES }
 let cache = null; // { answers, categories, household }
 export function init(c) { ctx = c; }
+/** Profile answers are fetched once and kept until the profile changes (save, clear, a saved route). */
+export function invalidate() { cache = null; summaryP = null; }
+const SNAP = 'fw_prof_snap';
+const snap = (v) => { try { if (v) localStorage.setItem(SNAP, JSON.stringify({ u: ctx.state.me?.id, ...v })); else { const x = JSON.parse(localStorage.getItem(SNAP)); return x?.u === ctx.state.me?.id ? x : null; } } catch {} return null; };
 async function load(force) {
   if (!cache || force) cache = await ctx.api('/api/household');
   return cache;
@@ -43,7 +47,7 @@ export async function more() {
     <h2 class="sec-title">Save More</h2>
     <div class="save-grid">${MODULES.map((m) => `<a class="save-card" href="#/${m.id}"><span class="ic" aria-hidden="true">${m.icon}</span><b>${m.title}</b><span>${m.blurb}</span>${m.live ? '' : '<em>Coming soon</em>'}</a>`).join('')}</div>
     <h2 class="sec-title">Your profile</h2>
-    <div id="pc">${mainCard(0, 'Loading…', '#/profile')}</div>
+    <div id="pc">${cache ? '' : mainCard(0, 'Loading…', '#/profile')}</div>
     <h2 class="sec-title">Settings</h2>
     <div class="card menu">
       <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
@@ -54,12 +58,17 @@ export async function more() {
     </div>
     <p class="small muted center" style="margin-top:20px">Fair Whack FW2.0 internal beta · for testers only · please don't share screenshots outside the team</p>`;
   document.getElementById('logout').onclick = ctx.logout;
-  billsSummary().then((t) => { const el = document.querySelector('.save-card[href="#/bills"] span:not(.ic)'); if (t && el) el.textContent = t.short; }).catch(() => {});
+  const billsEl = () => document.querySelector('.save-card[href="#/bills"] span:not(.ic)');
+  const old = snap();
+  if (old) { document.getElementById('pc').innerHTML = mainCard(old.p, esc(old.tip), '#/profile'); if (old.short && billsEl()) billsEl().textContent = old.short; }
+  billsSummary().then((t) => { if (t && billsEl()) billsEl().textContent = t.short; snap({ ...(snap() || {}), short: t?.short || '' }); }).catch(() => {});
   try {
-    const d = await load(true);
+    const d = await load();
     const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
+    const tip = nextTip(d);
+    snap({ ...(snap() || {}), p, tip });
     const el = document.getElementById('pc');
-    if (el) el.innerHTML = mainCard(p, esc(nextTip(d)), '#/profile');
+    if (el) el.innerHTML = mainCard(p, esc(tip), '#/profile');
   } catch {}
 }
 
@@ -115,8 +124,8 @@ function sectionCard(s, a, esc, summary) {
 export async function hub() {
   const { app, esc } = ctx;
   app.innerHTML = '<a class="back" href="#/more">‹ More</a><h1>Your profile</h1><p class="muted">Loading…</p>';
-  const d = await load(true);
-  const sum = progress(sectionById('bills'), d.answers).unlocked ? await billsSummary(true).catch(() => null) : null;
+  const d = await load();
+  const sum = progress(sectionById('bills'), d.answers).unlocked ? await billsSummary().catch(() => null) : null;
   const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>Your profile</h1>
     <p class="lead">The more you tell us, the better we can match specials and plans to your home, and the more you can save. Everything here is optional.</p>
@@ -293,7 +302,7 @@ export async function editor(id) {
       const btn = document.getElementById('save'); btn.disabled = true;
       try {
         const r = await api(`/api/household/${id}`, { method: 'PUT', body: { answers: a } });
-        cache = { ...d, answers: r.answers, household: r.household ?? d.household };
+        cache = { ...d, answers: r.answers, household: r.household ?? d.household }; summaryP = null;
         if (id === 'about' && Array.isArray(a.stores) && a.stores.length) { try { localStorage.setItem(ctx.HOME_STORES, JSON.stringify(a.stores)); } catch {} }
         dirty = false; toast('Saved'); location.hash = '#/profile';
       } catch (err) { btn.disabled = false; toast(err.message); }
@@ -301,7 +310,7 @@ export async function editor(id) {
     document.getElementById('clear').onclick = async () => {
       if (!confirmClear()) return;
       const r = await api(`/api/household/${id}`, { method: 'DELETE' });
-      cache = { ...d, answers: r.answers }; dirty = false; toast('Cleared'); location.hash = '#/profile';
+      cache = { ...d, answers: r.answers }; summaryP = null; dirty = false; toast('Cleared'); location.hash = '#/profile';
     };
   };
   const confirmClear = () => window.confirm(`Clear everything in ${s.title}?${id === 'about' ? ' Your age, gender and favourite categories from sign-up stay.' : ''}`);
@@ -317,7 +326,7 @@ async function billsPage(q) {
   const fuel = q?.get('fuel') === 'gas' ? 'gas' : 'elec';
   const unit = fuel === 'gas' ? 'MJ' : 'kWh';
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>⚡ Bills</h1>
-    <div class="seg wide" role="tablist"><a href="#/bills" class="${fuel === 'elec' ? 'on' : ''}">Electricity</a><a href="#/bills?fuel=gas" class="${fuel === 'gas' ? 'on' : ''}">Gas</a></div>
+    <div class="seg wide" role="tablist"><a href="#/bills" data-replace class="${fuel === 'elec' ? 'on' : ''}">Electricity</a><a href="#/bills?fuel=gas" data-replace class="${fuel === 'gas' ? 'on' : ''}">Gas</a></div>
     <div id="bl"><p class="muted">Comparing plans…</p></div>`;
   let r;
   try { r = await api(`/api/bills/estimate?fuel=${fuel}`); } catch (e) { document.getElementById('bl').innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }

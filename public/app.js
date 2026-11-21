@@ -206,7 +206,7 @@ views.welcome = async () => {
     const fd = new FormData(e.target);
     try {
       await api('/api/profile', { method: 'POST', body: { ageRange: fd.get('ageRange'), gender: fd.get('gender'), household: fd.get('household'), favCategories: fd.getAll('fav') } });
-      const r = await api('/api/me'); state.profile = r.profile; state.needsProfile = r.needsProfile;
+      const r = await api('/api/me'); state.profile = r.profile; state.needsProfile = r.needsProfile; profMod?.invalidate();
       document.body.classList.remove('onboarding');
       toast('Saved');
       location.hash = pr.done ? '#/profile' : '#/';
@@ -784,7 +784,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=7'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  if (!profMod) { profMod = await import('/profile.js?v=8'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
@@ -793,7 +793,7 @@ views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
 let fuelMod;
 views.fuel = async (q) => {
-  if (!fuelMod) { fuelMod = await import('/fuel.js?v=3'); fuelMod.init({ api, esc, toast, app, state, sheet }); }
+  if (!fuelMod) { fuelMod = await import('/fuel.js?v=4'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
   return fuelMod.page(q);
 };
 
@@ -937,5 +937,13 @@ $('#topsearch').onsubmit = (e) => {
   if (v) { e.target.q.blur(); e.target.q.value = ''; location.hash = `#/search?q=${encodeURIComponent(v)}`; }
 };
 addEventListener('hashchange', route);
+// Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
+// so the back swipe goes to the page above (More), not the previous tab.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-replace]');
+  if (!a || e.metaKey || e.ctrlKey) return;
+  e.preventDefault();
+  location.replace(a.getAttribute('href'));
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 route();

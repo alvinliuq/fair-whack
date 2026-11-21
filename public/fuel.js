@@ -172,7 +172,7 @@ export async function page(q) {
   st.routes = a.routes || [];
   st.fuelAnswers = a;
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>⛽ Fuel</h1>
-    <div class="seg wide" role="tablist">${[['near', 'Nearby'], ['route', 'Route'], ['saved', 'Saved']].map(([k, l]) => `<a href="#/fuel?tab=${k}" class="${st.tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>
+    <div class="seg wide" role="tablist">${[['near', 'Nearby'], ['route', 'Route'], ['saved', 'Saved']].map(([k, l]) => `<a href="#/fuel?tab=${k}" data-replace class="${st.tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>
     <div id="fz"></div><p class="small muted" id="fquota"></p>`;
   if (ctx.state.me?.isAdmin) ctx.api('/api/fuel/quota').then((u) => { const el = document.getElementById('fquota'); if (el) el.textContent = `Admin: ${u.usedMonth} of ${u.limits.month} Google fuel searches used this month (free allowance 1,000).`; }).catch(() => {});
   if (st.tab === 'near') return nearTab();
@@ -406,7 +406,7 @@ async function routeTab() {
           const fuelKeys = ['vehicles', 'fuel_brands', 'fuel_discounts', 'places'];
           const answers = Object.fromEntries(fuelKeys.filter((k) => cur.answers[k] !== undefined).map((k) => [k, cur.answers[k]]));
           await api('/api/household/fuel', { method: 'PUT', body: { answers: { ...answers, routes } } });
-          st.routes = routes; close(); toast('Route saved');
+          st.routes = routes; ctx.profileChanged?.(); close(); toast('Route saved');
         } catch (e) { toast(e.message); }
       };
     });
@@ -427,14 +427,14 @@ function savedTab() {
     ${st.routes.length ? st.routes.map((r, i) => `<div class="card srow"><div><b>${esc(r.name)}</b><small>${r.points.map((p) => esc(p.label.split(',')[0])).join(' → ')}</small></div>
       <div class="row" style="gap:6px"><button class="btn small" data-route="${i}">Show prices</button><button class="btn small danger" data-delr="${i}" aria-label="Delete route">✕</button></div></div>`).join('')
       : '<p class="small muted">No saved routes yet. Plan one in Route and tap ★ Save route.</p>'}`;
-  fz.querySelectorAll('[data-near]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.near)]; st.center = { lat: p.lat, lng: p.lng, label: p.name }; location.hash = '#/fuel?tab=near'; }));
-  fz.querySelectorAll('[data-from]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.from)]; st.points = [{ label: p.name, lat: p.lat, lng: p.lng }, { label: '' }]; location.hash = '#/fuel?tab=route'; }));
-  fz.querySelectorAll('[data-route]').forEach((b) => (b.onclick = () => { st.points = st.routes[Number(b.dataset.route)].points.map((p) => ({ ...p })); st.autoGo = true; location.hash = '#/fuel?tab=route'; }));
+  fz.querySelectorAll('[data-near]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.near)]; st.center = { lat: p.lat, lng: p.lng, label: p.name }; location.replace('#/fuel?tab=near'); }));
+  fz.querySelectorAll('[data-from]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.from)]; st.points = [{ label: p.name, lat: p.lat, lng: p.lng }, { label: '' }]; location.replace('#/fuel?tab=route'); }));
+  fz.querySelectorAll('[data-route]').forEach((b) => (b.onclick = () => { st.points = st.routes[Number(b.dataset.route)].points.map((p) => ({ ...p })); st.autoGo = true; location.replace('#/fuel?tab=route'); }));
   fz.querySelectorAll('[data-delr]').forEach((b) => (b.onclick = async () => {
     const routes = st.routes.filter((_, i) => i !== Number(b.dataset.delr));
     const cur = await ctx.api('/api/household');
     const answers = Object.fromEntries(['vehicles', 'fuel_brands', 'fuel_discounts', 'places'].filter((k) => cur.answers[k] !== undefined).map((k) => [k, cur.answers[k]]));
     await ctx.api('/api/household/fuel', { method: 'PUT', body: { answers: { ...answers, routes } } });
-    st.routes = routes; savedTab();
+    st.routes = routes; ctx.profileChanged?.(); savedTab();
   }));
 }
