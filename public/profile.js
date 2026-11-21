@@ -2,7 +2,7 @@
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
 } from './household.js?v=4';
-import { attachAutocomplete } from './maps.js?v=1';
+import { attachAutocomplete, loadPlaces } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
 export const MODULES = [
@@ -82,6 +82,7 @@ async function billsSummary(force) {
 
 export async function modulePage(id, q) {
   if (id === 'bills') return billsPage(q);
+  if (id === 'fueltest') return fuelTest();
   const { app, esc } = ctx;
   const m = MODULES.find((x) => x.id === id);
   const s = sectionById(m.profile);
@@ -89,6 +90,7 @@ export async function modulePage(id, q) {
     <div class="card"><b>Coming soon</b><p class="small muted" style="margin:6px 0 0">${id === 'fuel'
     ? 'Fuel prices on a map near you, along any route from A to B, with brand filters and the cheapest and dearest marked.'
     : 'Every Victorian electricity and gas plan compared against your home, with an estimate of what you could save each month.'}</p></div>
+    ${id === 'fuel' && ctx.state.me?.isAdmin ? '<p><a class="btn small light" href="#/fueltest">Admin: test Google fuel prices</a></p>' : ''}
     <h2 class="sec-title">Get ready</h2><div id="sp"></div>`;
   const d = await load();
   document.getElementById('sp').innerHTML = sectionCard(s, d.answers, esc);
@@ -359,4 +361,56 @@ async function billsPage(q) {
   el.querySelectorAll('[data-net]').forEach((b) => (b.onclick = async () => {
     try { await api('/api/bills/network', { method: 'POST', body: { fuel, network: b.dataset.net } }); summaryP = null; billsPage(q); } catch (e) { toast(e.message); }
   }));
+}
+
+// ---------- Admin: does Google Places have Victorian fuel prices? ----------
+async function fuelTest() {
+  const { app, esc } = ctx;
+  app.innerHTML = `<a class="back" href="#/fuel">‹ Fuel</a><h1>Google fuel price test</h1>
+    <p class="lead">Looks up petrol stations within 5 km and shows the fuel prices Google has for them, and how old they are.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn small" id="ft-home">Near my home address</button><button class="btn small light" id="ft-here">Near where I am now</button></div>
+    <div id="ft" style="margin-top:12px"></div>`;
+  const out = document.getElementById('ft');
+  const run = async (center, label) => {
+    out.innerHTML = `<p class="muted">Asking Google about stations near ${esc(label)}…</p>`;
+    const lib = await loadPlaces();
+    if (!lib?.Place?.searchNearby) { out.innerHTML = '<p class="err">Google Maps didn’t load. Check the connection and try again.</p>'; return; }
+    let places;
+    try {
+      ({ places } = await lib.Place.searchNearby({
+        fields: ['displayName', 'formattedAddress', 'location', 'fuelOptions'],
+        locationRestriction: { center, radius: 5000 }, includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',
+      }));
+    } catch (e) { out.innerHTML = `<p class="err">Google refused the request: ${esc(e.message || e)}</p><p class="small muted">If it mentions billing or permissions, the fuel price data may need a different API setting.</p>`; return; }
+    const now = Date.now();
+    const rows = (places || []).map((p) => {
+      const prices = (p.fuelOptions?.fuelPrices || []).map((f) => {
+        const m = f.price || {};
+        const val = m.units != null ? Number(m.units) + Number(m.nanos || 0) / 1e9 : Number(String(m).replace(/[^\d.]/g, ''));
+        const t = f.updateTime ? new Date(f.updateTime) : null;
+        return { type: String(f.type || '').replace(/_/g, ' ').toLowerCase(), val, hours: t ? (now - t.getTime()) / 3600000 : null };
+      });
+      return { name: p.displayName?.text || p.displayName || '', addr: p.formattedAddress || '', prices };
+    });
+    const withP = rows.filter((r) => r.prices.length);
+    const ages = withP.flatMap((r) => r.prices.map((x) => x.hours)).filter((x) => x != null).sort((a, b) => a - b);
+    const med = ages.length ? ages[Math.floor(ages.length / 2)] : null;
+    const fmtAge = (h) => (h == null ? 'unknown' : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`);
+    out.innerHTML = `<div class="card"><b>${withP.length} of ${rows.length} stations have prices</b>
+        <p class="small muted" style="margin:4px 0 0">Typical price age: ${fmtAge(med)}${ages.length ? ` · newest ${fmtAge(ages[0])} · oldest ${fmtAge(ages[ages.length - 1])}` : ''}</p></div>
+      ${rows.map((r) => `<div class="card" style="margin-top:8px"><b>${esc(r.name)}</b><p class="small muted" style="margin:2px 0 6px">${esc(r.addr)}</p>
+        ${r.prices.length ? r.prices.map((x) => `<div class="small">${esc(x.type)}: <b>${Number.isFinite(x.val) ? `$${x.val.toFixed(3)}` : '?'}</b> <span class="muted">(${fmtAge(x.hours)} ago)</span></div>`).join('') : '<p class="small muted" style="margin:0">No prices from Google</p>'}</div>`).join('')}`;
+  };
+  document.getElementById('ft-home').onclick = async () => {
+    const d = await load();
+    const ad = d.answers.address;
+    if (ad?.lat) run({ lat: ad.lat, lng: ad.lng }, ad.suburb || 'home');
+    else out.innerHTML = '<p class="err">Your home address has no map position yet. Pick it from the suggestions in Save more on Groceries, or use “Near where I am now”.</p>';
+  };
+  document.getElementById('ft-here').onclick = () => {
+    if (!navigator.geolocation) { out.innerHTML = '<p class="err">This browser can’t share your location.</p>'; return; }
+    out.innerHTML = '<p class="muted">Finding you…</p>';
+    navigator.geolocation.getCurrentPosition((p) => run({ lat: p.coords.latitude, lng: p.coords.longitude }, 'you'),
+      () => { out.innerHTML = '<p class="err">Location was not allowed.</p>'; }, { timeout: 10000 });
+  };
 }
