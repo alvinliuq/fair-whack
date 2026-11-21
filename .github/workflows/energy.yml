@@ -1,0 +1,31 @@
+name: Energy
+
+# Victorian electricity and gas plans from the AER (Consumer Data Right product data, free, no key).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'sample = save a data sample to the energy-sample branch'
+        type: choice
+        options: [sample]
+        default: sample
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sample
+        if: inputs.mode == 'sample'
+        run: |
+          node pipeline/energy-sample.js
+          git config user.name "Fair Whack" && git config user.email "beta@fairwhack.invalid"
+          git checkout --orphan energy-sample
+          git rm -rq --cached . && git add energy-sample && git commit -qm "Energy data sample" && git push -f origin energy-sample
