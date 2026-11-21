@@ -85,3 +85,10 @@ test('address keeps a map position only inside Victoria', () => {
   const far = cleanSection('about', { address: { line: '1 George St', postcode: '2000', lat: -33.86, lng: 151.2 } });
   assert.equal(far.address.lat, undefined);
 });
+
+test('pet counts and an other food preference are kept only for chosen options', () => {
+  const c = cleanSection('about', { pets: ['dog', 'cat'], pets_count: { dog: '2', cat: '9', fish: '1' }, diet: ['other'], diet_other: '  Halal  ' });
+  assert.deepEqual(c.pets_count, { dog: '2', cat: '1' });
+  assert.equal(c.diet_other, 'Halal');
+  assert.equal(cleanSection('about', { diet: ['none'], diet_other: 'x' }).diet_other, undefined);
+});

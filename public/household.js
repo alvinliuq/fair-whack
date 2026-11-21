@@ -45,18 +45,18 @@ const HOURS = [o('0', 'None'), o('1-3', '1–3 h'), o('4-6', '4–6 h'), o('7+',
 export const SECTIONS = [
   {
     id: 'about',
-    title: 'About You and Your Family',
+    title: 'Save more on Groceries',
     why: 'Tell us about your household and we’ll put the specials that suit your family first.',
     unlocked: 'Your Home specials are now sorted for your household.',
     locked: (n) => `${n} more to go and we can sort specials for your household.`,
     questions: [
       { id: 'members', type: 'members', star: true, label: 'Who lives in your home?', hint: 'Add each person. Age ranges are enough.' },
-      { id: 'pets', type: 'multi', label: 'Any pets?', options: [o('none', 'No pets'), o('dog', 'Dog'), o('cat', 'Cat'), o('other', 'Other')], only: ['none'] },
+      { id: 'pets', type: 'multi', label: 'Any pets?', options: [o('none', 'No pets'), o('dog', 'Dog'), o('cat', 'Cat'), o('other', 'Other')], only: ['none'], counts: ['1', '2', '3', '4+'] },
       { id: 'daytime', type: 'single', star: true, label: 'On weekdays, is anyone home during the day?', options: [o('rarely', 'Rarely'), o('sometimes', 'Sometimes'), o('mostly', 'Most of the time')] },
       { id: 'address', type: 'address', star: true, label: 'Your home address', hint: 'Used to find your electricity and gas network, and as “Home” for fuel prices.' },
       { id: 'stores', type: 'multi', label: 'Where do you usually shop?', options: [o('woolworths', 'Woolworths'), o('coles', 'Coles')] },
       { id: 'favs', type: 'multi', label: 'What do you want to hear about first?', options: 'categories' },
-      { id: 'diet', type: 'multi', label: 'Any food preferences?', options: [o('vegetarian', 'Vegetarian'), o('gluten_free', 'Gluten free'), o('organic', 'Organic'), o('none', 'No preference')], only: ['none'] },
+      { id: 'diet', type: 'multi', label: 'Any food preferences?', options: [o('vegetarian', 'Vegetarian'), o('gluten_free', 'Gluten free'), o('organic', 'Organic'), o('other', 'Other'), o('none', 'No preference')], only: ['none'], other: 'Tell us your other preference' },
       { id: 'grocery_spend', type: 'single', label: 'Roughly how much do you spend on groceries a week?', options: [o('lt100', 'Under $100'), o('100-200', '$100–200'), o('200-300', '$200–300'), o('300+', 'Over $300')] },
     ],
   },
@@ -226,6 +226,13 @@ export function cleanSection(sectionId, input, categories = []) {
       const solo = arr.find((x) => (q.only || []).includes(x));
       if (solo) arr = [solo];
       v = arr.length ? arr : undefined;
+      if (v && q.counts) { // how many of each (shown with 1 picked)
+        const given = isObj(input[`${q.id}_count`]) ? input[`${q.id}_count`] : {};
+        const c = {};
+        for (const k of v) if (!(q.only || []).includes(k)) c[k] = q.counts.includes(String(given[k])) ? String(given[k]) : q.counts[0];
+        if (Object.keys(c).length) out[`${q.id}_count`] = c;
+      }
+      if (v && q.other && v.includes('other')) { const t = str(input[`${q.id}_other`], 60); if (t) out[`${q.id}_other`] = t; }
     } else if (q.type === 'members') {
       v = (Array.isArray(raw) ? raw : []).slice(0, MAX_MEMBERS).map((m, i) => ({
         gender: optVals(MEMBER_GENDERS).includes(m?.gender) ? m.gender : '',

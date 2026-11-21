@@ -1,7 +1,7 @@
 // FW2.0: More page (Save More), profile hub and the three profile sections. Loaded on demand from app.js.
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
-} from './household.js?v=3';
+} from './household.js?v=4';
 import { attachAutocomplete } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
@@ -20,11 +20,15 @@ async function load(force) {
 }
 
 const pct = (all) => { const t = all.reduce((s, p) => s + p.total, 0); return t ? Math.round((all.reduce((s, p) => s + p.done, 0) / t) * 100) : 0; };
-const bar = (p) => `<div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="width:${p}%"></i></div>`;
+// Progress colour: under 40% red, 40–59% orange, 60–79% yellow, 80% and up green.
+const tone = (p) => (p < 40 ? 'red' : p < 60 ? 'orange' : p < 80 ? 'yellow' : 'green');
+const bar = (p) => `<div class="pbar ${tone(p)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="width:${Math.max(p, 3)}%"></i></div>`;
+const mainCard = (p, tip, href) => `<${href ? `a href="${href}"` : 'div'} class="prof-main ${tone(p)}" ${href ? '' : 'id="pmain"'}>
+    <div class="pm-top"><span>Profile Complete</span><b>${p}%</b></div>${bar(p)}<p>${tip}</p></${href ? 'a' : 'div'}>`;
 function nextTip(d) {
   const a = d.answers;
   const n = Number(String(d.household || '1').replace('+', ''));
-  if ((a.members || []).length < n) return `Your home has ${d.household} people. Add the other ${n - (a.members || []).length === 1 ? 'person' : 'people'} in About You and Your Family.`;
+  if ((a.members || []).length < n) return `Your home has ${d.household} people. Add the other ${n - (a.members || []).length === 1 ? 'person' : 'people'} in Save more on Groceries.`;
   for (const s of SECTIONS) {
     const q = s.questions.find((x) => x.star && x.type !== 'later' && (!x.show || x.show(a)) && !answered(x, a));
     if (q) return `Next: ${q.label.replace(/\?$/, '')} (${s.title}).`;
@@ -39,7 +43,7 @@ export async function more() {
     <h2 class="sec-title">Save More</h2>
     <div class="save-grid">${MODULES.map((m) => `<a class="save-card" href="#/${m.id}"><span class="ic" aria-hidden="true">${m.icon}</span><b>${m.title}</b><span>${m.blurb}</span>${m.live ? '' : '<em>Coming soon</em>'}</a>`).join('')}</div>
     <h2 class="sec-title">Your profile</h2>
-    <a class="card prof-card" href="#/profile" id="pc"><div class="row"><b>Your profile</b><span class="muted small">Loading…</span></div>${bar(0)}<p class="small muted"> </p></a>
+    <div id="pc">${mainCard(0, 'Loading…', '#/profile')}</div>
     <h2 class="sec-title">Settings</h2>
     <div class="card menu">
       <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
@@ -55,7 +59,7 @@ export async function more() {
     const d = await load(true);
     const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
     const el = document.getElementById('pc');
-    if (el) el.innerHTML = `<div class="row"><b>Your profile</b><span class="muted small">${p}% complete</span></div>${bar(p)}<p class="small muted">${esc(nextTip(d))}</p>`;
+    if (el) el.innerHTML = mainCard(p, esc(nextTip(d)), '#/profile');
   } catch {}
 }
 
@@ -113,7 +117,8 @@ export async function hub() {
   const p = pct(SECTIONS.map((s) => progress(s, d.answers)));
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>Your profile</h1>
     <p class="lead">The more you tell us, the better we can match specials and plans to your home, and the more you can save. Everything here is optional.</p>
-    <div class="card"><div class="row"><b>${p}% complete</b></div>${bar(p)}<p class="small muted">${esc(nextTip(d))}</p></div>
+    ${mainCard(p, esc(nextTip(d)))}
+    <h2 class="sec-title">Your three ways to save</h2>
     ${SECTIONS.map((s) => sectionCard(s, d.answers, esc, s.id === 'bills' ? sum : null)).join('')}
     <p class="small muted">${PRIVACY}</p>`;
 }
@@ -142,7 +147,16 @@ function questionHtml(q, a, d) {
   const v = a[q.id];
   let body = '';
   if (q.type === 'single') body = q.select ? select(q.id, q.options, v) : pills(q.id, q.options, v, false);
-  else if (q.type === 'multi') body = pills(q.id, q.options === 'categories' ? d.categories.filter((c) => c !== 'Other').map((c) => ({ v: c, label: esc(c) })) : q.options, v, true);
+  else if (q.type === 'multi') {
+    body = pills(q.id, q.options === 'categories' ? d.categories.filter((c) => c !== 'Other').map((c) => ({ v: c, label: esc(c) })) : q.options, v, true);
+    const sel = (v || []).filter((k) => !(q.only || []).includes(k));
+    if (q.counts && sel.length) {
+      const cnt = a[`${q.id}_count`] || {};
+      body += sel.map((k) => `<div class="fld cnt"><span class="fl">How many ${esc((q.options.find((x) => x.v === k)?.label || k).toLowerCase())}${k === 'other' ? ' pets' : 's'}?</span>
+        ${pills(`${q.id}_count.${k}`, q.counts.map((c) => ({ v: c, label: c })), cnt[k] || '1', false)}</div>`).join('');
+    }
+    if (q.other && (v || []).includes('other')) body += `<div class="fld"><span class="fl">${q.other}</span>${input(`${q.id}_other`, a[`${q.id}_other`], 'maxlength="60" placeholder="e.g. Halal, dairy free"')}</div>`;
+  }
   else if (q.type === 'members') {
     const ms = Array.isArray(v) && v.length ? v : [{ gender: '', age: '' }];
     const n = Number(String(d.household || '1').replace('+', ''));
@@ -159,7 +173,7 @@ function questionHtml(q, a, d) {
       <div class="fld"><span class="fl">Postcode</span>${input(`${q.id}.postcode`, x.postcode, 'inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="3165" class="num"')}</div></div>`;
   } else if (q.type === 'places') {
     const ps = Array.isArray(v) ? v : [];
-    const home = a.address?.line ? `${a.address.line}${a.address.suburb ? `, ${a.address.suburb}` : ''}` : 'Add your address in About You and Your Family';
+    const home = a.address?.line ? `${a.address.line}${a.address.suburb ? `, ${a.address.suburb}` : ''}` : 'Add your address in Save more on Groceries';
     body = `<div class="mrow place"><b>Home</b><span class="small muted">${esc(home)}</span></div>`
       + ps.map((p, i) => `<div class="mrow place">${input(`places.${i}.name`, p.name, 'placeholder="Name, e.g. Work" maxlength="30"')}
           ${input(`places.${i}.address`, p.address, 'placeholder="Address" maxlength="120"')}
@@ -182,6 +196,8 @@ function questionHtml(q, a, d) {
 function setPath(a, path, value, s) {
   const parts = path.split('.');
   const q = s.questions.find((x) => x.id === parts[0]);
+  if (!q && parts.length === 2) { a[parts[0]] = { ...(a[parts[0]] || {}), [parts[1]]: value }; return; }
+  if (!q) { a[parts[0]] = value; return; }
   if (parts.length === 1) {
     if (q?.type === 'multi') {
       let arr = [...(a[q.id] || [])];

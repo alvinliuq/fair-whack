@@ -475,3 +475,15 @@ h1 { letter-spacing: -.025em; }
 .ub { display: grid; grid-template-columns: 130px 1fr 54px; align-items: center; gap: 8px; font-size: 12.5px; margin-top: 8px; }
 .ub i { display: block; height: 8px; background: var(--lilac); border-radius: 99px; }
 .ub em { font-style: normal; text-align: right; color: var(--ink-3); }
+/* Profile progress colours and the main "Profile Complete" card */
+.pbar.red i { background: #E0453A; }
+.pbar.orange i { background: #F08A24; }
+.pbar.yellow i { background: #E8C21A; }
+.pbar.green i { background: #3FA34D; }
+.prof-main { display: block; text-decoration: none; color: #fff; background: var(--grape); border-radius: var(--r); padding: 16px 16px 14px; margin-bottom: 6px; }
+.prof-main .pm-top { display: flex; justify-content: space-between; align-items: baseline; }
+.prof-main .pm-top span { font-weight: 700; font-size: 15px; }
+.prof-main .pm-top b { font-family: var(--display); font-size: 34px; line-height: 1; }
+.prof-main .pbar { height: 12px; background: rgba(255,255,255,.22); margin: 12px 0 8px; }
+.prof-main p { margin: 0; font-size: 13px; color: #E4DCFF; }
+.profile .fld.cnt { margin-top: 10px; padding-left: 10px; border-left: 3px solid var(--lilac-soft); }
