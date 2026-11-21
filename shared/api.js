@@ -5,6 +5,7 @@ import {
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
 } from './normalize.js';
 import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-index.js';
+import { cleanSection, sectionById } from '../public/household.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
@@ -219,6 +220,65 @@ route('POST', '/api/profile', async ({ env, user, request }) => {
   await env.DB.prepare('UPDATE users SET age_range = ?, gender = ?, household_size = ?, fav_categories = ?, profile_done_at = COALESCE(profile_done_at, ?) WHERE id = ?')
     .bind(b.ageRange, b.gender, String(b.household), JSON.stringify(favs), nowIso(), user.id).run();
   return json({ ok: true });
+});
+
+// ----- household profile (FW2.0): questions and validation live in public/household.js -----
+async function readHousehold(env, userId) {
+  const row = await env.DB.prepare('SELECT data FROM household WHERE user_id = ?').bind(userId).first();
+  try { const d = JSON.parse(row?.data || '{}'); return d && typeof d === 'object' ? d : {}; } catch { return {}; }
+}
+/** All answers, flattened. Member 1's age and gender and the favourite categories come from sign-up (users table). */
+function householdAnswers(user, data) {
+  const about = { ...(data.about || {}) };
+  const members = Array.isArray(about.members) && about.members.length ? about.members.map((m) => ({ ...m })) : [{ gender: '', age: '' }];
+  if (user.age_range) members[0].age = user.age_range;
+  if (user.gender && members[0].gender !== 'na') members[0].gender = user.gender;
+  about.members = members;
+  const favs = parseFavs(user);
+  if (favs.length) about.favs = favs;
+  return { ...about, ...(data.fuel || {}), ...(data.bills || {}) };
+}
+
+route('GET', '/api/household', async ({ env, user }) => json({
+  answers: householdAnswers(user, await readHousehold(env, user.id)),
+  categories: SHOP_CATEGORIES,
+  household: user.household_size || null,
+}));
+
+route('PUT', '/api/household/:section', async ({ env, user, request, params }) => {
+  if (!sectionById(params.section)) throw new HttpError(404, 'Unknown section');
+  const b = await body(request);
+  const clean = cleanSection(params.section, b.answers, SHOP_CATEGORIES);
+  const data = await readHousehold(env, user.id);
+  const stmts = [];
+  if (params.section === 'about') {
+    // Keep sign-up answers in step: member 1 is the signed-in person; household size follows the member list.
+    const m1 = clean.members?.[0];
+    const sets = [], vals = [];
+    if (m1?.age && AGE_RANGES.includes(m1.age)) { sets.push('age_range = ?'); vals.push(m1.age); }
+    if (m1?.gender && GENDERS.includes(m1.gender)) { sets.push('gender = ?'); vals.push(m1.gender); }
+    if (clean.members?.length > 1 || (clean.members?.length === 1 && user.household_size === '1')) {
+      sets.push('household_size = ?'); vals.push(clean.members.length >= 5 ? '5+' : String(clean.members.length));
+    }
+    if (clean.favs?.length) { sets.push('fav_categories = ?'); vals.push(JSON.stringify(clean.favs)); }
+    if (sets.length) stmts.push(env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, user.id));
+    delete clean.favs;
+  }
+  data[params.section] = clean;
+  stmts.push(env.DB.prepare(`INSERT INTO household (user_id, data, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`).bind(user.id, JSON.stringify(data), nowIso()));
+  await env.DB.batch(stmts);
+  const fresh = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
+  return json({ ok: true, answers: householdAnswers(fresh, data), household: fresh.household_size || null });
+});
+
+route('DELETE', '/api/household/:section', async ({ env, user, params }) => {
+  if (!sectionById(params.section)) throw new HttpError(404, 'Unknown section');
+  const data = await readHousehold(env, user.id);
+  delete data[params.section];
+  await env.DB.prepare(`INSERT INTO household (user_id, data, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`).bind(user.id, JSON.stringify(data), nowIso()).run();
+  return json({ ok: true, answers: householdAnswers(user, data) });
 });
 
 route('GET', '/api/meta', async ({ env }) => json(await cached(env, 'meta', async () => {
@@ -823,6 +883,7 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
       db.prepare('DELETE FROM push_subs WHERE user_id = ?').bind(src.id),
       db.prepare('DELETE FROM push_log WHERE user_id = ?').bind(src.id),
       db.prepare('DELETE FROM search_history WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM household WHERE user_id = ?').bind(src.id),
       // Search counts stay (they feed the popular searches) but no longer point at a person.
       db.prepare('UPDATE search_log SET user_id = NULL WHERE user_id = ?').bind(src.id),
       db.prepare('INSERT INTO removed_users (id, name, removed_at, removed_by) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET removed_at = excluded.removed_at, removed_by = excluded.removed_by').bind(src.id, src.name, nowIso(), user.id),
@@ -856,6 +917,9 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
         ON CONFLICT(user_id, query) DO UPDATE SET last_at = MAX(last_at, excluded.last_at)`).bind(dst.id, src.id),
     db.prepare('DELETE FROM search_history WHERE user_id = ?').bind(src.id),
     db.prepare('UPDATE search_log SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    // Household profile: the target keeps theirs if they have one.
+    db.prepare('INSERT OR IGNORE INTO household (user_id, data, updated_at) SELECT ?, data, updated_at FROM household WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('DELETE FROM household WHERE user_id = ?').bind(src.id),
     db.prepare('UPDATE user_reports SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
     // Keep the earlier join date and the later activity; fill in the profile if the target never did theirs.
     db.prepare(`UPDATE users SET created_at = MIN(created_at, ?), last_active_at = NULLIF(MAX(COALESCE(last_active_at, ''), COALESCE(?, '')), ''),

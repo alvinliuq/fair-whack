@@ -209,7 +209,7 @@ views.welcome = async () => {
       const r = await api('/api/me'); state.profile = r.profile; state.needsProfile = r.needsProfile;
       document.body.classList.remove('onboarding');
       toast('Saved');
-      location.hash = pr.done ? '#/more' : '#/';
+      location.hash = pr.done ? '#/profile' : '#/';
     } catch (err) { $('#err').textContent = err.message; }
   };
 };
@@ -780,19 +780,17 @@ async function maybeAskPush() {
 }
 
 
-views.more = () => {
-  app.innerHTML = `<h1>More</h1>
-    <div class="card menu">
-      <a href="#/welcome"><span class="ic">👤</span><span>Your details<span class="sub">Age, household and favourite categories</span></span></a>
-      <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
-      <a href="#/install"><span class="ic">📲</span><span>Add to Home Screen<span class="sub">Install on iPhone or Android</span></span></a>
-      <a href="#/about"><span class="ic">ℹ️</span><span>About the prices<span class="sub">Where they come from and how often</span></span></a>
-      ${state.me?.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
-      <button id="logout"><span class="ic">↩︎</span><span>Sign out<span class="sub">Signed in as ${esc(state.me?.name)}</span></span></button>
-    </div>
-    <p class="small muted center" style="margin-top:20px">Fair Whack FW1.2 internal beta · for testers only · please don't share screenshots outside the team</p>`;
-  $('#logout').onclick = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
-};
+// ----- More, profile, Save More modules (FW2.0): public/profile.js, loaded on demand -----
+const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
+let profMod;
+async function prof() {
+  if (!profMod) { profMod = await import('/profile.js?v=1'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  return profMod;
+}
+views.more = async () => (await prof()).more();
+views.profile = async (q, section) => (section ? (await prof()).editor(section) : (await prof()).hub());
+views.fuel = async () => (await prof()).modulePage('fuel');
+views.bills = async () => (await prof()).modulePage('bills');
 
 views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">One notification when items on your list go on special. Usually Wednesday around 8am, never more than once a day.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
 
@@ -923,6 +921,7 @@ async function route() {
     if (name === 'p') return await views.product(q, decodeURIComponent(parts.slice(1).join('/')));
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
+    if (name === 'profile') return await views.profile(q, parts[1]);
     return await (views[name] || views.home)(q);
   } catch (e) { fail(e); }
 }

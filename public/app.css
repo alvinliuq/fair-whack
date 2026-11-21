@@ -404,3 +404,42 @@ h1 { letter-spacing: -.025em; }
 .toggle.coles { --c: var(--coles); }
 .toggle .tick { border-color: var(--c); border-width: 2px; }
 .toggle[aria-pressed="true"] .tick { background: var(--c); border-color: #fff; color: #fff; }
+
+/* ---------- FW2.0: More (Save More), profile ---------- */
+.sec-title { font-family: var(--display); font-size: 17px; margin: 22px 0 10px; }
+.save-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.save-card { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: var(--r); background: var(--lilac-soft); border: 1.5px solid #D9CEFF; text-decoration: none; color: var(--ink); min-height: 118px; }
+.save-card .ic { font-size: 24px; }
+.save-card b { font-family: var(--display); font-size: 18px; color: var(--grape-d); }
+.save-card span { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+.save-card em { position: absolute; top: 10px; right: 10px; font-style: normal; font-size: 10.5px; font-weight: 700; background: var(--lime); color: var(--ink); border-radius: 999px; padding: 2px 8px; }
+.prof-card, .sec-card { display: block; text-decoration: none; color: var(--ink); margin-bottom: 10px; }
+.prof-card .row, .sec-card .row, .card > .row { justify-content: space-between; }
+.sec-card p { margin: 6px 0; }
+.sec-card .ok, p.ok { color: #2E6B10; font-weight: 600; }
+.pbar { height: 7px; border-radius: 99px; background: var(--lilac-soft); overflow: hidden; margin: 8px 0 4px; }
+.pbar i { display: block; height: 100%; background: var(--grape); border-radius: 99px; transition: width .3s; }
+.back { display: inline-block; margin: 2px 0 6px; color: var(--grape-d); font-weight: 600; text-decoration: none; font-size: 14px; }
+.profile .q { background: var(--card); border: 1px solid var(--line) !important; border-radius: var(--r); padding: 12px 14px 14px !important; margin: 10px 0 0 !important; }
+.profile .q legend { float: left; width: 100%; margin-bottom: 8px; }
+.profile .q legend + * { clear: both; }
+.profile .q.done { border-color: #D9CEFF !important; }
+.profile .q > p.small { margin: -2px 0 8px; clear: both; }
+.profile .star { color: var(--grape); font-size: 12px; }
+.profile select, .profile input:not([type=radio]):not([type=checkbox]) { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 10px; background: #fff; min-width: 0; }
+.profile input.num { max-width: 140px; }
+.profile .fld { margin-top: 8px; }
+.profile .fl { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 5px; }
+.profile .two { display: grid; grid-template-columns: 1fr 110px; gap: 8px; }
+.profile .mrow { display: grid; grid-template-columns: 1fr 1fr 1fr 28px; gap: 6px; align-items: center; margin-bottom: 8px; }
+.profile .mrow > b { font-size: 13px; }
+.profile .mrow.place { grid-template-columns: 1fr 2fr 28px; }
+.profile .mrow.place > b { align-self: start; }
+.profile .mrow.place > span { grid-column: 2 / 4; }
+.profile .x { border: 0; background: none; color: var(--ink-3); font-size: 15px; cursor: pointer; padding: 4px; }
+.profile .subcard { border: 1px dashed #D9CEFF; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+.profile .subcard .row { justify-content: space-between; }
+.profile .chk { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 14px; }
+.profile .soon { display: inline-block; font-size: 12px; font-weight: 700; background: var(--lime); border-radius: 999px; padding: 3px 10px; }
+.profile .savebar { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 10px 0; background: linear-gradient(transparent, var(--bg, #F6F3FF) 30%); z-index: 2; }
+@media (max-width: 380px) { .profile .mrow { grid-template-columns: 1fr 1fr 28px; } .profile .mrow > b { grid-column: 1 / -1; } }
