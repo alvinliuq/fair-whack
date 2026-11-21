@@ -1,0 +1,342 @@
+[
+ {
+  "name": "1st-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/1st-energy"
+ },
+ {
+  "name": "actewagl",
+  "uri": "https://cdr.energymadeeasy.gov.au/actewagl"
+ },
+ {
+  "name": "active-utilities",
+  "uri": "https://cdr.energymadeeasy.gov.au/active-utilities"
+ },
+ {
+  "name": "agl",
+  "uri": "https://cdr.energymadeeasy.gov.au/agl"
+ },
+ {
+  "name": "alinta",
+  "uri": "https://cdr.energymadeeasy.gov.au/alinta"
+ },
+ {
+  "name": "altogether",
+  "uri": "https://cdr.energymadeeasy.gov.au/altogether"
+ },
+ {
+  "name": "amber",
+  "uri": "https://cdr.energymadeeasy.gov.au/amber"
+ },
+ {
+  "name": "ampol",
+  "uri": "https://cdr.energymadeeasy.gov.au/ampol"
+ },
+ {
+  "name": "arc-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/arc-energy"
+ },
+ {
+  "name": "arcline",
+  "uri": "https://cdr.energymadeeasy.gov.au/arcline"
+ },
+ {
+  "name": "arcstream",
+  "uri": "https://cdr.energymadeeasy.gov.au/arcstream"
+ },
+ {
+  "name": "aseno",
+  "uri": "https://cdr.energymadeeasy.gov.au/aseno"
+ },
+ {
+  "name": "aurora",
+  "uri": "https://cdr.energymadeeasy.gov.au/aurora"
+ },
+ {
+  "name": "besy",
+  "uri": "https://cdr.energymadeeasy.gov.au/besy"
+ },
+ {
+  "name": "blue-nrg",
+  "uri": "https://cdr.energymadeeasy.gov.au/blue-nrg"
+ },
+ {
+  "name": "brighte",
+  "uri": "https://cdr.energymadeeasy.gov.au/brighte"
+ },
+ {
+  "name": "cleanco",
+  "uri": "https://cdr.energymadeeasy.gov.au/cleanco"
+ },
+ {
+  "name": "cleanpeak",
+  "uri": "https://cdr.energymadeeasy.gov.au/cleanpeak"
+ },
+ {
+  "name": "coles",
+  "uri": "https://cdr.energymadeeasy.gov.au/coles"
+ },
+ {
+  "name": "commander",
+  "uri": "https://cdr.energymadeeasy.gov.au/commander"
+ },
+ {
+  "name": "cooperative",
+  "uri": "https://cdr.energymadeeasy.gov.au/cooperative"
+ },
+ {
+  "name": "covau",
+  "uri": "https://cdr.energymadeeasy.gov.au/covau"
+ },
+ {
+  "name": "cpe-mascot",
+  "uri": "https://cdr.energymadeeasy.gov.au/cpe-mascot"
+ },
+ {
+  "name": "diamond",
+  "uri": "https://cdr.energymadeeasy.gov.au/diamond"
+ },
+ {
+  "name": "discover",
+  "uri": "https://cdr.energymadeeasy.gov.au/discover"
+ },
+ {
+  "name": "dodo",
+  "uri": "https://cdr.energymadeeasy.gov.au/dodo"
+ },
+ {
+  "name": "ea-connect",
+  "uri": "https://cdr.energymadeeasy.gov.au/ea-connect"
+ },
+ {
+  "name": "energy-locals",
+  "uri": "https://cdr.energymadeeasy.gov.au/energy-locals"
+ },
+ {
+  "name": "energy-locals-urban",
+  "uri": "https://cdr.energymadeeasy.gov.au/energy-locals-urban"
+ },
+ {
+  "name": "energyaustralia",
+  "uri": "https://cdr.energymadeeasy.gov.au/energyaustralia"
+ },
+ {
+  "name": "engie",
+  "uri": "https://cdr.energymadeeasy.gov.au/engie"
+ },
+ {
+  "name": "erc-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/erc-energy"
+ },
+ {
+  "name": "ergon",
+  "uri": "https://cdr.energymadeeasy.gov.au/ergon"
+ },
+ {
+  "name": "evergy",
+  "uri": "https://cdr.energymadeeasy.gov.au/evergy"
+ },
+ {
+  "name": "flipped",
+  "uri": "https://cdr.energymadeeasy.gov.au/flipped"
+ },
+ {
+  "name": "flow-power",
+  "uri": "https://cdr.energymadeeasy.gov.au/flow-power"
+ },
+ {
+  "name": "future-x",
+  "uri": "https://cdr.energymadeeasy.gov.au/future-x"
+ },
+ {
+  "name": "sunswitch",
+  "uri": "https://cdr.energymadeeasy.gov.au/sunswitch"
+ },
+ {
+  "name": "gee-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/gee-energy"
+ },
+ {
+  "name": "globird",
+  "uri": "https://cdr.energymadeeasy.gov.au/globird"
+ },
+ {
+  "name": "glow-power",
+  "uri": "https://cdr.energymadeeasy.gov.au/glow-power"
+ },
+ {
+  "name": "humenergy",
+  "uri": "https://cdr.energymadeeasy.gov.au/humenergy"
+ },
+ {
+  "name": "igeno",
+  "uri": "https://cdr.energymadeeasy.gov.au/igeno"
+ },
+ {
+  "name": "io-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/io-energy"
+ },
+ {
+  "name": "kogan",
+  "uri": "https://cdr.energymadeeasy.gov.au/kogan"
+ },
+ {
+  "name": "locality-planning",
+  "uri": "https://cdr.energymadeeasy.gov.au/locality-planning"
+ },
+ {
+  "name": "localvolts",
+  "uri": "https://cdr.energymadeeasy.gov.au/localvolts"
+ },
+ {
+  "name": "lumo",
+  "uri": "https://cdr.energymadeeasy.gov.au/lumo"
+ },
+ {
+  "name": "macarthur",
+  "uri": "https://cdr.energymadeeasy.gov.au/macarthur"
+ },
+ {
+  "name": "macquarie",
+  "uri": "https://cdr.energymadeeasy.gov.au/macquarie"
+ },
+ {
+  "name": "metered-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/metered-energy"
+ },
+ {
+  "name": "microgrid",
+  "uri": "https://cdr.energymadeeasy.gov.au/microgrid"
+ },
+ {
+  "name": "momentum",
+  "uri": "https://cdr.energymadeeasy.gov.au/momentum"
+ },
+ {
+  "name": "myob",
+  "uri": "https://cdr.energymadeeasy.gov.au/myob"
+ },
+ {
+  "name": "nectr",
+  "uri": "https://cdr.energymadeeasy.gov.au/nectr"
+ },
+ {
+  "name": "next-business",
+  "uri": "https://cdr.energymadeeasy.gov.au/next-business"
+ },
+ {
+  "name": "origin",
+  "uri": "https://cdr.energymadeeasy.gov.au/origin"
+ },
+ {
+  "name": "ovo-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/ovo-energy"
+ },
+ {
+  "name": "ovo-energy-ctm",
+  "uri": "https://cdr.energymadeeasy.gov.au/ovo-energy-ctm"
+ },
+ {
+  "name": "pacific-blue",
+  "uri": "https://cdr.energymadeeasy.gov.au/pacific-blue"
+ },
+ {
+  "name": "perpetual",
+  "uri": "https://cdr.energymadeeasy.gov.au/perpetual"
+ },
+ {
+  "name": "powerhub",
+  "uri": "https://cdr.energymadeeasy.gov.au/powerhub"
+ },
+ {
+  "name": "powershop",
+  "uri": "https://cdr.energymadeeasy.gov.au/powershop"
+ },
+ {
+  "name": "powow",
+  "uri": "https://cdr.energymadeeasy.gov.au/powow"
+ },
+ {
+  "name": "raa",
+  "uri": "https://cdr.energymadeeasy.gov.au/raa"
+ },
+ {
+  "name": "radian",
+  "uri": "https://cdr.energymadeeasy.gov.au/radian"
+ },
+ {
+  "name": "real-utilities",
+  "uri": "https://cdr.energymadeeasy.gov.au/real-utilities"
+ },
+ {
+  "name": "red-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/red-energy"
+ },
+ {
+  "name": "savant",
+  "uri": "https://cdr.energymadeeasy.gov.au/savant"
+ },
+ {
+  "name": "seene",
+  "uri": "https://cdr.energymadeeasy.gov.au/seene"
+ },
+ {
+  "name": "shell-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/shell-energy"
+ },
+ {
+  "name": "silver-asset",
+  "uri": "https://cdr.energymadeeasy.gov.au/silver-asset"
+ },
+ {
+  "name": "smart-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/smart-energy"
+ },
+ {
+  "name": "solstice",
+  "uri": "https://cdr.energymadeeasy.gov.au/solstice"
+ },
+ {
+  "name": "stanwell",
+  "uri": "https://cdr.energymadeeasy.gov.au/stanwell"
+ },
+ {
+  "name": "sumo-power",
+  "uri": "https://cdr.energymadeeasy.gov.au/sumo-power"
+ },
+ {
+  "name": "sumo-gas",
+  "uri": "https://cdr.energymadeeasy.gov.au/sumo-gas"
+ },
+ {
+  "name": "circular",
+  "uri": "https://cdr.energymadeeasy.gov.au/circular"
+ },
+ {
+  "name": "tango",
+  "uri": "https://cdr.energymadeeasy.gov.au/tango"
+ },
+ {
+  "name": "telstra-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/telstra-energy"
+ },
+ {
+  "name": "tesla",
+  "uri": "https://cdr.energymadeeasy.gov.au/tesla"
+ },
+ {
+  "name": "veolia",
+  "uri": "https://cdr.energymadeeasy.gov.au/veolia"
+ },
+ {
+  "name": "winconnect",
+  "uri": "https://cdr.energymadeeasy.gov.au/winconnect"
+ },
+ {
+  "name": "yes-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/yes-energy"
+ },
+ {
+  "name": "zen-energy",
+  "uri": "https://cdr.energymadeeasy.gov.au/zen-energy"
+ }
+]

@@ -1,0 +1,102 @@
+1st-energy plans 422 vic residential 79
+actewagl plans 221 vic residential 5
+active-utilities plans 0 vic residential 0
+agl plans 1097 vic residential 437
+alinta plans 600 vic residential 200
+altogether plans 0 vic residential 0
+amber plans 255 vic residential 50
+ampol plans 0 vic residential 0
+arc-energy plans 6 vic residential 0
+arcline plans 0 vic residential 0
+arcstream plans 0 vic residential 0
+aseno plans 0 vic residential 0
+aurora plans 20 vic residential 0
+besy plans 0 vic residential 0
+blue-nrg plans 1336 vic residential 19
+brighte plans 0 vic residential 0
+cleanco plans 0 vic residential 0
+cleanpeak plans 0 vic residential 0
+coles plans 0 vic residential 0
+commander plans 0 vic residential 0
+cooperative plans 0 vic residential 0
+covau plans 396 vic residential 84
+cpe-mascot plans 0 vic residential 0
+diamond plans 221 vic residential 56
+discover plans 0 vic residential 0
+dodo plans 145 vic residential 68
+ea-connect plans 0 vic residential 0
+energy-locals plans 169 vic residential 83
+energy-locals-urban plans 14 vic residential 0
+energyaustralia plans 1308 vic residential 491
+engie plans 2846 vic residential 659
+erc-energy plans 40 vic residential 0
+ergon plans 36 vic residential 0
+evergy plans 0 vic residential 0
+flipped plans 202 vic residential 50
+flow-power plans 444 vic residential 270
+future-x plans 85 vic residential 0
+sunswitch plans 0 vic residential 0
+gee-energy plans 108 vic residential 0
+globird plans 545 vic residential 250
+glow-power plans 0 vic residential 0
+humenergy plans 0 vic residential 0
+igeno plans 0 vic residential 0
+io-energy plans 0 vic residential 0
+kogan plans 275 vic residential 92
+locality-planning plans 0 vic residential 0
+localvolts plans 0 vic residential 0
+lumo plans 262 vic residential 114
+macarthur plans 0 vic residential 0
+macquarie plans 0 vic residential 0
+metered-energy plans 0 vic residential 0
+microgrid plans 0 vic residential 0
+momentum plans 1043 vic residential 190
+myob plans 0 vic residential 0
+nectr plans 286 vic residential 30
+next-business plans 412 vic residential 27
+origin plans 3913 vic residential 1022
+ovo-energy plans 244 vic residential 86
+ovo-energy-ctm plans 0 vic residential 0
+pacific-blue plans 0 vic residential 0
+perpetual plans 24 vic residential 0
+powerhub plans 0 vic residential 0
+powershop plans 502 vic residential 113
+powow plans 0 vic residential 0
+raa plans 0 vic residential 0
+radian plans 15 vic residential 0
+real-utilities plans 4 vic residential 1
+red-energy plans 1824 vic residential 315
+savant plans 0 vic residential 0
+seene plans 0 vic residential 0
+shell-energy plans 0 vic residential 0
+silver-asset plans 20 vic residential 0
+smart-energy plans 0 vic residential 0
+solstice plans 66 vic residential 0
+stanwell plans 0 vic residential 0
+sumo-power plans 477 vic residential 71
+sumo-gas plans 62 vic residential 38
+circular plans 0 vic residential 0
+tango plans 199 vic residential 97
+telstra-energy plans 0 vic residential 0
+tesla plans 0 vic residential 0
+veolia plans 0 vic residential 0
+winconnect plans 0 vic residential 0
+yes-energy plans 0 vic residential 0
+zen-energy plans 0 vic residential 0
+VIC residential plans total 4997 elec 3452 gas 1545 dual 0
+distributor names {"United Energy":691,"Citipower":695,"AusNet Services (electricity)":690,"Powercor":692,"Jemena":684,"Australian Gas Networks":428,"AusNet Services (gas)":395,"Multinet":275,"Jemena - Capital Region":53,"Jemena Coastal Network":79,"Jemena Country Network":66,"AGN Temora":31," Culcairn":31," Holbrook":31," Henty and Walla Walla":31,"AGN Albury":39,"AGN Murray Valley (NSW)":39,"AGN Wagga Wagga":34,"AGN Metro/Barossa/Peterborough":67,"AGN - Brisbane and Riverview":43,"AGN - Northern":23,"AGN - Wide Bay (Unregulated)":19,"AGN Mount Gambier":42,"AGN Port Pirie":42,"AGN Riverland/Murray Bridge":42,"AGN Whyalla":42,"AGN North (NSW)":8,"AGN Adelong":23," Gundagai and Tumut":23,"AGN Bombala and Cooma":24}
+plans with postcode lists 4997
+detail 0 1st-energy ELECTRICITY v 3 ok
+detail 1 1st-energy GAS v 3 ok
+detail 2 actewagl GAS v 3 ok
+detail 3 agl ELECTRICITY v 3 ok
+detail 4 agl GAS v 3 ok
+detail 5 alinta ELECTRICITY v 3 ok
+detail 6 alinta GAS v 3 ok
+detail 7 amber ELECTRICITY v 3 ok
+detail 8 blue-nrg ELECTRICITY v 3 ok
+detail 9 covau GAS v 3 ok
+detail 10 covau ELECTRICITY v 3 ok
+detail 11 diamond ELECTRICITY v 3 ok
+detail 12 dodo ELECTRICITY v 3 ok
+detail 13 dodo GAS v 3 ok
