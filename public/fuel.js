@@ -53,23 +53,23 @@ function toStation(p) {
   return { id: p.id, name, addr: p.formattedAddress || '', loc, prices, brand, color };
 }
 async function nearby(center, radiusKm) {
-  const key = `n:${center.lat.toFixed(3)},${center.lng.toFixed(3)},${radiusKm}`;
+  const key = `n:${center.lat.toFixed(3)},${center.lng.toFixed(3)}`;
   const hit = memo.get(key);
-  if (hit && Date.now() - hit.at < MEMO_MS) return hit.places;
+  if (hit && Date.now() - hit.at < MEMO_MS) return hit.places.filter((s) => km(center, s.loc) <= radiusKm + 0.05);
   const lib = await loadPlaces();
   if (!lib?.Place?.searchNearby) throw new Error('Google Maps didn’t load. Check your connection and try again.');
   // One search returns the 20 nearest stations (each search counts against the free allowance).
   await allow(1);
   const res = [await lib.Place.searchNearby({
     fields: ['id', 'displayName', 'formattedAddress', 'location', 'fuelOptions'],
-    locationRestriction: { center, radius: Math.round(radiusKm * 1000) },
+    locationRestriction: { center, radius: 10000 }, // always the widest area; the chosen area is filtered on the device
     includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',
   })];
   const seen = new Map();
   for (const { places } of res) for (const p of places || []) if (!seen.has(p.id)) seen.set(p.id, toStation(p));
-  const out = [...seen.values()].filter((s) => s.loc && km(center, s.loc) <= radiusKm + 0.05);
-  memo.set(key, { at: Date.now(), places: out });
-  return out;
+  const all = [...seen.values()].filter((s) => s.loc);
+  memo.set(key, { at: Date.now(), places: all });
+  return all.filter((s) => km(center, s.loc) <= radiusKm + 0.05);
 }
 
 // polyline (Google encoded) → [{lat,lng}]
