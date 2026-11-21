@@ -44,7 +44,7 @@ test('usage grows with people, air conditioning and an EV; solar lowers imports'
   assert.ok(sum(electricityUsage({ ...base, ev: { has: 'yes', km: 300 } })) > two + 2000);
   const g0 = electricityGrid(electricityUsage(base)), g1 = electricityGrid(electricityUsage({ ...base, solar: { has: 'yes', kw: 6.6 } }));
   const tot = (g) => g.grid.flat().reduce((a, b) => a + b, 0);
-  assert.ok(tot(g1) < tot(g0) && g1.exp.reduce((a, b) => a + b, 0) > 0);
+  assert.ok(tot(g1) < tot(g0) && g1.exp.flat().reduce((a, b) => a + b, 0) > 0);
 });
 
 test('gas: heating, hot water and cooking add up; no gas means no usage', () => {
@@ -95,4 +95,19 @@ test('estimate endpoint: needs an address, then compares plans for the postcode'
     await call('POST', '/api/bills/network', { fuel: 'elec', network: e.networks[1] });
     assert.equal((await call('GET', '/api/bills/estimate?fuel=elec')).network, e.networks[1]);
   }
+});
+
+test('time-varying feed-in pays the high rate only in its window', () => {
+  const plan = { ...ALINTA_E, fit: [{ b: [{ p: 0.45, v: null }], win: [[127, 18 * 60, 21 * 60]] }, { b: [{ p: 0.03, v: null }], win: [[127, 0, 18 * 60], [127, 21 * 60, 1440]] }] };
+  const u = electricityUsage({ members: [{}], home_type: 'house', bedrooms: '3', daytime: 'rarely', solar: { has: 'yes', kw: 6.6 } });
+  const c = electricityCost(plan, electricityGrid(u));
+  const exported = electricityGrid(u).exp.flat().reduce((a, b) => a + b, 0);
+  assert.ok(c.fit < exported * 0.05, `credit ${c.fit} for ${exported} kWh should be near the 3c rate`);
+});
+
+test('battery and EV plans need a battery or an EV', () => {
+  const p = { ...ALINTA_E, elig: [] };
+  assert.equal(eligible({ ...p, name: 'Battery Earner' }, {}), false);
+  assert.equal(eligible({ ...p, name: 'Battery Earner' }, { battery: true }), true);
+  assert.equal(eligible({ ...p, name: 'EV Plan' }, {}), false);
 });

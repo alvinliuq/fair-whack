@@ -1,7 +1,7 @@
 // Weekly: Victorian residential electricity and gas plans from the AER (Consumer Data Right product data; free, no key).
 // Lists every retailer's plans, fetches details only for new or changed plans, stores compact models in D1 (energy_plan).
 import { makeDb } from './d1.js';
-import { normalizePlan } from '../shared/energy.js';
+import { normalizePlan, MODEL_VERSION } from '../shared/energy.js';
 
 // The AER serves every retailer's plans at cdr.energymadeeasy.gov.au/<slug> (AER list of retailer base URIs, Jan 2026).
 export const AER_SLUGS = ('1st-energy actewagl active-utilities agl alinta altogether amber ampol arc-energy arcline arcstream aseno aurora besy blue-nrg brighte '
@@ -53,7 +53,8 @@ export async function runEnergy() {
     } catch (e) { console.log(`${slug}: list failed (${e.message})`); }
   }
   console.log(`Listed ${listed.length} plans`);
-  const todo = listed.filter((x) => known.get(x.p.planId) !== x.p.lastUpdated);
+  const stamp = (x) => `${x.p.lastUpdated || ''}#v${MODEL_VERSION}`;
+  const todo = listed.filter((x) => known.get(x.p.planId) !== stamp(x));
   console.log(`Fetching details for ${todo.length} new or changed plans`);
   const rows = [];
   const skipped = {};
@@ -67,7 +68,7 @@ export async function runEnergy() {
         const m = normalizePlan(d.data);
         if (m.unsupported) { skipped[m.unsupported] = (skipped[m.unsupported] || 0) + 1; continue; }
         rows.push({ id: m.id, brand: x.slug, fuel: m.fuel, networks: `|${(d.data.geography?.distributors || []).map((s) => s.trim()).join('|')}|`,
-          postcodes: `,${x.pcs.join(',')},`, model: JSON.stringify(m), last_updated: x.p.lastUpdated || null, seen_at: started });
+          postcodes: `,${x.pcs.join(',')},`, model: JSON.stringify(m), last_updated: stamp(x), seen_at: started });
       } catch (e) { skipped.error = (skipped.error || 0) + 1; }
     }
   }
@@ -76,7 +77,7 @@ export async function runEnergy() {
   await db.insertRows('energy_plan', ['id', 'brand', 'fuel', 'networks', 'postcodes', 'model', 'last_updated', 'seen_at'], rows,
     'ON CONFLICT(id) DO UPDATE SET brand = excluded.brand, fuel = excluded.fuel, networks = excluded.networks, postcodes = excluded.postcodes, model = excluded.model, last_updated = excluded.last_updated, seen_at = excluded.seen_at');
   // Unchanged plans: mark seen. Plans no longer listed: remove (only when the listing clearly worked).
-  const unchanged = listed.filter((x) => known.get(x.p.planId) === x.p.lastUpdated).map((x) => x.p.planId);
+  const unchanged = listed.filter((x) => known.get(x.p.planId) === stamp(x)).map((x) => x.p.planId);
   for (let k = 0; k < unchanged.length; k += 300) {
     const ids = unchanged.slice(k, k + 300).map((s) => `'${s.replace(/'/g, "''")}'`).join(',');
     await db.run(`UPDATE energy_plan SET seen_at = ? WHERE id IN (${ids})`, [started]);

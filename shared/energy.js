@@ -3,6 +3,8 @@
 // Feed-in credits carry no GST. All money here is dollars (not cents).
 
 const GST = 1.1;
+/** Bump when normalizePlan() output changes: the weekly job then re-fetches every plan. */
+export const MODEL_VERSION = 2;
 const DAYS = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const SLOTS = 48; // half hours
 
@@ -75,13 +77,16 @@ export function normalizePlan(d) {
     out.clRate = num(r);
     out.clSupply = num(cl.singleRate?.dailySupplyCharge) ?? num(cl.dailySupplyCharge) ?? 0;
   }
-  // Solar feed-in (retailer): first current scheme
-  const fit = (c.solarFeedInTariff || []).find((f) => f.scheme !== 'PREMIUM') || (c.solarFeedInTariff || [])[0];
-  if (fit) {
-    const rates = fit.singleTariff?.rates || fit.timeVaryingTariffs?.[0]?.rates || [];
-    // Feed-in volumes have no period in the data: large numbers are yearly, small ones daily.
-    out.fit = rates.map((r) => { const v = num(r.volume); return { p: num(r.unitPrice), v: v == null ? null : v > 200 ? v / 365 : v }; }).filter((r) => r.p != null);
-  }
+  // Solar feed-in (retailer). Time-varying tariffs pay their rate only inside their windows.
+  // Volumes: per the tariff's period; large daily numbers are watt-hours.
+  const fitVol = (r, period) => { const v = num(r.volume); if (v == null) return null; const d = v / periodDays(period || 'P1D'); return d > 200 ? d / 1000 : d; };
+  const fitBlocks = (rates, period) => (rates || []).map((r) => ({ p: num(r.unitPrice), v: fitVol(r, period) })).filter((r) => r.p != null);
+  const fits = c.solarFeedInTariff || [];
+  const fit = fits.find((f) => f.scheme !== 'PREMIUM') || fits[0];
+  if (fit?.tariffUType === 'timeVaryingTariffs' && Array.isArray(fit.timeVaryingTariffs)) {
+    out.fit = fit.timeVaryingTariffs.map((t) => ({ b: fitBlocks(t.rates, t.period), win: (t.timeVariations || []).map((w) => [dayMask(w.days), minutes(w.startTime), minutes(w.endTime, true)]) }))
+      .filter((t) => t.b.length);
+  } else if (fit) out.fit = [{ b: fitBlocks(fit.singleTariff?.rates, fit.singleTariff?.period), win: null }].filter((t) => t.b.length);
   for (const x of c.discounts || []) {
     const m = x.methodUType;
     const pct = (v) => { const n = num(v); return n == null ? null : n > 1 ? n / 100 : n; };
@@ -263,7 +268,7 @@ export function electricityGrid(u, scale = 1) {
       for (let s = 0; s < SLOTS; s++) grid[mi][s] += mk * l.shape[s];
     }
   }
-  const exp = new Array(12).fill(0);
+  const exp = Array.from({ length: 12 }, () => new Array(SLOTS).fill(0)); // exported kWh per month and half hour
   if (u.solarKwh) {
     for (let mi = 0; mi < 12; mi++) {
       const days = DAYS[mi];
@@ -271,15 +276,15 @@ export function electricityGrid(u, scale = 1) {
       for (let s = 0; s < SLOTS; s++) {
         const gen = u.solarKwh * M.solar[mi] * SHAPES.solar[s];
         const use = Math.min(gen, grid[mi][s]);
-        grid[mi][s] -= use; monthExport += gen - use;
+        grid[mi][s] -= use; exp[mi][s] = gen - use; monthExport += gen - use;
       }
-      if (u.batteryKwh) { // battery stores daytime export and covers the evening
+      if (u.batteryKwh && monthExport > 0) { // battery stores daytime export and covers the evening and night
         let store = Math.min(monthExport, u.batteryKwh * 0.9 * days);
-        monthExport -= store;
+        const keep = 1 - store / monthExport;
+        for (let s = 0; s < SLOTS; s++) exp[mi][s] *= keep;
         for (let s = 34; s < 48 && store > 0; s++) { const t = Math.min(store, grid[mi][s]); grid[mi][s] -= t; store -= t; }
         for (let s = 0; s < 14 && store > 0; s++) { const t = Math.min(store, grid[mi][s]); grid[mi][s] -= t; store -= t; }
       }
-      exp[mi] = monthExport;
     }
   }
   return { grid, cl, exp };
@@ -311,13 +316,16 @@ export function electricityCost(plan, g) {
       usage += g.cl[mi] * rate;
       supply += (plan.clSupply || 0) * days;
     }
-    if (g.exp[mi] && plan.fit.length) {
-      const per = plan.fit;
-      const dailyExp = g.exp[mi] / days;
-      let left = dailyExp, credit = 0;
-      for (const f of per) { const take = f.v == null ? left : Math.min(left, f.v); credit += take * f.p; left -= take; if (left <= 0) break; }
-      if (left > 0) credit += left * per[per.length - 1].p;
-      fit += credit * days;
+    if (plan.fit?.length && g.exp[mi].some((x) => x > 0)) {
+      for (const f of plan.fit) {
+        if (!f.b) continue;
+        let kwh = 0;
+        for (let s = 0; s < SLOTS; s++) kwh += g.exp[mi][s] * (f.win ? slotWeight(f.win, s) : 1);
+        if (!f.win && plan.fit.length > 1) continue;
+        let left = kwh / days, credit = 0;
+        for (const b of f.b) { const take = b.v == null ? left : Math.min(left, b.v); credit += take * b.p; left -= take; if (left <= 0) break; }
+        fit += credit * days;
+      }
     }
   }
   return finish(plan, supply, usage, fit, g.grid.reduce((x, m) => x + m.reduce((a, b) => a + b, 0), 0));
@@ -358,6 +366,9 @@ const BLOCK_TYPES = new Set(['EXISTING_CUST', 'SMALL_BUSINESS', 'REQ_EQUIP_SUPPL
 /** Can this household take this plan? ctx: { solar, battery, ev, pool, pension } */
 export function eligible(plan, ctx) {
   if (plan.type === 'REGULATED') return true;
+  const nm = (plan.name || '').toLowerCase();
+  if (/batter(y|ies)/.test(nm) && !ctx.battery) return false;
+  if (/(\bev\b|electric vehicle)/.test(nm) && !ctx.ev) return false;
   for (const e of plan.elig || []) {
     if (BLOCK_TYPES.has(e.t)) return false;
     if (e.t === 'EXISTING_SOLAR' && !ctx.solar) return false;
