@@ -13,15 +13,14 @@ async function get(url, v) {
   return JSON.parse(t);
 }
 
-// 1. Brands from the CDR register
-let brands = [];
-try {
-  const d = await get('https://api.cdr.gov.au/cdr-register/v1/energy/data-holders/brands/summary', 1);
-  fs.writeFileSync(`${OUT}/register.json`, JSON.stringify(d, null, 1).slice(0, 200000));
-  brands = (d.data || []).map((b) => ({ name: b.brandName, uri: b.productBaseUri || b.publicBaseUri })).filter((b) => b.uri);
-  say('register brands', brands.length);
-} catch (e) { say('register failed', e.message); }
-if (!brands.length) brands = ['agl', 'origin', 'energyaustralia', 'red-energy', 'lumo', 'alinta', 'simply-energy', 'powershop', 'momentum', 'dodo', 'tango', 'globird', 'ovo-energy'].map((s) => ({ name: s, uri: `https://cdr.energymadeeasy.gov.au/${s}` }));
+// 1. Brands: the AER serves every retailer's plans at cdr.energymadeeasy.gov.au/<slug> (AER list, Jan 2026)
+export const AER_SLUGS = ('1st-energy actewagl active-utilities agl alinta altogether amber ampol arc-energy arcline arcstream aseno aurora besy blue-nrg brighte '
+  + 'cleanco cleanpeak coles commander cooperative covau cpe-mascot diamond discover dodo ea-connect energy-locals energy-locals-urban energyaustralia engie '
+  + 'erc-energy ergon evergy flipped flow-power future-x sunswitch gee-energy globird glow-power humenergy igeno io-energy kogan locality-planning localvolts '
+  + 'lumo macarthur macquarie metered-energy microgrid momentum myob nectr next-business origin ovo-energy ovo-energy-ctm pacific-blue perpetual powerhub '
+  + 'powershop powow raa radian real-utilities red-energy savant seene shell-energy silver-asset smart-energy solstice stanwell sumo-power sumo-gas circular '
+  + 'tango telstra-energy tesla veolia winconnect yes-energy zen-energy').split(' ');
+const brands = AER_SLUGS.map((s) => ({ name: s, uri: `https://cdr.energymadeeasy.gov.au/${s}` }));
 fs.writeFileSync(`${OUT}/brands.json`, JSON.stringify(brands, null, 1));
 
 // 2. Plan lists per brand (residential), keep the Victorian ones
