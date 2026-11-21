@@ -186,6 +186,14 @@ function cleanObj(fields, raw) {
   return Object.keys(out).length ? out : undefined;
 }
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+/** Map position from an address suggestion: kept only when it is inside Victoria (roughly). */
+function geo(raw) {
+  const lat = Number(raw?.lat), lng = Number(raw?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -39.3 || lat > -33.9 || lng < 140.8 || lng > 150.1) return {};
+  const out = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+  if (typeof raw.placeId === 'string' && /^[\w-]{10,300}$/.test(raw.placeId)) out.placeId = raw.placeId;
+  return out;
+}
 
 /**
  * Keeps only valid answers for one section. `categories` = the allowed favourite categories.
@@ -214,10 +222,10 @@ export function cleanSection(sectionId, input, categories = []) {
       v = v.length ? v : undefined;
     } else if (q.type === 'address') {
       const pc = str(raw.postcode, 4);
-      const a = { line: str(raw.line, 120), suburb: str(raw.suburb, 40), postcode: /^\d{4}$/.test(pc) ? pc : '' };
+      const a = { line: str(raw.line, 120), suburb: str(raw.suburb, 40), postcode: /^\d{4}$/.test(pc) ? pc : '', ...geo(raw) };
       v = a.line || a.postcode ? a : undefined;
     } else if (q.type === 'places') {
-      v = (Array.isArray(raw) ? raw : []).slice(0, 20).map((p) => ({ name: str(p?.name, 30), address: str(p?.address, 120) })).filter((p) => p.name && p.address);
+      v = (Array.isArray(raw) ? raw : []).slice(0, 20).map((p) => ({ name: str(p?.name, 30), address: str(p?.address, 120), ...geo(p) })).filter((p) => p.name && p.address);
       v = v.length ? v : undefined;
     } else if (q.type === 'vehicles') {
       v = (Array.isArray(raw) ? raw : []).slice(0, 6).map((c) => cleanObj(VEHICLE_FIELDS, c)).filter(Boolean);

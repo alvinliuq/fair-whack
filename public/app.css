@@ -443,3 +443,12 @@ h1 { letter-spacing: -.025em; }
 .profile .soon { display: inline-block; font-size: 12px; font-weight: 700; background: var(--lime); border-radius: 999px; padding: 3px 10px; }
 .profile .savebar { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 10px 0; background: linear-gradient(transparent, var(--bg, #F6F3FF) 30%); z-index: 2; }
 @media (max-width: 380px) { .profile .mrow { grid-template-columns: 1fr 1fr 28px; } .profile .mrow > b { grid-column: 1 / -1; } }
+/* Address suggestions (Google Places) */
+.profile .fld, .profile .mrow.place { position: relative; }
+.ac-list { position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(27,21,48,.14); z-index: 20; overflow: hidden; }
+.ac-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-top: 1px solid var(--line); cursor: pointer; }
+.ac-list button:first-child { border-top: 0; }
+.ac-list button:hover, .ac-list button.on { background: var(--lilac-soft); }
+.ac-list b { display: block; font-size: 14px; }
+.ac-list span { display: block; font-size: 12.5px; color: var(--ink-3); }
+.ac-by { font-size: 11px; color: var(--ink-3); text-align: right; padding: 4px 10px 6px; }

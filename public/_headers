@@ -1,7 +1,7 @@
 /*
   X-Robots-Tag: noindex, nofollow
   X-Content-Type-Options: nosniff
-  Referrer-Policy: same-origin
-  Permissions-Policy: geolocation=(), camera=(self), microphone=()
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), camera=(self), microphone=()
 /sw.js
   Cache-Control: no-cache

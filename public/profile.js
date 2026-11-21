@@ -1,7 +1,8 @@
 // FW2.0: More page (Save More), profile hub and the three profile sections. Loaded on demand from app.js.
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
-} from './household.js?v=1';
+} from './household.js?v=2';
+import { attachAutocomplete } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
 export const MODULES = [
@@ -132,7 +133,7 @@ function questionHtml(q, a, d) {
       + (ms.length < n ? `<p class="small muted">You told us ${d.household} people live in your home.</p>` : '');
   } else if (q.type === 'address') {
     const x = v || {};
-    body = `<div class="fld"><span class="fl">Street address</span>${input(`${q.id}.line`, x.line, 'autocomplete="street-address" placeholder="12 Smith St"')}</div>
+    body = `<div class="fld"><span class="fl">Street address</span>${input(`${q.id}.line`, x.line, 'autocomplete="street-address" placeholder="Start typing your address"')}</div>
       <div class="two"><div class="fld"><span class="fl">Suburb</span>${input(`${q.id}.suburb`, x.suburb, 'autocomplete="address-level2" placeholder="Bentleigh East"')}</div>
       <div class="fld"><span class="fl">Postcode</span>${input(`${q.id}.postcode`, x.postcode, 'inputmode="numeric" maxlength="4" autocomplete="postal-code" placeholder="3165" class="num"')}</div></div>`;
   } else if (q.type === 'places') {
@@ -210,6 +211,9 @@ export async function editor(id) {
       const t = e.target;
       if (!t.dataset.p || t.tagName !== 'INPUT' || ['radio', 'checkbox'].includes(t.type)) return;
       setPath(a, t.dataset.p, t.value.trim(), s); dirty = true;
+      // Typing over a picked address drops its map position.
+      const m = t.dataset.p.match(/^(address)\.line$|^places\.(\d+)\.address$/);
+      if (m) { const o = m[1] ? a.address : a.places?.[Number(m[2])]; if (o) { delete o.lat; delete o.lng; delete o.placeId; } }
     });
     f.addEventListener('change', (e) => {
       const t = e.target;
@@ -219,6 +223,17 @@ export async function editor(id) {
       setPath(a, t.dataset.p, val, s); dirty = true;
       const y = window.scrollY; render(); window.scrollTo(0, y);
     });
+    // Address suggestions from Google (typing still works if Google can't load).
+    const redraw = () => { dirty = true; const y = window.scrollY; render(); window.scrollTo(0, y); };
+    attachAutocomplete(f.querySelector('[data-p="address.line"]'), (x) => {
+      a.address = { line: x.line, suburb: x.suburb, postcode: x.postcode, lat: x.lat, lng: x.lng, placeId: x.placeId };
+      redraw();
+    });
+    f.querySelectorAll('[data-p^="places."][data-p$=".address"]').forEach((el) => attachAutocomplete(el, (x) => {
+      const i = Number(el.dataset.p.split('.')[1]);
+      a.places[i] = { ...a.places[i], address: x.full || [x.line, x.suburb].filter(Boolean).join(', '), lat: x.lat, lng: x.lng, placeId: x.placeId };
+      redraw();
+    }));
     f.querySelectorAll('[data-add]').forEach((b) => (b.onclick = () => {
       const k = b.dataset.add;
       a[k] = [...(Array.isArray(a[k]) && a[k].length ? a[k] : k === 'members' || k === 'vehicles' ? [{}] : []), {}];

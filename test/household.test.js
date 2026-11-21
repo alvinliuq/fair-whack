@@ -78,3 +78,10 @@ test('clearing a section keeps sign-up answers', async () => {
   assert.equal(r.answers.vehicles, undefined);
   assert.equal(r.answers.members[0].gender, 'female');
 });
+
+test('address keeps a map position only inside Victoria', () => {
+  const ok = cleanSection('about', { address: { line: '1 Main St', postcode: '3165', lat: -37.92, lng: 145.08, placeId: 'ChIJabcdefghij' } });
+  assert.deepEqual(ok.address, { line: '1 Main St', suburb: '', postcode: '3165', lat: -37.92, lng: 145.08, placeId: 'ChIJabcdefghij' });
+  const far = cleanSection('about', { address: { line: '1 George St', postcode: '2000', lat: -33.86, lng: 151.2 } });
+  assert.equal(far.address.lat, undefined);
+});
