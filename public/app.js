@@ -784,7 +784,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=6'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  if (!profMod) { profMod = await import('/profile.js?v=7'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
@@ -793,7 +793,7 @@ views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
 let fuelMod;
 views.fuel = async (q) => {
-  if (!fuelMod) { fuelMod = await import('/fuel.js?v=1'); fuelMod.init({ api, esc, toast, app, state, sheet }); }
+  if (!fuelMod) { fuelMod = await import('/fuel.js?v=2'); fuelMod.init({ api, esc, toast, app, state, sheet }); }
   return fuelMod.page(q);
 };
 

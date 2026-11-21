@@ -31,6 +31,9 @@ const PROFILE_FUEL = { u91: 'u91', e10: 'e10', p95: 'p95', p98: 'p98', diesel: '
 
 // ---------- data ----------
 const memo = new Map(); // key -> { at, places }
+const MEMO_MS = 30 * 60000;
+/** Every paid Google search asks the server first, so the beta stays inside Google's free monthly allowance. */
+async function allow(calls = 1) { await ctx.api('/api/fuel/quota', { method: 'POST', body: { calls } }); }
 function toStation(p) {
   const name = p.displayName?.text || p.displayName || '';
   const loc = p.location ? (typeof p.location.lat === 'function' ? { lat: p.location.lat(), lng: p.location.lng() } : { lat: p.location.latitude ?? p.location.lat, lng: p.location.longitude ?? p.location.lng }) : null;
@@ -52,18 +55,16 @@ function toStation(p) {
 async function nearby(center, radiusKm) {
   const key = `n:${center.lat.toFixed(3)},${center.lng.toFixed(3)},${radiusKm}`;
   const hit = memo.get(key);
-  if (hit && Date.now() - hit.at < 10 * 60000) return hit.places;
+  if (hit && Date.now() - hit.at < MEMO_MS) return hit.places;
   const lib = await loadPlaces();
   if (!lib?.Place?.searchNearby) throw new Error('Google Maps didn’t load. Check your connection and try again.');
-  // Google returns at most 20 stations per search, so wider areas are covered by 7 overlapping circles.
-  const sub = radiusKm <= 2 ? [[0, 0]] : [[0, 0], ...Array.from({ length: 6 }, (_, i) => [Math.cos((i * Math.PI) / 3), Math.sin((i * Math.PI) / 3)])];
-  const r = radiusKm <= 2 ? radiusKm : radiusKm * 0.55;
-  const dLat = (radiusKm * 0.95) / 111, dLng = (radiusKm * 0.95) / (111 * Math.cos((center.lat * Math.PI) / 180));
-  const res = await Promise.all(sub.map(([x, y]) => lib.Place.searchNearby({
+  // One search returns the 20 nearest stations (each search counts against the free allowance).
+  await allow(1);
+  const res = [await lib.Place.searchNearby({
     fields: ['id', 'displayName', 'formattedAddress', 'location', 'fuelOptions'],
-    locationRestriction: { center: { lat: center.lat + y * dLat, lng: center.lng + x * dLng }, radius: Math.round(r * 1000) },
+    locationRestriction: { center, radius: Math.round(radiusKm * 1000) },
     includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',
-  }).catch(() => ({ places: [] }))));
+  })];
   const seen = new Map();
   for (const { places } of res) for (const p of places || []) if (!seen.has(p.id)) seen.set(p.id, toStation(p));
   const out = [...seen.values()].filter((s) => s.loc && km(center, s.loc) <= radiusKm + 0.05);
@@ -103,10 +104,11 @@ function distToPath(p, path) {
   return best;
 }
 async function alongRoute(route, corridorKm) {
-  const key = `r:${route.enc.length}:${route.enc.slice(0, 40)}:${corridorKm}`;
+  const key = `r:${route.enc.length}:${route.enc.slice(0, 60)}`;
   const hit = memo.get(key);
-  if (hit && Date.now() - hit.at < 10 * 60000) return hit.places;
+  if (hit && Date.now() - hit.at < MEMO_MS) return hit.places.filter((s) => s.off <= corridorKm);
   let raw = [];
+  await allow(1);
   try {
     const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
@@ -116,23 +118,24 @@ async function alongRoute(route, corridorKm) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error?.message || 'search failed');
     raw = (d.places || []).map(toStation);
-  } catch { /* fall back to circles along the route */ }
-  // Also look in circles every ~4 km along the route, so long trips aren't limited to 20 stations.
-  const lib = await loadPlaces();
-  const step = Math.max(1, Math.round(route.path.length / Math.min(15, Math.max(2, Math.round(route.km / 4)))));
-  const samples = route.path.filter((_, i) => i % step === 0).slice(0, 15);
-  if (lib?.Place?.searchNearby) {
-    const res = await Promise.all(samples.map((c) => lib.Place.searchNearby({
-      fields: ['id', 'displayName', 'formattedAddress', 'location', 'fuelOptions'],
-      locationRestriction: { center: c, radius: Math.round(Math.max(1500, corridorKm * 1000 + 500)) }, includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',
-    }).catch(() => ({ places: [] }))));
-    for (const { places } of res) raw.push(...(places || []).map(toStation));
+  } catch {
+    // Fallback: three circles (start, middle, end of the route).
+    const lib = await loadPlaces();
+    if (lib?.Place?.searchNearby) {
+      await allow(3);
+      const pts = [route.path[0], route.path[Math.floor(route.path.length / 2)], route.path[route.path.length - 1]];
+      const res = await Promise.all(pts.map((c) => lib.Place.searchNearby({
+        fields: ['id', 'displayName', 'formattedAddress', 'location', 'fuelOptions'],
+        locationRestriction: { center: c, radius: Math.round(Math.max(3000, corridorKm * 1000 + 1000)) }, includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',
+      }).catch(() => ({ places: [] }))));
+      for (const { places } of res) raw.push(...(places || []).map(toStation));
+    }
   }
   const seen = new Map();
-  for (const s of raw) if (s.loc && !seen.has(s.id)) { s.off = distToPath(s.loc, route.path); if (s.off <= corridorKm) seen.set(s.id, s); }
-  const out = [...seen.values()];
-  memo.set(key, { at: Date.now(), places: out });
-  return out;
+  for (const s of raw) if (s.loc && !seen.has(s.id)) { s.off = distToPath(s.loc, route.path); seen.set(s.id, s); }
+  const all = [...seen.values()];
+  memo.set(key, { at: Date.now(), places: all });
+  return all.filter((s) => s.off <= corridorKm);
 }
 
 // ---------- map ----------
@@ -170,7 +173,8 @@ export async function page(q) {
   st.fuelAnswers = a;
   app.innerHTML = `<a class="back" href="#/more">‹ More</a><h1>⛽ Fuel</h1>
     <div class="seg wide" role="tablist">${[['near', 'Nearby'], ['route', 'Route'], ['saved', 'Saved']].map(([k, l]) => `<a href="#/fuel?tab=${k}" class="${st.tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>
-    <div id="fz"></div>`;
+    <div id="fz"></div><p class="small muted" id="fquota"></p>`;
+  if (ctx.state.me?.isAdmin) ctx.api('/api/fuel/quota').then((u) => { const el = document.getElementById('fquota'); if (el) el.textContent = `Admin: ${u.usedMonth} of ${u.limits.month} Google fuel searches used this month (free allowance 1,000).`; }).catch(() => {});
   if (st.tab === 'near') return nearTab();
   if (st.tab === 'route') return routeTab();
   return savedTab();
@@ -254,12 +258,12 @@ function bindChips(reload) {
     if (act === 'radius') {
       const cur = get(LS.radius, 5);
       const close = sheet(`<h3>Search area</h3><div class="pills">${[2, 5, 10].map((r) => `<button class="pill-btn ${r === cur ? 'on' : ''}" data-r="${r}">${r} km</button>`).join('')}</div>`, (s) => {
-        s.querySelectorAll('[data-r]').forEach((x) => (x.onclick = () => { set(LS.radius, Number(x.dataset.r)); close(); reload(true); }));
+        s.querySelectorAll('[data-r]').forEach((x) => (x.onclick = () => { set(LS.radius, Number(x.dataset.r)); close(); reload(); }));
       });
     }
     if (act === 'corridor') {
       const close = sheet(`<h3>How far off the route?</h3><div class="pills">${[0.5, 1, 2, 3].map((r) => `<button class="pill-btn ${r === st.corridor ? 'on' : ''}" data-c="${r}">${r} km</button>`).join('')}</div>`, (s) => {
-        s.querySelectorAll('[data-c]').forEach((x) => (x.onclick = () => { st.corridor = Number(x.dataset.c); close(); reload(true); }));
+        s.querySelectorAll('[data-c]').forEach((x) => (x.onclick = () => { st.corridor = Number(x.dataset.c); close(); reload(); }));
       });
     }
     if (act === 'brands') {
@@ -289,7 +293,7 @@ function bindChips(reload) {
 function shell(extraTop = '') {
   return `${extraTop}${chipsBar()}<p class="small muted finfo" id="fz-info">Loading prices…</p>
     <div id="fz-body"><div class="fmap" id="fz-map"></div><button class="flocate" id="fz-loc" aria-label="Use my location">➤</button><div id="fz-list" class="flist"></div></div>
-    <p class="small muted" style="margin-top:8px">Prices from Google, usually updated within a day or two. Check the price board before you fill up.</p>`;
+    <p class="small muted" style="margin-top:8px">Shows up to the 20 nearest stations. Prices from Google, usually updated within a day or two. Check the price board before you fill up.</p>`;
 }
 
 async function nearTab() {

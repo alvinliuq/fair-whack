@@ -382,6 +382,7 @@ async function fuelTest() {
     if (!lib?.Place?.searchNearby) { out.innerHTML = '<p class="err">Google Maps didn’t load. Check the connection and try again.</p>'; return; }
     let places;
     try {
+      await ctx.api('/api/fuel/quota', { method: 'POST', body: { calls: 1 } });
       ({ places } = await lib.Place.searchNearby({
         fields: ['displayName', 'formattedAddress', 'location', 'fuelOptions'],
         locationRestriction: { center, radius: 5000 }, includedPrimaryTypes: ['gas_station'], maxResultCount: 20, rankPreference: 'DISTANCE',

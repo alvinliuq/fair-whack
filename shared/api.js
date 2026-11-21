@@ -284,6 +284,37 @@ route('DELETE', '/api/household/:section', async ({ env, user, params }) => {
   return json({ ok: true, answers: householdAnswers(user, data) });
 });
 
+// ----- Google fuel search allowance (FW2.0c) -----
+// Fuel prices come from Google Places "Enterprise + Atmosphere" searches: 1,000 free a month, then about US$40 per 1,000.
+// The app asks here before every such search. The monthly cap stays under the free allowance; a daily cap per person
+// stops one tester using it all. Change with FUEL_MONTHLY_LIMIT / FUEL_DAILY_LIMIT.
+const fuelLimits = (env) => ({ month: Number(env.FUEL_MONTHLY_LIMIT) || 900, day: Number(env.FUEL_DAILY_LIMIT) || 15 });
+const melDay = () => new Date(Date.now() + 11 * 3600000).toISOString().slice(0, 10);
+const gMonth = () => new Date(Date.now() - 8 * 3600000).toISOString().slice(0, 7); // Google resets at midnight US Pacific
+async function fuelUsage(env, user) {
+  const mk = `gfuel:m:${gMonth()}`, dk = `gfuel:d:${user.id}:${melDay()}`;
+  const rows = (await env.DB.prepare('SELECT key, n FROM api_quota WHERE key IN (?, ?)').bind(mk, dk).all()).results;
+  const get = (k) => rows.find((r) => r.key === k)?.n || 0;
+  return { mk, dk, month: get(mk), day: get(dk) };
+}
+route('GET', '/api/fuel/quota', async ({ env, user }) => {
+  const u = await fuelUsage(env, user);
+  return json({ usedMonth: u.month, usedToday: u.day, limits: fuelLimits(env) });
+});
+route('POST', '/api/fuel/quota', async ({ env, user, request }) => {
+  const b = await body(request);
+  const n = Math.min(5, Math.max(1, Number(b.calls) || 1));
+  const u = await fuelUsage(env, user);
+  const lim = fuelLimits(env);
+  if (u.month + n > lim.month) throw new HttpError(429, 'Fuel searches for this month’s beta allowance are used up. They reset on the 1st.');
+  if (!user.is_admin && u.day + n > lim.day) throw new HttpError(429, `You’ve used today’s ${lim.day} fuel searches. More tomorrow!`);
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET n = n + excluded.n').bind(u.mk, n),
+    env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET n = n + excluded.n').bind(u.dk, n),
+  ]);
+  return json({ ok: true, usedMonth: u.month + n, usedToday: u.day + n, limits: lim });
+});
+
 // ----- Bills (FW2.0b): compare Victorian electricity and gas plans for the household -----
 route('GET', '/api/bills/estimate', async ({ env, user, url }) => {
   const fuel = url.searchParams.get('fuel') === 'gas' ? 'G' : 'E';
