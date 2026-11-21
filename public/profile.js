@@ -1,12 +1,12 @@
 // FW2.0: More page (Save More), profile hub and the three profile sections. Loaded on demand from app.js.
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
-} from './household.js?v=4';
+} from './household.js?v=5';
 import { attachAutocomplete, loadPlaces } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
 export const MODULES = [
-  { id: 'fuel', title: 'Fuel', icon: '⛽', blurb: 'Cheapest fuel near you and along your routes', profile: 'fuel', live: false },
+  { id: 'fuel', title: 'Fuel', icon: '⛽', blurb: 'Cheapest fuel near you and along your routes', profile: 'fuel', live: true },
   { id: 'bills', title: 'Bills', icon: '⚡', blurb: 'Electricity and gas plans compared for your home', profile: 'bills', live: true },
 ];
 const PRIVACY = 'This information is only used to work out savings for you. It is never shared with anyone. You can change or clear it at any time.';
@@ -101,6 +101,7 @@ function sectionCard(s, a, esc, summary) {
   const p = progress(s, a);
   const live = MODULES.find((m) => m.profile === s.id)?.live !== false;
   let unlockedText = s.unlocked;
+  if (s.id === 'fuel') unlockedText = 'All set. Fuel prices are sorted for your car.';
   if (s.id === 'bills') unlockedText = summary ? `Switching could save about ${$m(summary.e || 0)} a month on electricity${summary.g != null ? ` and ${$m(summary.g)} on gas` : ''}. See Bills.` : 'All set. See your savings in Bills.';
   const status = p.unlocked
     ? (live ? unlockedText : `All set. Your savings estimate will show here when ${s.id === 'fuel' ? 'Fuel' : 'Bills'} launches.`)
@@ -190,6 +191,10 @@ function questionHtml(q, a, d) {
     const isUnknown = q.unknown && v?.unknown;
     body = (isUnknown ? '' : formHtml(q.fields, v, q.id))
       + (q.unknown ? `<label class="chk"><input type="checkbox" data-p="${q.id}.unknown" ${isUnknown ? 'checked' : ''}> ${q.unknown}</label>` : '');
+  } else if (q.type === 'routes') {
+    const rs = Array.isArray(v) ? v : [];
+    body = (rs.length ? rs.map((r) => `<div class="mrow place"><b>${esc(r.name)}</b><span class="small muted">${r.points.map((p) => esc(p.label.split(',')[0])).join(' → ')}</span></div>`).join('') : '')
+      + '<a class="btn small light" href="#/fuel?tab=route">Plan a route in Fuel</a>';
   } else if (q.type === 'later') body = '<span class="soon">Coming soon</span>';
   return `<fieldset class="q ${answered(q, a) ? 'done' : ''}"><legend>${esc(q.label)}${q.star ? ' <span class="star" title="Needed for your result">★</span>' : ''}</legend>
     ${q.hint ? `<p class="small muted">${esc(q.hint)}</p>` : ''}${body}</fieldset>`;

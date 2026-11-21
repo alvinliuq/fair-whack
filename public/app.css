@@ -487,3 +487,40 @@ h1 { letter-spacing: -.025em; }
 .prof-main .pbar { height: 12px; background: rgba(255,255,255,.22); margin: 12px 0 8px; }
 .prof-main p { margin: 0; font-size: 13px; color: #E4DCFF; }
 .profile .fld.cnt { margin-top: 10px; padding-left: 10px; border-left: 3px solid var(--lilac-soft); }
+/* Fuel */
+.fchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
+.fchip { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 12px; font-weight: 700; font-size: 13.5px; cursor: pointer; color: var(--ink); }
+.fchip.on { border-color: var(--grape); color: var(--grape-d); background: var(--lilac-soft); }
+.fchip.right { margin-left: auto; }
+.finfo { margin: 0 0 8px; }
+#fz-body { position: relative; }
+.fmap { height: calc(100dvh - 330px); min-height: 360px; border-radius: var(--r); overflow: hidden; background: #E9E5F3; }
+.flocate { position: absolute; right: 12px; top: 12px; width: 42px; height: 42px; border-radius: 50%; border: 0; background: #fff; box-shadow: var(--shadow); font-size: 17px; color: var(--grape); cursor: pointer; transform: rotate(-45deg); }
+.flist { display: none; }
+#fz.as-list .fmap, #fz.as-list .flocate { display: none; }
+#fz.as-list .flist { display: block; }
+.fmk { position: relative; border: 2px solid #8E88A6; background: #fff; border-radius: 10px; padding: 3px 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; box-shadow: 0 2px 6px rgba(27,21,48,.2); font: inherit; }
+.fmk::after { content: ''; position: absolute; bottom: -7px; left: 50%; margin-left: -6px; border: 6px solid transparent; border-top-color: #8E88A6; border-bottom: 0; }
+.fmk b { font-size: 15px; font-weight: 800; color: var(--ink); line-height: 1.1; }
+.fmk span { font-size: 9.5px; font-weight: 800; color: #fff; border-radius: 4px; padding: 1px 4px; max-width: 74px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fmk em { font-style: normal; font-size: 10px; font-weight: 800; color: #fff; padding: 1px 6px; border-radius: 4px; width: 100%; text-align: center; }
+.fmk.low { border-color: #2E8B3D; } .fmk.low::after { border-top-color: #2E8B3D; } .fmk.low b { color: #2E8B3D; } .fmk.low em { background: #2E8B3D; }
+.fmk.high { border-color: #D33A2F; } .fmk.high::after { border-top-color: #D33A2F; } .fmk.high b { color: #D33A2F; } .fmk.high em { background: #D33A2F; }
+.far .fmk:not(.low):not(.high) span { display: none; }
+.far .fmk:not(.low):not(.high) b { font-size: 12px; }
+.fme { width: 16px; height: 16px; border-radius: 50%; background: #2F7BF6; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,123,246,.25); }
+.frow { display: grid; grid-template-columns: 24px auto 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-bottom: 8px; cursor: pointer; font: inherit; color: var(--ink); }
+.frow .rank { width: 24px; height: 24px; border-radius: 50%; background: var(--lilac-soft); color: var(--grape-d); display: grid; place-items: center; font-weight: 800; font-size: 12px; }
+.frow .fb { font-size: 10px; font-weight: 800; color: #fff; border-radius: 5px; padding: 2px 5px; max-width: 70px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.frow .fn { min-width: 0; display: flex; flex-direction: column; }
+.frow .fn b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frow small { font-size: 11.5px; color: var(--ink-3); }
+.frow .fp { text-align: right; display: flex; flex-direction: column; }
+.frow .fp b { font-family: var(--display); font-size: 18px; }
+.frow .fp.low b { color: #2E8B3D; } .frow .fp.high b { color: #D33A2F; }
+.rform .rpt { display: grid; grid-template-columns: 52px 1fr 28px; gap: 6px; align-items: center; margin-bottom: 6px; }
+.rform .rl { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.rform .fld { margin: 0; }
+.srow { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.srow > div:first-child { min-width: 0; display: flex; flex-direction: column; }
+.srow small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

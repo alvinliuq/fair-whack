@@ -71,7 +71,7 @@ export const SECTIONS = [
       { id: 'fuel_brands', type: 'multi', label: 'Brands you usually fill up at', options: [o('any', 'Any brand'), ...FUEL_BRANDS.map((b) => o(b, b))], only: ['any'] },
       { id: 'fuel_discounts', type: 'multi', label: 'Fuel discounts you use', options: [o('everyday_rewards', 'Everyday Rewards 4c'), o('flybuys', 'Flybuys 4c'), o('racv', 'RACV'), o('none', 'None')], only: ['none'] },
       { id: 'places', type: 'places', label: 'Saved places', hint: 'Home comes from your address. Add work, school or anywhere you go often, and name them.' },
-      { id: 'routes', type: 'later', label: 'Saved routes', hint: 'Set up From → stops → To routes in Fuel, coming soon.' },
+      { id: 'routes', type: 'routes', label: 'Saved routes', hint: 'Plan From → stops → To in Fuel → Route and tap ★ Save route.' },
     ],
   },
   {
@@ -156,7 +156,7 @@ export function answered(q, a) {
   if (q.type === 'later') return false;
   if (q.type === 'members') return Array.isArray(v) && v.length > 0 && v.every((m) => m.gender && m.age);
   if (q.type === 'vehicles') return Array.isArray(v) && v.some((c) => c.fuel && (c.fuel === 'ev' || (c.tank && c.freq)));
-  if (q.type === 'places') return Array.isArray(v) && v.length > 0;
+  if (q.type === 'places' || q.type === 'routes') return Array.isArray(v) && v.length > 0;
   if (q.type === 'multi') return Array.isArray(v) && v.length > 0;
   if (q.type === 'address') return isObj(v) && !!v.line && /^3\d{3}$|^8\d{3}$/.test(v.postcode || '');
   if (q.type === 'form') {
@@ -245,6 +245,12 @@ export function cleanSection(sectionId, input, categories = []) {
       v = a.line || a.postcode ? a : undefined;
     } else if (q.type === 'places') {
       v = (Array.isArray(raw) ? raw : []).slice(0, 20).map((p) => ({ name: str(p?.name, 30), address: str(p?.address, 120), ...geo(p) })).filter((p) => p.name && p.address);
+      v = v.length ? v : undefined;
+    } else if (q.type === 'routes') {
+      v = (Array.isArray(raw) ? raw : []).slice(0, 10).map((r) => ({
+        name: str(r?.name, 30),
+        points: (Array.isArray(r?.points) ? r.points : []).slice(0, 7).map((p) => ({ label: str(p?.label, 120), ...geo(p) })).filter((p) => p.lat != null),
+      })).filter((r) => r.name && r.points.length >= 2);
       v = v.length ? v : undefined;
     } else if (q.type === 'vehicles') {
       v = (Array.isArray(raw) ? raw : []).slice(0, 6).map((c) => cleanObj(VEHICLE_FIELDS, c)).filter(Boolean);
