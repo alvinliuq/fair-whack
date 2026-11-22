@@ -793,7 +793,7 @@ views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
 let fuelMod;
 views.fuel = async (q) => {
-  if (!fuelMod) { fuelMod = await import('/fuel.js?v=4'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
+  if (!fuelMod) { fuelMod = await import('/fuel.js?v=5'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
   return fuelMod.page(q);
 };
 

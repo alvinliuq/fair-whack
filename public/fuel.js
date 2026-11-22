@@ -335,18 +335,18 @@ async function nearTab() {
 function pointInput(i, p, n) {
   const { esc } = ctx;
   const label = i === 0 ? 'From' : i === n - 1 ? 'To' : `Stop ${i}`;
-  return `<div class="rpt"><span class="rl">${label}</span><div class="fld"><input data-i="${i}" value="${esc(p?.label || '')}" placeholder="${i === 0 ? 'Start typing, or pick below' : 'Start typing an address'}" autocomplete="off"></div>
+  return `<div class="rpt"><span class="rl">${label}</span><div class="fld"><input data-i="${i}" value="${esc(p?.label || '')}" placeholder="Start typing an address" autocomplete="off"></div>
+    <button type="button" class="qpick" data-pick="${i}" aria-label="Choose a saved place" aria-haspopup="listbox" aria-expanded="false">★</button>
     ${i > 0 && i < n - 1 ? `<button class="x" data-del="${i}" aria-label="Remove stop">✕</button>` : '<span></span>'}</div>`;
 }
 async function routeTab() {
   const { esc, toast, api } = ctx;
   const fz = document.getElementById('fz');
   if (!st.points.length) st.points = [st.home ? { ...st.home } : { label: '' }, { label: '' }];
-  const quick = [...st.places.map((p) => ({ label: p.name, lat: p.lat, lng: p.lng })), { label: 'My location', here: true }];
+  const quick = [{ label: 'My location', here: true }, ...st.places.map((p) => ({ label: p.name, sub: p.address, lat: p.lat, lng: p.lng }))];
   const draw = () => {
     fz.innerHTML = `<div class="card rform profile">
         ${st.points.map((p, i) => pointInput(i, p, st.points.length)).join('')}
-        <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${quick.map((q, k) => `<button class="fchip" data-q="${k}">${q.here ? '📍' : '★'} ${esc(q.label)}</button>`).join('')}</div>
         <div class="row" style="gap:8px;margin-top:10px"><button class="btn small light" id="addstop">+ Add a stop</button><button class="btn small" id="go">Show fuel along the route</button></div>
       </div><div id="rres"></div>`;
     fz.querySelectorAll('input[data-i]').forEach((el) => {
@@ -357,14 +357,38 @@ async function routeTab() {
     });
     fz.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { st.points.splice(Number(b.dataset.del), 1); draw(); }));
     fz.querySelector('#addstop').onclick = () => { if (st.points.length >= 7) return toast('Up to 5 stops'); st.points.splice(st.points.length - 1, 0, { label: '' }); draw(); };
-    fz.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => {
-      const qv = quick[Number(b.dataset.q)];
-      const i = st.focus ?? st.points.findIndex((p) => !p.lat);
-      const at = i < 0 ? st.points.length - 1 : i;
-      const fill = (pt) => { st.points[at] = pt; st.focus = null; draw(); };
-      if (qv.here) navigator.geolocation?.getCurrentPosition((p) => fill({ label: 'My location', lat: p.coords.latitude, lng: p.coords.longitude }), () => toast('Location not allowed'));
-      else fill({ label: qv.label, lat: qv.lat, lng: qv.lng });
+    // Saved-place picker: a ★ button beside each field opens a small menu (My location first).
+    const closePick = () => { fz.querySelectorAll('.qp-list').forEach((m) => m.remove()); fz.querySelectorAll('.qpick').forEach((b) => { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); }); };
+    fz.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation();
+      const at = Number(b.dataset.pick);
+      const open = b.classList.contains('on');
+      closePick();
+      if (open) return;
+      b.classList.add('on'); b.setAttribute('aria-expanded', 'true');
+      const menu = document.createElement('div');
+      menu.className = 'ac-list qp-list';
+      menu.setAttribute('role', 'listbox');
+      menu.innerHTML = quick.map((q, k) => `<button type="button" role="option" data-q="${k}"><b>${q.here ? '📍' : '★'} ${esc(q.label)}</b>${q.sub ? `<span>${esc(q.sub)}</span>` : ''}</button>`).join('')
+        + (st.places.length ? '' : '<div class="ac-by" style="text-align:left">No saved places yet. Add them in Profile → Save more on Fuel.</div>');
+      b.closest('.rpt').appendChild(menu);
+      menu.querySelectorAll('[data-q]').forEach((o) => (o.onclick = (ev) => {
+        ev.stopPropagation();
+        const qv = quick[Number(o.dataset.q)];
+        closePick();
+        const fill = (pt) => { st.points[at] = pt; st.focus = null; draw(); };
+        if (qv.here) navigator.geolocation?.getCurrentPosition((p) => fill({ label: 'My location', lat: p.coords.latitude, lng: p.coords.longitude }), () => toast('Location not allowed'));
+        else fill({ label: qv.label, lat: qv.lat, lng: qv.lng });
+      }));
     }));
+    if (!st.pickOutside) {
+      st.pickOutside = true;
+      document.addEventListener('click', (e) => {
+        if (e.target.closest?.('.qp-list, .qpick')) return;
+        document.querySelectorAll('.qp-list').forEach((m) => m.remove());
+        document.querySelectorAll('.qpick.on').forEach((b) => { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); });
+      });
+    }
     fz.querySelector('#go').onclick = go;
   };
   const go = async () => {
