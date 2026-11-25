@@ -48,7 +48,12 @@ export async function checkStore(id, t, spend, log) {
         const first = list.find((p) => p.url);
         if (first) {
           if (!(await spend(est, `${id} product ${extractFrom}`))) return r;
-          const pg = await zyte({ url: first.url, product: true, productOptions: { extractFrom }, geolocation: 'AU' });
+          let pg = await zyte({ url: first.url, product: true, productOptions: { extractFrom }, geolocation: 'AU' });
+          if (!(pg.status === 200 && priced(pg.data.product)) && extractFrom !== 'browserHtml'
+              && (await spend(ZYTE_EST_USD.browser + ZYTE_EST_USD.extraction, `${id} product browserHtml`))) {
+            pg = await zyte({ url: first.url, product: true, productOptions: { extractFrom: 'browserHtml' }, geolocation: 'AU' });
+            r.productNeedsBrowser = true;
+          }
           const p = pg.data.product;
           r.productPage = pg.status === 200 && priced(p)
             ? `${p.name}: ${p.currency || ''} ${p.price}${p.regularPrice && p.regularPrice !== p.price ? ` (was ${p.regularPrice})` : ''}${p.gtin?.length ? `, barcode ${p.gtin[0].value}` : ''}`
@@ -65,7 +70,7 @@ export async function checkStore(id, t, spend, log) {
 
 /** Verdict line for one store. */
 export function verdict(r) {
-  if (r.products >= 5 && r.productPage && !/^no price/.test(r.productPage)) return `YES — ${r.products} products from a listing page (${r.mode === 'browserHtml' ? 'needs a browser' : 'plain HTML, cheapest'}), product page OK`;
+  if (r.products >= 5 && r.productPage && !/^no price/.test(r.productPage)) return `YES — ${r.products} products from a listing page (${r.mode === 'browserHtml' ? 'needs a browser' : 'plain HTML, cheapest'}), product page OK${r.productNeedsBrowser ? ' (product page needs a browser)' : ''}`;
   if (r.products >= 5) return `PARTLY — listing works (${r.products} products, ${r.mode}), product page: ${r.productPage || 'not tried'}`;
   return `NO — ${r.problem || 'nothing usable'}`;
 }
