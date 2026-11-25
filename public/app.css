@@ -751,3 +751,12 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .rail > .tile, .rail .rank-wrap > .tile, .shared-tile > .tile { min-width: 0; }
 .tile .foot .price { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 5px; }
 .tile .foot .price small { margin-left: 0; }
+
+/* ---- Home sections: full-width bands, alternating clear / white ---- */
+.hsec { margin: 0 -14px; padding: 2px 14px 16px; }
+.hsec[hidden] { display: none; }
+.hsec.alt { background: #fff; }
+.hsec > .sec-head:first-child, .hsec > div > .sec-head:first-child { margin-top: 16px; }
+.hsec + .hsec { border-top: 1px solid rgba(91, 43, 224, .06); }
+.hsec.alt .tile, .hsec.alt .store-tile .slogo { box-shadow: 0 1px 4px rgba(40, 20, 90, .10); border: 1px solid #F0ECF7; }
+.hsec.alt .rail-empty { background: var(--mist, #F6F3FF); }
