@@ -31,7 +31,7 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   return [k, v ?? true];
 }));
 const ALL_RETAILERS = [...Object.keys(SPECIALS), ...Object.keys(SOURCES)];
-if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer])) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
+if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer]) && !(mode === 'serpcheck' && opt.retailer === 'kmart')) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
 const RETAILERS = opt.retailer ? [opt.retailer] : ALL_RETAILERS;
 // Saturday's run skips the supermarkets (their specials change on Wednesdays).
 const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
@@ -291,7 +291,7 @@ async function zyteCheck(db) {
 async function serpCheck(db) {
   const { serpResults } = await import('../shared/api.js');
   const { monthKey } = await import('../shared/budget.js');
-  const q = 'dyson v8';
+  const q = opt.retailer === 'kmart' ? 'kmart bath towel' : 'dyson v8'; // --retailer=kmart: does Google Shopping list Kmart?
   const p = new URLSearchParams({ engine: 'google_shopping', q, gl: 'au', hl: 'en', google_domain: 'google.com.au', location: 'Melbourne,Victoria,Australia', api_key: process.env.SERPAPI_KEY || '' });
   const res = await fetch(`https://serpapi.com/search.json?${p}`);
   const data = await res.json();
@@ -301,6 +301,9 @@ async function serpCheck(db) {
   await db.run('INSERT INTO serp_cache (q, fetched_at, data) VALUES (?, ?, ?) ON CONFLICT(q) DO UPDATE SET fetched_at = excluded.fetched_at, data = excluded.data',
     [q, new Date().toISOString(), JSON.stringify({ results: out })]);
   log(`serpcheck: "${q}" -> ${out.length} offers; cheapest:`);
+  const stores = out.reduce((m, r) => { m[r.store] = (m[r.store] || 0) + 1; return m; }, {});
+  log('serpcheck: by store:', Object.entries(stores).map(([k, v]) => `${k}: ${v}`).join(' · '));
+  for (const r of out.filter((x) => /kmart/i.test(x.store || '')).slice(0, 5)) log(`  KMART $${(r.priceCents / 100).toFixed(2)}  ${r.title.slice(0, 70)}  ${r.link ? r.link.slice(0, 80) : '(no link)'}`);
   for (const r of [...out].sort((a, b) => a.priceCents - b.priceCents).slice(0, 5)) log(`  $${(r.priceCents / 100).toFixed(2)}  ${r.store}  ${r.title.slice(0, 70)}${r.link ? '' : '  (no link)'}`);
 }
 
