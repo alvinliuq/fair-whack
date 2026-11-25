@@ -8,12 +8,15 @@
 //   node pipeline/run.js review      dry run of matching + the automatic review (size, name, photo); --apply does it
 //   node pipeline/run.js index       rebuild the search index only (--if-missing: skip when it is up to date)
 //   node pipeline/run.js probe       tiny test run (5 products) of each first-batch retailer's scraper; shows what it returned
+//   node pipeline/run.js zyte        technical check of the second-batch retailers with Zyte (no products saved)
+//   node pipeline/run.js serpcheck   one live Google Shopping lookup ("dyson v8"), saved like a tester's search
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
 import { makeDb } from './d1.js';
 import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { SOURCES, adaptItem } from './sources.js';
+import { ZYTE_TARGETS, ZYTE_MAX_USD, checkStore, verdict } from './zyte.js';
 import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
@@ -28,7 +31,7 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   return [k, v ?? true];
 }));
 const ALL_RETAILERS = [...Object.keys(SPECIALS), ...Object.keys(SOURCES)];
-if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer)) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
+if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer])) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
 const RETAILERS = opt.retailer ? [opt.retailer] : ALL_RETAILERS;
 // Saturday's run skips the supermarkets (their specials change on Wednesdays).
 const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
@@ -223,6 +226,48 @@ async function probe(db) {
   }
 }
 
+/** Second batch: which retailers can Zyte read? Each request is recorded at an estimated cost. */
+async function zyteCheck(db) {
+  if (!process.env.ZYTE_API_KEY) { log('zyte: ZYTE_API_KEY is not set'); process.exitCode = 1; return; }
+  const targets = opt.retailer ? { [opt.retailer]: ZYTE_TARGETS[opt.retailer] } : ZYTE_TARGETS;
+  const zyteSoFar = async () => Number((await db.all("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM pipeline_runs WHERE provider = 'zyte'"))[0].s);
+  const results = [];
+  for (const [id, t] of Object.entries(targets)) {
+    if (!t) { log(`zyte: unknown store ${id}`); continue; }
+    if (budgetLevel(await spentUsd(db)) === 'hard') { log('zyte: monthly hard stop, not checking'); break; }
+    const { id: runId } = await startRun(db, 'zyte-check', id, 'zyte');
+    let cost = 0;
+    const base = await zyteSoFar();
+    const spend = async (usd) => { if (base + cost + usd > ZYTE_MAX_USD) return false; cost += usd; return true; };
+    let r;
+    try { r = await checkStore(id, t, spend, log); }
+    catch (e) { r = { id, name: t.name, problem: e.message, products: 0 }; }
+    const v = verdict(r);
+    log(`zyte:${id}`, v);
+    results.push({ store: t.name, verdict: v, sample: (r.sample || []).join(' | ').slice(0, 160) });
+    await endRun(db, runId, r.products >= 5 ? 'ok' : 'failed', r.products, cost, `${v}${r.sample ? ` — e.g. ${r.sample[0]}` : ''}`);
+  }
+  console.table(results);
+  log(`zyte: estimated spend on checks so far $${(await zyteSoFar()).toFixed(2)} (check stops at $${ZYTE_MAX_USD}; Zyte's own dashboard is the final word)`);
+}
+
+/** One live Google Shopping lookup through the same parsing and cache as the app. */
+async function serpCheck(db) {
+  const { serpResults } = await import('../shared/api.js');
+  const { monthKey } = await import('../shared/budget.js');
+  const q = 'dyson v8';
+  const p = new URLSearchParams({ engine: 'google_shopping', q, gl: 'au', hl: 'en', google_domain: 'google.com.au', location: 'Melbourne,Victoria,Australia', api_key: process.env.SERPAPI_KEY || '' });
+  const res = await fetch(`https://serpapi.com/search.json?${p}`);
+  const data = await res.json();
+  await db.run('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1', [`serp:m:${monthKey()}`]);
+  if (data.error) { log('serpcheck: SerpApi error:', data.error); process.exitCode = 1; return; }
+  const out = serpResults(data);
+  await db.run('INSERT INTO serp_cache (q, fetched_at, data) VALUES (?, ?, ?) ON CONFLICT(q) DO UPDATE SET fetched_at = excluded.fetched_at, data = excluded.data',
+    [q, new Date().toISOString(), JSON.stringify({ results: out })]);
+  log(`serpcheck: "${q}" -> ${out.length} offers; cheapest:`);
+  for (const r of [...out].sort((a, b) => a.priceCents - b.priceCents).slice(0, 5)) log(`  $${(r.priceCents / 100).toFixed(2)}  ${r.store}  ${r.title.slice(0, 70)}${r.link ? '' : '  (no link)'}`);
+}
+
 async function index(db) {
   if (opt['if-missing'] && await indexIsCurrent(db)) { log('search index: up to date, nothing to do'); return false; }
   const r = await syncWordIndex(db, await loadIndexProducts(db));
@@ -280,8 +325,10 @@ else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);
 else if (mode === 'probe') await probe(db);
+else if (mode === 'zyte') await zyteCheck(db);
+else if (mode === 'serpcheck') await serpCheck(db);
 else { console.error(`Unknown mode ${mode}`); process.exit(2); }
 // Anything that changed products or prices makes the saved API answers out of date.
-if (!['alerts', 'status', 'probe'].includes(mode)) {
+if (!['alerts', 'status', 'probe', 'zyte', 'serpcheck'].includes(mode)) {
   await clearApiCache(db).then(() => log('api cache cleared'), (e) => log('api cache NOT cleared:', e.message));
 }

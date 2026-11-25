@@ -627,7 +627,7 @@ export function barcodeForms(code) {
 // Each keyword is looked up at most once every SERPAPI.cacheHours, for everyone. Lookups stop at the month's cap,
 // a per-tester daily cap, and the budget's hard stop; then the last saved results (if any) are shown instead.
 const serpKey = (q) => normText(q).slice(0, 80);
-function serpResults(data) {
+export function serpResults(data) {
   const rows = [...(data.shopping_results || []), ...(data.inline_shopping_results || [])];
   const seen = new Set();
   const out = [];
