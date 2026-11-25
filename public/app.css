@@ -629,10 +629,8 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .heart .bell { display: none; }
 .heart.on.quiet svg:not(.bell) { fill: var(--heart-quiet); stroke: var(--heart-quiet); }
 .heart.on.alert svg:not(.bell) { fill: var(--heart-alert); stroke: var(--heart-alert); }
-.heart.on.alert { position: relative; }
 .heart.on.alert .bell { display: block; position: absolute; right: -2px; top: -2px; width: 15px; height: 15px; padding: 1.5px; border-radius: 50%; background: #fff; fill: var(--heart-alert); stroke: none; box-shadow: 0 0 0 1px rgba(229, 56, 79, .25); }
-.list-rows .r .heart.on.alert { position: relative; }
-.hk { flex: none; position: relative; width: 30px; height: 30px; display: grid; place-items: center; }
+.list-rows .r .hk { flex: none; position: relative; width: 30px; height: 30px; display: grid; place-items: center; }
 .hk svg { width: 24px; height: 24px; stroke-width: 2; }
 .hk.alert svg:not(.bell) { fill: var(--heart-alert); stroke: var(--heart-alert); }
 .hk.quiet svg { fill: var(--heart-quiet); stroke: var(--heart-quiet); }
@@ -721,3 +719,11 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .wc-price { font-family: var(--display); font-size: 17px; font-weight: 800; margin-top: auto; }
 .wc-price small { font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-decoration: line-through; margin-left: 5px; }
 .wc-note { font-size: 11px; color: var(--ink-3); }
+
+/* Hearts: one size everywhere; in rows they sit in the flow, everywhere else bottom-right of their card. */
+.list-rows .r .heart, .same-row .acts .heart { position: relative; right: auto; bottom: auto; top: auto; transform: none; flex: 0 0 38px; width: 38px; height: 38px; margin: 0; }
+.heart svg:not(.bell) { flex: none; }
+/* Cards in a swipe row are all the same height, so prices and hearts line up. */
+.shared-tile > .tile { flex: 1; }
+.rail > .tile, .rail > .shared-tile, .rail.ranked .rank-wrap { align-self: stretch; }
+.rail .tile .name { min-height: 2.6em; }
