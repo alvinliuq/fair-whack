@@ -557,9 +557,11 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .scanner .frame.square { width: min(66vw, 260px); height: min(66vw, 260px); }
 .shared-list .r.share { align-items: center; }
 .shared-list .share-main { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; text-decoration: none; }
-.shared-list .share-main .thumb { width: 56px; height: 56px; flex: none; }
+.shared-list .share-main .thumb { width: 56px; height: 56px; flex: none; overflow: hidden; border-radius: 10px; background: #fff; display: grid; place-items: center; }
+.shared-list .share-main .thumb img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.shared-list .share-main .thumb .ph { font-size: 20px; }
 .shared-list .share-main .n { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.shared-list .r.share.new .n b::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--grape); margin-right: 6px; vertical-align: 1px; }
+.shared-list .r.share.new .n > b:first-child::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--grape); margin-right: 6px; vertical-align: 1px; }
 .shared-tile { flex: none; display: flex; flex-direction: column; gap: 4px; }
 .shared-tile .from { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shared-tile .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--grape); margin-right: 5px; vertical-align: 1px; }
