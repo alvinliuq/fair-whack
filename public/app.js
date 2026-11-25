@@ -247,19 +247,25 @@ function renderMine(el, d) {
       if (k.some((x) => seen.has(x))) return false; k.forEach((x) => seen.add(x)); return true;
     });
   } else {
-    // All stores: one card per product, the cheapest store; on the same price the store higher in SAME_PRICE_ORDER.
-    const better = (o, p) => o.effective < p.effective || (o.effective === p.effective && rank(o.retailer) < rank(p.retailer));
-    const best = new Map(); const alias = new Map();
+    // All stores: one product = matched across stores (or the same name). Show the cheapest store;
+    // if several stores share the lowest price, show each of them. A store listing it twice shows once.
+    const alias = new Map(); const groups = new Map();
     for (const o of inList) {
       const keys = [o.canonical && `c|${o.canonical}`, `n|${nameKey(o)}`].filter(Boolean);
       const k = keys.map((x) => alias.get(x)).find(Boolean) || keys[0];
       keys.forEach((x) => alias.set(x, k));
-      const p = best.get(k);
-      if (!p || better(o, p)) best.set(k, o);
+      if (!groups.has(k)) groups.set(k, new Map());
+      const g = groups.get(k), p = g.get(o.retailer);
+      if (!p || o.effective < p.effective) g.set(o.retailer, o);
     }
-    pool = [...best.values()];
+    // Biggest saving first; stores with the same price for one product sit next to each other.
+    pool = [...groups.values()].map((g) => {
+      const offers = [...g.values()];
+      const low = Math.min(...offers.map((o) => o.effective));
+      return offers.filter((o) => o.effective === low).sort((x, y) => rank(x.retailer) - rank(y.retailer));
+    }).sort((x, y) => Math.max(...y.map((o) => o.saving || 0)) - Math.max(...x.map((o) => o.saving || 0))).flat();
   }
-  pool.sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  if (sel.length) pool.sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
     ? `<label class="list-pick"><span class="sr-only">List</span><select id="homelist">${lists.map((l) => `<option value="${esc(l.id)}" ${l.id === listId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>`
     : `<a class="list-pick one" href="#/lists">${esc(lists[0]?.name || 'My List')} ›</a>`;
