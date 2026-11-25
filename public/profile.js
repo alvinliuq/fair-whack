@@ -11,7 +11,7 @@ export const MODULES = [
 ];
 const PRIVACY = 'This information is only used to work out savings for you. It is never shared with anyone. You can change or clear it at any time.';
 
-let ctx; // { api, esc, toast, app, state, HOME_STORES }
+let ctx; // { api, esc, toast, app, state, logout, setHomeStores }
 let cache = null; // { answers, categories, household }
 export function init(c) { ctx = c; }
 /** Profile answers are fetched once and kept until the profile changes (save, clear, a saved route). */
@@ -303,7 +303,7 @@ export async function editor(id) {
       try {
         const r = await api(`/api/household/${id}`, { method: 'PUT', body: { answers: a } });
         cache = { ...d, answers: r.answers, household: r.household ?? d.household }; summaryP = null;
-        if (id === 'about' && Array.isArray(a.stores) && a.stores.length) { try { localStorage.setItem(ctx.HOME_STORES, JSON.stringify(a.stores)); } catch {} }
+        if (id === 'about' && Array.isArray(a.stores) && a.stores.length) { try { ctx.setHomeStores(a.stores); } catch {} }
         dirty = false; toast('Saved'); location.hash = '#/profile';
       } catch (err) { btn.disabled = false; toast(err.message); }
     };
