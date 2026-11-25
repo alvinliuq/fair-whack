@@ -53,7 +53,7 @@ async function api(path, opts = {}) {
   if (res.status === 401 && !path.startsWith('/api/login')) { state.me = null; location.hash = '#/login'; throw new Error('Please sign in'); }
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
   // Something changed (list, alert, settings, shares…): Home updates the next time it's shown.
-  if ((opts.method || 'GET') !== 'GET' && !path.startsWith('/api/login')) keptHome.dirty = true;
+  if ((opts.method || 'GET') !== 'GET' && !path.startsWith('/api/login')) { keptHome.dirty = true; pagesChanged(); }
   return data;
 }
 
@@ -998,13 +998,6 @@ views.lists = async () => {
       <div id="pushbox" style="margin-top:14px"></div>`;
     app.querySelectorAll('details[data-list]').forEach((d) => d.addEventListener('toggle', () => { state.listOpen[d.dataset.list] = d.open; }));
     app.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); listSheet(lists.find((l) => l.id === b.dataset.edit), lists.length); }));
-    // "Same product in other stores" opens the comparison for that item.
-    app.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-same]');
-      if (!t) return;
-      e.preventDefault(); e.stopPropagation();
-      location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
-    }, true);
     // Store filter: opens a picker; "All stores" or any mix of single stores.
     app.querySelectorAll('[data-stores]').forEach((b) => (b.onclick = (e) => {
       e.preventDefault();
@@ -1316,6 +1309,45 @@ function downloadTesters(users) {
 }
 
 // ---------- router ----------
+// ----- Pages are kept, not reloaded -----
+// Going back to a page you saw in the last 15 minutes shows it as it was (scroll included), with no new
+// requests. Home is handled the same way (keptHome). A change (list, alerts, settings…) drops the kept
+// pages whose content depends on it; store, specials and search pages only need their hearts updated.
+const KEEP_MS = 15 * 60000;
+const KEEPABLE = /^#\/(p\/|same\/|deals\/|browse\/[a-z]|search\?|lists$|more$)/;
+const LIST_INDEPENDENT = /^#\/(deals\/|browse\/|search\?)/;
+const keptPages = new Map(); // hash -> { nodes, y, rails, at }
+let leftHash = null, shownHash = null;
+function keepPage(hash) {
+  if (!hash || !KEEPABLE.test(hash) || hash.split('?')[0] !== shownHash || !app.childNodes.length) return;
+  keptPages.delete(hash);
+  keptPages.set(hash, { nodes: [...app.childNodes], y: keptHome.lastPageY, rails: [...app.querySelectorAll('.rail, .store-grid, .chips')].map((r) => [r, r.scrollLeft]), at: Date.now() });
+  while (keptPages.size > 12) keptPages.delete(keptPages.keys().next().value);
+}
+function restorePage(hash) {
+  const k = keptPages.get(hash);
+  if (!k) return false;
+  keptPages.delete(hash);
+  if (Date.now() - k.at > KEEP_MS) return false;
+  app.replaceChildren(...k.nodes);
+  refreshHearts();
+  for (const [r, x] of k.rails) r.scrollLeft = x;
+  requestAnimationFrame(() => { window.scrollTo(0, k.y || 0); for (const [r, x] of k.rails) r.scrollLeft = x; });
+  return true;
+}
+function pagesChanged() { for (const h of [...keptPages.keys()]) if (!LIST_INDEPENDENT.test(h)) keptPages.delete(h); }
+// Away from the app for 15 minutes or more: everything is loaded fresh when you come back.
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (hiddenAt && Date.now() - hiddenAt >= KEEP_MS) {
+    keptPages.clear(); keptHome.nodes = null;
+    const name = (location.hash.slice(1) || '/').split('?')[0].split('/').filter(Boolean)[0] || 'home';
+    if (name === 'home' && state.me) route(); // Home on screen: reload it
+  }
+  hiddenAt = 0;
+});
+
 const keptHome = { nodes: null, y: 0, lastY: 0, at: 0, leaving: false, dirty: false, digest: '' };
 /** Re-draw part of Home without losing how far each swipe row was scrolled. */
 async function keepRails(draw) {
@@ -1323,7 +1355,7 @@ async function keepRails(draw) {
   await draw();
   for (const [id, x] of pos) { const r = id && document.getElementById(id)?.querySelector('.rail, .store-grid'); if (r) r.scrollLeft = x; }
 }
-addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scrollY; }, { passive: true });
+addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scrollY; keptHome.lastPageY = scrollY; }, { passive: true });
 async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const q = new URLSearchParams(query || '');
@@ -1345,9 +1377,8 @@ async function route() {
   const tab = { home: 'home', digest: 'home', deals: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
-  if (state.me && !state.needsProfile) soc().then((m) => m.refreshBadge()).catch(() => {});
-  // Home is kept as it was when you leave it (scroll position included) and shown again straight away
-  // when you come back within 10 minutes; only "On special from your list" quietly checks for changes.
+  // Friend requests badge: checked at most once a minute, not on every page.
+  if (state.me && !state.needsProfile && Date.now() - (route.badgeAt || 0) > 60000) { route.badgeAt = Date.now(); soc().then((m) => m.refreshBadge()).catch(() => {}); }
   const isHome = !parts.length || name === 'home';
   if (keptHome.leaving) {
     keptHome.nodes = [...app.childNodes]; keptHome.y = keptHome.lastY; keptHome.at = Date.now();
@@ -1355,9 +1386,10 @@ async function route() {
     keptHome.rails = [...app.querySelectorAll('.rail, .store-grid')].map((r) => [r, r.scrollLeft]);
   }
   keptHome.leaving = false;
+  keepPage(leftHash); leftHash = null;
   // Home stays exactly as you left it (scroll positions included) until you close the app.
   // Only after a change (list, alerts, settings, shares) does it quietly update the parts that changed.
-  if (isHome && keptHome.nodes && !q.toString()) {
+  if (isHome && keptHome.nodes && Date.now() - keptHome.at < KEEP_MS && !q.toString()) {
     app.replaceChildren(...keptHome.nodes);
     keptHome.nodes = null; keptHome.leaving = true;
     refreshHearts();
@@ -1371,6 +1403,8 @@ async function route() {
     return;
   }
   if (isHome) keptHome.nodes = null;
+  if (!isHome && restorePage(location.hash)) { shownHash = location.hash.split('?')[0]; return; }
+  shownHash = location.hash.split('?')[0];
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
   if (isHome) keptHome.leaving = true;
   try {
@@ -1387,7 +1421,14 @@ async function route() {
 }
 
 $('#me-btn').onclick = async () => { if (state.me) (await soc()).meSheet().catch((e) => toast(e.message)); };
-addEventListener('hashchange', route);
+// "Same product in other stores" on My List opens the comparison for that item (one listener for the app).
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('.listcard [data-same]');
+  if (!t) return;
+  e.preventDefault(); e.stopPropagation();
+  location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
+}, true);
+addEventListener('hashchange', (e) => { leftHash = new URL(e.oldURL).hash || '#/'; route(); });
 // Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
 // so the back swipe goes to the page above (More), not the previous tab.
 document.addEventListener('click', (e) => {
