@@ -33,8 +33,9 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   return [k, v ?? true];
 }));
 const ALL_RETAILERS = [...Object.keys(SPECIALS), ...Object.keys(SOURCES)];
-if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer]) && !(mode === 'serpcheck' && opt.retailer === 'kmart')) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
-const RETAILERS = opt.retailer ? [opt.retailer] : ALL_RETAILERS;
+if (opt.retailer && opt.retailer !== 'zyte' && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer]) && !(mode === 'serpcheck' && opt.retailer === 'kmart')) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
+// --retailer=zyte: every store read through Zyte (second batch).
+const RETAILERS = opt.retailer === 'zyte' ? Object.keys(SOURCES).filter((r) => SOURCES[r].runner === 'zyte') : opt.retailer ? [opt.retailer] : ALL_RETAILERS;
 // Saturday's run skips the supermarkets (their specials change on Wednesdays).
 const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
 
@@ -148,6 +149,12 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
     }
     const blocked = raw.filter((x) => x && x.error && /captcha|blocked|403|access denied/i.test(`${x.error} ${x.errorMessage || ''}`)).length;
     const { records, errors, excluded } = prepare(retailer, raw, startedAt);
+    if (errors && SOURCES[retailer]?.runner) {
+      // Why items were left out, with one example each (stores read through Google Shopping or Zyte).
+      const why = {};
+      for (const x of raw) { const a = adaptItem(retailer, x); if (a.error && !why[a.error]) why[a.error] = JSON.stringify(x).slice(0, 300); }
+      for (const [k, v] of Object.entries(why).slice(0, 4)) log(key, `left out (${k}): ${v}`);
+    }
     const written = await writeRecords(db, records);
     const flagged = await updateFlags(db, records.map((r) => r.product.id));
     const msg = `${written} saved, ${errors} errors, ${excluded} excluded, ${flagged} flags` + (blocked ? `, ${blocked} BLOCKED — check source` : '');

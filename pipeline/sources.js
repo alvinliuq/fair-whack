@@ -58,17 +58,22 @@ const enc = encodeURIComponent;
 const ZY = {
   target: ['towel', 'bedding', 'quilt cover', 'pillow', 'kids clothing', 'womens dress', 'mens shirt', 'pyjamas', 'shoes', 'toys', 'lego', 'kitchen',
     'storage', 'cushion', 'lamp', 'home decor', 'baby', 'swimwear', 'bags', 'school uniform'].map((q) => [`https://www.target.com.au/search?text=${enc(q)}`, null]),
-  thegoodguys: [['televisions', 'Electronics > TVs'], ['laptops', 'Electronics > Computers'], ['fridges', 'Electronics > Appliances'], ['washing-machines', 'Electronics > Appliances'],
+  // 25 Nov: fridges, laptops, soundbars and fans pages gave 0 products; those come from search pages below.
+  thegoodguys: [['televisions', 'Electronics > TVs'], ['washing-machines', 'Electronics > Appliances'],
     ['dryers', 'Electronics > Appliances'], ['dishwashers', 'Electronics > Appliances'], ['vacuum-cleaners', 'Electronics > Appliances'], ['coffee-machines', 'Electronics > Appliances'],
-    ['microwaves', 'Electronics > Appliances'], ['air-fryers', 'Electronics > Appliances'], ['headphones', 'Electronics > Audio'], ['soundbars', 'Electronics > Audio'],
-    ['mobile-phones', 'Electronics > Phones'], ['air-conditioners', 'Electronics > Appliances'], ['heaters', 'Electronics > Appliances'], ['fans', 'Electronics > Appliances'],
-    ['ovens', 'Electronics > Appliances'], ['cooktops', 'Electronics > Appliances']].map(([c, cat]) => [`https://www.thegoodguys.com.au/${c}`, cat]),
-  petbarn: [['dogs/dog-food', 'Pet > Dog'], ['dogs/dog-treats', 'Pet > Dog'], ['dogs/dog-toys', 'Pet > Dog'], ['dogs/dog-beds', 'Pet > Dog'], ['dogs/dog-health-care', 'Pet > Dog'],
-    ['dogs/flea-tick-worming', 'Pet > Dog'], ['dogs/dog-grooming', 'Pet > Dog'], ['dogs/dog-collars-leads', 'Pet > Dog'], ['cats/cat-food', 'Pet > Cat'], ['cats/cat-treats', 'Pet > Cat'],
-    ['cats/cat-litter', 'Pet > Cat'], ['cats/cat-toys', 'Pet > Cat'], ['cats/flea-tick-worming', 'Pet > Cat'], ['cats/cat-scratchers', 'Pet > Cat'], ['fish', 'Pet > Fish'],
-    ['birds', 'Pet > Bird'], ['small-animals', 'Pet > Small animals']].map(([c, cat]) => [`https://www.petbarn.com.au/${c}`, cat]),
+    ['microwaves', 'Electronics > Appliances'], ['air-fryers', 'Electronics > Appliances'], ['headphones', 'Electronics > Audio'],
+    ['mobile-phones', 'Electronics > Phones'], ['air-conditioners', 'Electronics > Appliances'], ['heaters', 'Electronics > Appliances'],
+    ['ovens', 'Electronics > Appliances'], ['cooktops', 'Electronics > Appliances']].map(([c, cat]) => [`https://www.thegoodguys.com.au/${c}`, cat])
+    .concat([['fridge', 'Electronics > Appliances'], ['laptop', 'Electronics > Computers'], ['soundbar', 'Electronics > Audio'], ['fan', 'Electronics > Appliances']]
+      .map(([q, cat]) => [`https://www.thegoodguys.com.au/search?q=${enc(q)}`, cat])),
+  // 25 Nov: flea-tick-worming, dog-health-care, dog-collars-leads, birds, small-animals gave 0; searched instead.
+  petbarn: [['dogs/dog-food', 'Pet > Dog'], ['dogs/dog-treats', 'Pet > Dog'], ['dogs/dog-toys', 'Pet > Dog'], ['dogs/dog-beds', 'Pet > Dog'],
+    ['dogs/dog-grooming', 'Pet > Dog'], ['cats/cat-food', 'Pet > Cat'], ['cats/cat-treats', 'Pet > Cat'],
+    ['cats/cat-litter', 'Pet > Cat'], ['cats/cat-toys', 'Pet > Cat'], ['cats/cat-scratchers', 'Pet > Cat'], ['fish', 'Pet > Fish']].map(([c, cat]) => [`https://www.petbarn.com.au/${c}`, cat])
+    .concat([['flea and tick', 'Pet'], ['worming', 'Pet'], ['dog collar', 'Pet > Dog'], ['bird food', 'Pet > Bird'], ['rabbit', 'Pet > Small animals']]
+      .map(([q, cat]) => [`https://www.petbarn.com.au/search?q=${enc(q)}`, cat])),
   peto: [['https://www.peto.com.au/', 'Pet'], ['https://www.peto.com.au/collections/dog-food', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat-food', 'Pet > Cat'],
-    ['https://www.peto.com.au/collections/dog', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat', 'Pet > Cat'], ['https://www.peto.com.au/collections/sale', 'Pet']],
+    ['https://www.peto.com.au/collections/dog', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat', 'Pet > Cat']],
   decathlon: [['tent', 'Sports > Camping'], ['sleeping bag', 'Sports > Camping'], ['hiking shoes', 'Sports > Hiking'], ['backpack', 'Sports > Hiking'], ['running shoes', 'Sports > Running'],
     ['bike', 'Sports > Cycling'], ['swimming', 'Sports > Swimming'], ['yoga', 'Sports > Fitness'], ['dumbbells', 'Sports > Fitness'], ['football', 'Sports > Team sports'],
     ['jacket', 'Clothing > Outdoor'], ['kids', 'Sports > Kids'], ['tennis', 'Sports > Racket'], ['fishing', 'Sports > Fishing']]

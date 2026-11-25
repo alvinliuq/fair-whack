@@ -23,6 +23,16 @@ async function zyte(body) {
   }
 }
 
+// Next-page links: Zyte's own paginationNext when it finds one; otherwise these URL patterns are tried in turn
+// and the first that brings new products is kept for the rest of the run.
+const PAGE_PATTERNS = [
+  (u, n) => withParam(u, 'page', n),
+  (u, n) => withParam(u, 'page', n - 1),
+  (u, n) => withParam(u, 'p', n),
+  (u, n) => withParam(u, 'pageNumber', n),
+];
+function withParam(u, k, v) { const x = new URL(u); x.searchParams.set(k, String(v)); return x.toString(); }
+
 const perRequest = (extractFrom) => (extractFrom === 'browserHtml' ? ZYTE_EST_USD.browser : 0) + ZYTE_EST_USD.extraction;
 
 /** Zyte spend recorded this month (estimates). */
@@ -44,7 +54,8 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
   const items = [];
   const jobs = input.products
     ? input.products.map((url) => ({ url, product: true }))
-    : input.pages.map(([url, category]) => ({ url, category, page: 1 }));
+    : input.pages.map(([url, category]) => ({ url, base: url, category, page: 1, seen: null }));
+  let pattern = null; // index into PAGE_PATTERNS once one works
   const work = async () => {
     while (jobs.length && !stopped) {
       const j = jobs.shift();
@@ -60,10 +71,22 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
         continue;
       }
       const list = data.productList?.products || [];
-      log(`${label}: ${j.url} -> ${status}${status === 200 ? `, ${list.length} products` : ` ${String(data.detail || data.title || '').slice(0, 100)}`}`);
-      for (const p of list) items.push({ ...p, _category: j.category });
+      const urls = new Set(list.map((p) => p.url || p.name));
+      const fresh = j.seen ? list.filter((p) => !j.seen.has(p.url || p.name)) : list;
+      log(`${label}: ${j.url} -> ${status}${status === 200 ? `, ${list.length} products${j.seen ? `, ${fresh.length} new` : ''}` : ` ${String(data.detail || data.title || '').slice(0, 100)}`}`);
+      for (const p of fresh) items.push({ ...p, _category: j.category });
+      if (status !== 200 || !list.length || j.page >= (input.maxPages || 1)) continue;
+      const seen = new Set([...(j.seen || []), ...urls]);
+      if (j.seen && !fresh.length) {
+        // This page pattern repeats the first page: try the next pattern (only while none is known to work).
+        if (pattern === null && j.try + 1 < PAGE_PATTERNS.length) jobs.push({ ...j, url: PAGE_PATTERNS[j.try + 1](j.base, j.page), try: j.try + 1 });
+        continue;
+      }
+      if (j.seen && fresh.length && pattern === null && j.try != null) pattern = j.try;
       const next = data.productList?.paginationNext?.url;
-      if (status === 200 && next && list.length && j.page < (input.maxPages || 1)) jobs.push({ url: next, category: j.category, page: j.page + 1 });
+      const n = j.page + 1;
+      if (next) jobs.push({ ...j, url: next, page: n, seen, try: null });
+      else { const t = pattern ?? 0; jobs.push({ ...j, url: PAGE_PATTERNS[t](j.base, n), page: n, seen, try: pattern === null ? t : null }); }
     }
   };
   await Promise.all(Array.from({ length: concurrency }, work));
