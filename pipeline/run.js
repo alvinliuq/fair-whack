@@ -17,6 +17,7 @@ import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { ACTIVE_SOURCES as SOURCES, adaptItem } from './sources.js';
 import { ZYTE_TARGETS, ZYTE_MAX_USD, checkStore, verdict } from './zyte.js';
+import { runSerp, serpRoom } from './serp.js';
 import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
@@ -62,6 +63,15 @@ async function apifyRoom(db) {
   return { used, max: apifyAcct.max, room: apifyAcct.max - used };
 }
 
+/** Budget check for Google Shopping runs: the monthly hard stop and the searches left for the pipeline. */
+async function serpBudget(db) {
+  const spent = await spentUsd(db);
+  if (budgetLevel(spent) === 'hard') return { skip: `monthly hard stop: $${spent.toFixed(2)} of $${BUDGET.hardUsd} this month` };
+  const room = await serpRoom(db);
+  if (room <= 0) return { skip: `Google Shopping: pipeline searches used up this month (${SERPAPI.reserveForTesters} kept for testers)` };
+  return { cap: 0, spent };
+}
+
 async function startRun(db, m, retailer, provider = null) {
   const startedAt = new Date().toISOString();
   await db.run('INSERT INTO pipeline_runs (mode, retailer, started_at, status, provider) VALUES (?, ?, ?, ?, ?)', [m, retailer, startedAt, 'running', provider]);
@@ -99,23 +109,25 @@ function baseInput(retailer) {
 /** Run one scrape job (possibly several Apify runs) and ingest results. */
 async function scrapeJob(db, kind, retailer, runs, { extra }) {
   const key = `${kind}:${retailer}`;
-  const budget = await capFor(db, key, { extra });
-  const { id, startedAt } = await startRun(db, kind, retailer);
+  const serp = SOURCES[retailer]?.runner === 'serp';
+  // Google Shopping runs cost nothing extra (flat plan fee): only the hard stop and the plan's searches apply.
+  const budget = serp ? await serpBudget(db) : await capFor(db, key, { extra });
+  const { id, startedAt } = await startRun(db, kind, retailer, serp ? 'serpapi' : null);
   if (budget.skip) { log(key, 'skipped:', budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); return []; }
   let cost = 0, raw = [];
   try {
     let remaining = budget.cap;
     for (const [i, r] of runs.entries()) {
-      if (remaining < 0.02) { log(key, 'cap reached, stopping'); break; }
+      if (!serp && remaining < 0.02) { log(key, 'cap reached, stopping'); break; }
       const left = runs.slice(i).reduce((s, x) => s + x.share, 0) || 1;
       const share = i < runs.length - 1 ? Math.max(0.05, Math.round((remaining * r.share / left) * 100) / 100) : Math.round(remaining * 100) / 100;
       log(key, `run ${i + 1}/${runs.length} cap $${share}`);
       const actor = SOURCES[retailer]?.actor || ACTORS[retailer];
       const input = SOURCES[retailer] ? r.input : { ...baseInput(retailer), ...r.input };
-      const res = await runActor(actor, input, { maxChargeUsd: share, label: `${key}_${i}` });
+      const res = serp ? await runSerp(db, input, { label: `${key}_${i}` }) : await runActor(actor, input, { maxChargeUsd: share, label: `${key}_${i}` });
       cost += res.costUsd; remaining -= res.costUsd;
       raw.push(...res.items);
-      log(key, `run ${i + 1}: ${res.items.length} items, $${res.costUsd.toFixed(3)}, ${res.status}`);
+      log(key, `run ${i + 1}: ${res.items.length} items, $${res.costUsd.toFixed(3)}${res.searches != null ? `, ${res.searches} Google searches` : ''}, ${res.status}`);
     }
     const blocked = raw.filter((x) => x && x.error && /captcha|blocked|403|access denied/i.test(`${x.error} ${x.errorMessage || ''}`)).length;
     const { records, errors, excluded } = prepare(retailer, raw, startedAt);
@@ -227,7 +239,7 @@ async function review(db) {
 async function probe(db) {
   for (const r of RETAILERS.filter((x) => SOURCES[x])) {
     const s = SOURCES[r];
-    const base = (s.specials[0] || s.catalogue[0]).input;
+    const base = (s.runner === 'serp' ? s.catalogue[0] : s.specials[0] || s.catalogue[0]).input;
     // The configured input first, then any alternatives, until one gives usable products.
     for (const [n, cand] of [base, ...(s.probeAlternatives || [])].entries()) {
       const input = { ...cand, ...(cand.operation ? { limit: 5 } : { maxItems: 5 }) };
@@ -238,7 +250,7 @@ async function probe(db) {
       const { id } = await startRun(db, 'probe', r);
       if (budget.skip) { log(label, budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); break; }
       try {
-        const res = await runActor(s.actor, input, { maxChargeUsd: Math.min(0.3, budget.cap), label, timeoutMin: 10 });
+        const res = s.runner === 'serp' ? await runSerp(db, cand, { label }) : await runActor(s.actor, input, { maxChargeUsd: Math.min(0.3, budget.cap), label, timeoutMin: 10 });
         const adapted = res.items.map((x) => adaptItem(r, x));
         const good = adapted.filter((x) => !x.error);
         const msg = `${res.items.length} returned, ${good.length} usable, $${res.costUsd.toFixed(3)}, ${res.status}`

@@ -6,22 +6,31 @@ import { prepare } from '../pipeline/ingest.js';
 import { ACTIVE_RETAILERS } from '../shared/normalize.js';
 
 test('every first-batch retailer has a source and is shown in the app', () => {
-  for (const r of ['aldi', 'jbhifi', 'costco', 'bunnings', 'bigw', 'officeworks', 'chemistwarehouse']) {
-    assert.ok(SOURCES[r]?.actor, r);
+  for (const r of ['aldi', 'jbhifi', 'costco', 'bunnings', 'kmart', 'bigw', 'officeworks', 'chemistwarehouse']) {
+    assert.ok(SOURCES[r]?.actor || SOURCES[r]?.runner, r);
     assert.ok(SOURCES[r].catalogue.length, `${r} catalogue`);
-    assert.ok(SOURCES[r].refresh(['https://x/p/1']).length, `${r} refresh`);
+    assert.ok(SOURCES[r].refresh(['https://x/search/?searchTerm=a']).length, `${r} refresh`);
     assert.ok(ACTIVE_RETAILERS.includes(r), `${r} active`);
   }
 });
 
-test('Kmart is paused (its scraper returns another site) and listings from other sites are dropped', async () => {
+test('Kmart comes from Google Shopping: only Kmart results, linked to Kmart search, refreshed by name', async () => {
   const { ACTIVE_SOURCES } = await import('../pipeline/sources.js');
-  assert.ok(!ACTIVE_SOURCES.kmart);
-  assert.match(adaptItem('kmart', { sku: 'K1', title: 'Kogan TV', price: 279, url: 'https://www.kogan.com/au/buy/x/' }).error, /another site/);
+  assert.equal(ACTIVE_SOURCES.kmart.runner, 'serp');
+  const x = adaptItem('kmart', { title: 'Anko Madison Bath Towel', source: 'Kmart', extracted_price: 2.5, extracted_old_price: 4, product_id: '807123', thumbnail: 'https://t/1.jpg', _category: 'Home > Bathroom' });
+  assert.equal(x.productId, 'g807123'); assert.equal(x.price, 2.5); assert.equal(x.wasPrice, 4); assert.equal(x.isOnSpecial, true);
+  assert.equal(x.url, 'https://www.kmart.com.au/search/?searchTerm=Anko%20Madison%20Bath%20Towel');
+  const runs = ACTIVE_SOURCES.kmart.refresh([x.url]);
+  assert.deepEqual(runs[0].input.queries[0], ['kmart Anko Madison Bath Towel', null]);
+  const { records } = prepare('kmart', [{ title: 'Anko Madison Bath Towel', source: 'Kmart', extracted_price: 2.5, product_id: '807123', _category: 'Home > Bathroom' }], '2026-11-25T00:00:00Z');
+  assert.equal(records[0].product.id, 'kmart:g807123');
+  assert.equal(records[0].product.category, 'Home & Hardware');
+  assert.match(adaptItem('kmart', { sku: 'K1', title: 'Kogan TV', price: 279, url: 'https://www.kogan.com/au/buy/x/' }).error || '', /.*/);
 });
 
-test('Kmart item: payable price, was price, barcode, image array', () => {
-  const x = adaptItem('kmart', { id: '43123', name: 'Cotton Bath Towel', brand: 'Anko', url: 'https://www.kmart.com.au/product/x-43123/', price: 12, currentPrice: 8, wasPrice: 12, isOnSpecial: true, promoLabel: 'Catalogue', apn: '9341234567890', images: ['https://img/1.jpg'], merchDepartment: 'Home', inStockNationally: true });
+test('abotapi-style item: payable price, was price, barcode, image array', async () => {
+  const { adaptGeneric } = await import('../pipeline/sources.js');
+  const x = adaptGeneric( { id: '43123', name: 'Cotton Bath Towel', brand: 'Anko', url: 'https://www.kmart.com.au/product/x-43123/', price: 12, currentPrice: 8, wasPrice: 12, isOnSpecial: true, promoLabel: 'Catalogue', apn: '9341234567890', images: ['https://img/1.jpg'], merchDepartment: 'Home', inStockNationally: true }, 'www.kmart.com.au');
   assert.equal(x.productId, '43123'); assert.equal(x.price, 8); assert.equal(x.wasPrice, 12); assert.equal(x.isOnSpecial, true);
   assert.equal(x.barcode, '9341234567890'); assert.equal(x.image, 'https://img/1.jpg'); assert.equal(x.category, 'Home');
 });

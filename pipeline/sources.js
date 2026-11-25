@@ -7,6 +7,8 @@
 // scraper, which fetches one search page per run. Reviews and extra detail pages are always switched off:
 // they are charged separately and the app does not use them.
 
+import { adaptSerp, serpQueryFromUrl } from './serp.js';
+
 const NO_EXTRAS = { fetchReviews: false, incrementalMode: false };
 
 // ALDI departments (URL slugs, as on aldi.com.au/products/<slug>/k/<key>).
@@ -23,6 +25,24 @@ const Q = {
   bigw: ['toys', 'lego', 'bedding', 'towel', 'kitchen', 'tv', 'headphones', 'books', 'video games', 'clothing', 'shoes', 'baby', 'pet', 'vitamins', 'cleaning', 'outdoor'],
   jbhifi: ['tv', 'laptop', 'headphones', 'speaker', 'iphone', 'samsung', 'ipad', 'nintendo switch', 'playstation', 'xbox', 'camera', 'smart watch', 'monitor', 'vacuum', 'coffee machine', 'air fryer', 'keyboard', 'soundbar'],
 };
+
+// Kmart through Google Shopping: one search per line, with the category the results are filed under.
+const KMART_RANGE = [
+  ['kmart bath towels', 'Home > Bathroom'], ['kmart bath mat', 'Home > Bathroom'], ['kmart bedding sheets', 'Home > Bedroom'],
+  ['kmart quilt cover', 'Home > Bedroom'], ['kmart pillows', 'Home > Bedroom'], ['kmart cushions', 'Home > Living'],
+  ['kmart throw rug', 'Home > Living'], ['kmart lamp', 'Home > Lighting'], ['kmart storage boxes', 'Home > Storage'],
+  ['kmart baskets', 'Home > Storage'], ['kmart kitchen utensils', 'Home > Kitchen'], ['kmart cookware', 'Home > Kitchen'],
+  ['kmart dinnerware', 'Home > Dining'], ['kmart food containers', 'Home > Kitchen'], ['kmart cleaning', 'Home > Cleaning'],
+  ['kmart laundry basket', 'Home > Laundry'], ['kmart home decor', 'Home > Decor'], ['kmart candles', 'Home > Decor'],
+  ['kmart outdoor furniture', 'Home > Outdoor'], ['kmart garden', 'Home > Garden'], ['kmart small appliances', 'Electronics > Appliances'],
+  ['kmart air fryer', 'Electronics > Appliances'], ['kmart kettle toaster', 'Electronics > Appliances'], ['kmart phone accessories', 'Electronics > Phone accessories'],
+  ['kmart headphones', 'Electronics > Audio'], ['kmart tv', 'Electronics > TVs'], ['kmart toys', 'Toys'], ['kmart lego', 'Toys'],
+  ['kmart kids clothing', 'Clothing > Kids'], ['kmart womens clothing', 'Clothing > Womens'], ['kmart mens clothing', 'Clothing > Mens'],
+  ['kmart shoes', 'Clothing > Shoes'], ['kmart pyjamas', 'Clothing > Sleepwear'], ['kmart baby', 'Baby'], ['kmart nursery', 'Baby'],
+  ['kmart fitness', 'Sports > Fitness'], ['kmart camping', 'Sports > Camping'], ['kmart stationery', 'Office > Stationery'],
+  ['kmart pet bed', 'Pet'], ['kmart party supplies', 'Home > Party'], ['kmart christmas decorations', 'Home > Christmas'],
+];
+const KMART_SPECIALS = ['kmart clearance', 'kmart sale', 'kmart price drop', 'kmart homewares sale', 'kmart toys sale'];
 
 // ---------- adapters ----------
 
@@ -120,22 +140,15 @@ export const SOURCES = {
     refresh: urlRefresh('urls', { fetchDetails: false, ...NO_EXTRAS }),
   },
   kmart: {
-    actor: 'abotapi~kmart-au-scraper',
+    // Kmart's site blocks both Apify scrapers and Zyte (tested 25 Nov), so Kmart is read from Google Shopping
+    // (SerpApi), keeping only results sold by Kmart. Each query is one search from the SerpApi plan; runs cost $0.
+    runner: 'serp',
     host: 'www.kmart.com.au',
-    // PAUSED 25 Nov: this scraper's searches return nothing and its deal views (hot-deals, clearance,
-    // smart-savers) return kogan.com listings, not Kmart's. Nothing runs for Kmart until a working source is found
-    // (Zyte reads Target, a sister site, with plain HTML).
-    disabled: 'scraper returns kogan.com listings, not Kmart products',
-    specials: [
-      { input: { mode: 'search', searchTerms: [], specialsCategory: 'hot-deals', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
-      { input: { mode: 'search', searchTerms: [], specialsCategory: 'clearance', maxItems: 200, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 200 },
-    ],
-    catalogue: ['hot-deals', 'clearance', 'smart-savers'].map((c) => ({ input: { mode: 'search', searchTerms: [], specialsCategory: c, maxItems: 1000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 1000 })),
-    refresh: urlRefresh('urls', { fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }),
-    probeAlternatives: [
-      { mode: 'search', searchTerms: [], specialsCategory: 'clearance', fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, maxItems: 30 },
-      { mode: 'search', searchTerms: [], specialsCategory: 'smart-savers', fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, maxItems: 30 },
-    ],
+    specials: KMART_SPECIALS.map((q) => ({ input: { store: '^kmart$', queries: [[q, null]] }, max: 1 })),
+    catalogue: KMART_RANGE.map(([q, c]) => ({ input: { store: '^kmart$', queries: [[q, c]] }, max: 1 })),
+    // Each list item is looked up again by its name (at most 150 a week).
+    refresh: (urls) => urls.map(serpQueryFromUrl).filter(Boolean).slice(0, 150)
+      .map((t) => ({ input: { store: '^kmart$', queries: [[`kmart ${t}`, null]] }, max: 1 })),
   },
   bigw: {
     actor: 'abotapi~bigw-marketplace-scraper',
@@ -180,7 +193,7 @@ export const ACTIVE_SOURCES = Object.fromEntries(Object.entries(SOURCES).filter(
 export function adaptItem(retailer, item) {
   const s = SOURCES[retailer];
   if (!s) return item; // Woolworths and Coles actors already use that shape
-  const out = (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
+  const out = s.runner === 'serp' ? adaptSerp(item, s.host) : (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
   if (out._membersOnly) return { ...out, error: 'members-only price' };
   // A listing that links to another website (e.g. a partner's deal) is not this store's product.
   const site = s.host.replace(/^www\./, '');

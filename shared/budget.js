@@ -28,6 +28,7 @@ export const SERPAPI = {
   stopAtSearches: 4900,    // keep a small margin for retries
   perUserPerDay: 60,       // one tester can't use the month's searches by accident
   cacheHours: 24,          // the same keyword is looked up at most once in this time
+  reserveForTesters: 2500, // the pipeline (Kmart) stops while this many are left for testers' comparisons
 };
 
 // Zyte does not return a price per request, so each request is recorded at a cautious estimate.

@@ -2,7 +2,7 @@
 
 Shopping list + price comparison PWA across Australian retailers. Internal testing only.
 
-Stores (`shared/retailers.js`): Woolworths, Coles (Apify `atalaia`), and since stage 6 ALDI, Costco, Bunnings, BIG W, Officeworks, Chemist Warehouse (Apify `abotapi` scrapers; Kmart paused: its scraper returns kogan.com listings) and JB Hi-Fi (Apify `dromb`). What each scraper is asked for and how its output is read: `pipeline/sources.js`. A store shows in the app once it has products. Test a scraper cheaply: **Actions → Pipeline → Run workflow → `probe`** (5 products per store, no products saved).
+Stores (`shared/retailers.js`): Woolworths, Coles (Apify `atalaia`), and since stage 6 ALDI, Costco, Bunnings, BIG W, Officeworks, Chemist Warehouse (Apify `abotapi` scrapers), JB Hi-Fi (Apify `dromb`) and Kmart from **Google Shopping** (SerpApi, `pipeline/serp.js`: Kmart's site blocks Apify and Zyte; about 41 searches per range refresh, 5 per specials run, one per list item; runs cost $0 and stop while 2,500 of the month's searches are left for testers). What each scraper is asked for and how its output is read: `pipeline/sources.js`. A store shows in the app once it has products. Test a scraper cheaply: **Actions → Pipeline → Run workflow → `probe`** (5 products per store, no products saved).
 
 - `public/` — the app (static PWA, no build step)
 - `functions/api/[[path]].js` → `shared/api.js` — API on Cloudflare Pages Functions, data in Cloudflare D1
