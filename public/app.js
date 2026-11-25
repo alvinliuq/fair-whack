@@ -410,7 +410,7 @@ const STORE_GROUPS = [
 const BROWSE_SORTS = [['popular', 'Most popular'], ['new', null], ['special', 'On special'], ['mine', 'On my list']];
 
 /** Browse groups: 8 cards; tapping one lifts it and opens it into a panel of its stores. */
-function openGroup(card, [name, ids, icon, bg], count) {
+function openGroup(card, [name, ids, icon, bg], count, gi, again) {
   const from = card.getBoundingClientRect();
   const back = document.createElement('div'); back.className = 'grp-back';
   const panel = document.createElement('div'); panel.className = 'grp-panel'; panel.style.setProperty('--bg', bg);
@@ -423,15 +423,17 @@ function openGroup(card, [name, ids, icon, bg], count) {
   card.style.visibility = 'hidden';
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fromT = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
-  const dur = reduce ? 0 : 340;
+  const dur = reduce || again ? 0 : 340;
+  // The open group is part of the address, so going back from a store lands here, not on the bare Browse page.
+  history.replaceState(null, '', `#/browse?g=${gi}`);
   back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur, fill: 'both' });
   // Lift first (a little bigger, deeper shadow), then grow into the panel.
   panel.animate([
     { transform: fromT, borderRadius: '18px', boxShadow: '0 1px 3px rgba(40,20,90,.1)' },
     { transform: `${fromT} translateY(-6px) scale(1.04)`, boxShadow: '0 18px 40px rgba(40,20,90,.28)', offset: 0.25 },
     { transform: 'none', borderRadius: '24px', boxShadow: '0 24px 60px rgba(40,20,90,.30)' },
-  ], { duration: reduce ? 0 : 420, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
-  panel.querySelectorAll('.store-tile').forEach((t, i) => t.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: reduce ? 0 : 260, delay: reduce ? 0 : 220 + i * 50, fill: 'both' }));
+  ], { duration: reduce || again ? 0 : 420, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+  if (!again) panel.querySelectorAll('.store-tile').forEach((t, i) => t.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: reduce ? 0 : 260, delay: reduce ? 0 : 220 + i * 50, fill: 'both' }));
   let closed = false;
   const close = (go) => {
     if (closed) return; closed = true;
@@ -441,6 +443,7 @@ function openGroup(card, [name, ids, icon, bg], count) {
     back.animate([{ opacity: 1 }, { opacity: 0 }], { duration: go ? 0 : dur, fill: 'both' });
     const a = panel.animate([{ transform: 'none', opacity: 1 }, { transform: t, opacity: 0.4 }], { duration: go ? 0 : 300, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'both' });
     a.onfinish = () => { panel.remove(); back.remove(); card.style.visibility = ''; };
+    if (!go) history.replaceState(null, '', '#/browse');
   };
   const onHash = () => close(true);
   addEventListener('hashchange', onHash);
@@ -450,14 +453,18 @@ function openGroup(card, [name, ids, icon, bg], count) {
   panel.querySelector('.grp-x').focus({ preventScroll: true });
 }
 
+function browseGroups() {
+  const grouped = new Set(STORE_GROUPS.flatMap(([, ids]) => ids));
+  const extra = STORES.filter((r) => !grouped.has(r));
+  return [...STORE_GROUPS, ...(extra.length ? [['More stores', extra, '🛍️', '#F1EEF8']] : [])]
+    .map(([g, ids, icon, bg]) => [g, ids.filter((r) => STORES.includes(r)), icon, bg]).filter(([, ids]) => ids.length);
+}
+
 views.browse = async (q, store) => {
   if (!STORES.includes(store)) {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
-    const grouped = new Set(STORE_GROUPS.flatMap(([, ids]) => ids));
-    const extra = STORES.filter((r) => !grouped.has(r));
-    const groups = [...STORE_GROUPS, ...(extra.length ? [['More stores', extra, '🛍️', '#F1EEF8']] : [])]
-      .map(([g, ids, icon, bg]) => [g, ids.filter((r) => STORES.includes(r)), icon, bg]).filter(([, ids]) => ids.length);
+    const groups = browseGroups();
     app.innerHTML = `<h1>Browse</h1><p class="lead">Pick a kind of shop, then a store, to walk its aisles and see what's new.</p>
       <div class="grp-grid">${groups.map(([g, ids, icon, bg], i) => `<button type="button" class="grp-card" data-g="${i}" style="--bg:${bg}">
         <span class="grp-icon" aria-hidden="true">${icon}</span>
@@ -465,19 +472,48 @@ views.browse = async (q, store) => {
         <span class="small muted">${ids.length} store${ids.length > 1 ? 's' : ''} · ${ids.reduce((n, r) => n + count(r), 0).toLocaleString('en-AU')} products</span>
         <span class="grp-logos">${ids.slice(0, 4).map((r) => storeLogo(r, 'sm')).join('')}</span>
       </button>`).join('')}</div>`;
-    app.querySelectorAll('.grp-card').forEach((b) => (b.onclick = () => openGroup(b, groups[+b.dataset.g], count)));
+    app.querySelectorAll('.grp-card').forEach((b) => (b.onclick = () => openGroup(b, groups[+b.dataset.g], count, +b.dataset.g)));
+    // Coming back from a store (swipe back or "‹"): the group's panel is open again.
+    const g = q.get('g');
+    if (g != null && groups[+g]) openGroup(app.querySelector(`.grp-card[data-g="${+g}"]`), groups[+g], count, +g, true);
     return;
   }
   const newLabel = state.meta?.newLabel || 'New this week';
   const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: BROWSE_SORTS.some(([k]) => k === q.get('sort')) ? q.get('sort') : 'popular' };
   const link = (patch) => `#/browse/${store}${qs({ ...f, ...patch })}`;
   const total = (state.meta?.retailers || []).find((x) => x.retailer === store)?.products || 0;
-  app.innerHTML = `<a class="back" href="#/browse">‹ Browse</a>
-    <div class="store-head">${storeLogo(store, 'big')}<div><h1>${esc(RET[store])}</h1><p class="lead small">${total.toLocaleString('en-AU')} products</p></div></div>
+  const gi = browseGroups().findIndex(([, ids]) => ids.includes(store));
+  app.innerHTML = `<a class="back" href="#/browse${gi >= 0 ? `?g=${gi}` : ''}">‹ ${gi >= 0 ? esc(browseGroups()[gi][0]) : 'Browse'}</a>
+    <div class="store-head with-search">${storeLogo(store, 'big')}<div class="sh-t"><h1>${esc(RET[store])} <span class="small muted">${total.toLocaleString('en-AU')} products</span></h1>
+      <form class="store-search" id="ssf" role="search" autocomplete="off"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input type="search" name="q" value="${esc(q.get('q') || '')}" placeholder="Search ${esc(RET[store])}" enterkeyhint="search" aria-label="Search ${esc(RET[store])}"></form></div></div>
+    <div id="browsebody">
     <div id="c1"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
     <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}">${esc(l || newLabel)}</a>`).join('')}</div>
     <p class="small muted" id="blabel" style="margin:0 0 8px"></p>
-    <div id="res"></div>`;
+    <div id="res"></div></div><div id="searchres" hidden></div>`;
+  // Search this store: results replace the aisles until the box is cleared.
+  const sf = $('#ssf'), sres = $('#searchres'), body = $('#browsebody');
+  let seq = 0;
+  const runSearch = async (v) => {
+    v = v.trim();
+    history.replaceState(null, '', `#/browse/${store}${qs({ ...f, q: v })}`);
+    if (v.length < 2) { sres.hidden = true; body.hidden = false; return; }
+    const my = ++seq;
+    body.hidden = true; sres.hidden = false;
+    loading(4, sres);
+    try {
+      const d = await api(`/api/browse/search${qs({ retailer: store, q: v })}`);
+      if (my !== seq) return;
+      sres.innerHTML = d.items.length
+        ? `<p class="small muted" style="margin:4px 0 8px">${d.total > d.items.length ? `First ${d.items.length} of ${d.total}` : `${d.items.length} result${d.items.length > 1 ? 's' : ''}`} at ${esc(RET[store])}</p><div class="grid">${d.items.map(tile).join('')}</div>`
+        : `<div class="empty"><b>Nothing at ${esc(RET[store])} for “${esc(v)}”</b><a href="#/search?q=${encodeURIComponent(v)}">Search every store →</a></div>`;
+    } catch (e) { if (my === seq) fail(e, sres); }
+  };
+  let t;
+  sf.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => runSearch(sf.q.value), 300); });
+  sf.onsubmit = (e) => { e.preventDefault(); clearTimeout(t); sf.q.blur(); runSearch(sf.q.value); };
+  if (q.get('q')) runSearch(q.get('q'));
   api(`/api/categories${qs({ retailer: store })}`).then((c) => {
     $('#c1').innerHTML = chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles' });
     const top = c.categories.find((x) => x.name === f.cat1);

@@ -597,6 +597,27 @@ async function findProducts(env, tokens, cols, cap, extraWhere = '') {
   return (await env.DB.prepare(`SELECT ${cols} FROM retailer_product WHERE ${where.join(' AND ')} AND ${ACT}${extraWhere} LIMIT ${cap}`).bind(...binds).all()).results;
 }
 
+/** Search one store's range (Browse → a store → search box). */
+route('GET', '/api/browse/search', async ({ env, url }) => {
+  const retailer = url.searchParams.get('retailer');
+  if (!isActive(retailer)) throw new HttpError(400, 'Choose a store');
+  const raw = (url.searchParams.get('q') || '').trim();
+  const tokens = searchTokens(raw, 6);
+  if (!tokens.length) return json({ items: [] });
+  const only = ` AND retailer = '${retailer}' AND cur_price_cents IS NOT NULL`; // retailer is checked by isActive above
+  const ids = await indexedIds(env, tokens, 5000);
+  let rows;
+  if (ids) rows = await selectIn(env, `SELECT ${COLS} FROM retailer_product WHERE id IN`, ids, `AND ${ACT}${only}`);
+  else {
+    const { where, binds } = wordMatch(tokens);
+    rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} AND ${ACT}${only} LIMIT 300`).bind(...binds).all()).results;
+  }
+  const phrase = tokens.join(' ');
+  const score = (r) => { const n = normText(r.name); return (n.includes(phrase) ? 0 : 2) + (n.startsWith(tokens[0]) || normText(r.brand).startsWith(tokens[0]) ? 0 : 1) + n.length / 1000; };
+  rows.sort((a, b) => score(a) - score(b));
+  return json({ items: rows.slice(0, 120).map(pub), total: rows.length });
+});
+
 route('GET', '/api/search', async ({ env, url, user }) => {
   const raw = (url.searchParams.get('q') || '').trim();
   const sort = SEARCH_SORTS.includes(url.searchParams.get('sort')) ? url.searchParams.get('sort') : 'relevance';
