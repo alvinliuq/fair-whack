@@ -203,25 +203,31 @@ async function probe(db) {
   for (const r of RETAILERS.filter((x) => SOURCES[x])) {
     const s = SOURCES[r];
     const base = (s.specials[0] || s.catalogue[0]).input;
-    const input = { ...base, ...(base.operation ? { limit: 5 } : { maxItems: 5 }) };
-    if (Array.isArray(input.queries) && input.queries.length > 1) input.queries = input.queries.slice(0, 1);
-    if (Array.isArray(input.searchTerms) && input.searchTerms.length > 1) input.searchTerms = input.searchTerms.slice(0, 1);
-    const budget = await capFor(db, `probe:${r}`, { extra: false });
-    const { id } = await startRun(db, 'probe', r);
-    if (budget.skip) { log(`probe:${r}`, budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); continue; }
-    try {
-      const res = await runActor(s.actor, input, { maxChargeUsd: Math.min(0.3, budget.cap), label: `probe:${r}`, timeoutMin: 10 });
-      const adapted = res.items.map((x) => adaptItem(r, x));
-      const good = adapted.filter((x) => !x.error);
-      const msg = `${res.items.length} returned, ${good.length} usable, $${res.costUsd.toFixed(3)}, ${res.status}`
-        + (good[0] ? ` — e.g. ${good[0].name} $${good[0].price}${good[0].wasPrice ? ` (was $${good[0].wasPrice})` : ''}` : '')
-        + (adapted.find((x) => x.error) ? ` — problem: ${adapted.find((x) => x.error).error}` : '');
-      log(`probe:${r}`, msg);
-      if (res.items[0]) log(`probe:${r}`, 'fields:', Object.keys(res.items[0]).slice(0, 40).join(', '));
-      await endRun(db, id, good.length ? 'ok' : 'failed', good.length, res.costUsd, msg);
-    } catch (e) {
-      log(`probe:${r}`, 'FAILED', e.message);
-      await endRun(db, id, 'failed', 0, 0, e.message);
+    // The configured input first, then any alternatives, until one gives usable products.
+    for (const [n, cand] of [base, ...(s.probeAlternatives || [])].entries()) {
+      const input = { ...cand, ...(cand.operation ? { limit: 5 } : { maxItems: 5 }) };
+      if (Array.isArray(input.queries) && input.queries.length > 1) input.queries = input.queries.slice(0, 1);
+      if (Array.isArray(input.searchTerms) && input.searchTerms.length > 1) input.searchTerms = input.searchTerms.slice(0, 1);
+      const label = n ? `probe:${r}#alt${n}` : `probe:${r}`;
+      const budget = await capFor(db, `probe:${r}`, { extra: false });
+      const { id } = await startRun(db, 'probe', r);
+      if (budget.skip) { log(label, budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); break; }
+      try {
+        const res = await runActor(s.actor, input, { maxChargeUsd: Math.min(0.3, budget.cap), label, timeoutMin: 10 });
+        const adapted = res.items.map((x) => adaptItem(r, x));
+        const good = adapted.filter((x) => !x.error);
+        const msg = `${res.items.length} returned, ${good.length} usable, $${res.costUsd.toFixed(3)}, ${res.status}`
+          + (good[0] ? ` — e.g. ${good[0].name} $${good[0].price}${good[0].wasPrice ? ` (was $${good[0].wasPrice})` : ''}${good[0].url ? '' : ' (NO URL)'}` : '')
+          + (adapted.find((x) => x.error) ? ` — problem: ${adapted.find((x) => x.error).error}` : '');
+        log(label, `input ${JSON.stringify(input).slice(0, 300)}`);
+        log(label, msg);
+        if (res.items[0]) log(label, 'first item:', JSON.stringify(res.items[0]).slice(0, 1500));
+        await endRun(db, id, good.length ? 'ok' : 'failed', good.length, res.costUsd, msg);
+        if (good.length) break;
+      } catch (e) {
+        log(label, 'FAILED', e.message.slice(0, 700));
+        await endRun(db, id, 'failed', 0, 0, e.message);
+      }
     }
   }
 }

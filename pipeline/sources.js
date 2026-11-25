@@ -61,7 +61,7 @@ export function adaptGeneric(x, host) {
       x.isSpecialBuy ? 'Special Buy' : null, was ? `Save $${(was - price).toFixed(2)}` : null) || null,
     category: categoryOf(x),
     image: imageOf(x),
-    url: absUrl(first(x.url, x.productUrl, x.link), host),
+    url: absUrl(first(x.url, x.productUrl, x.source_url, x.link), host),
     barcode: first(x.gtin, x.apn, x.ean, x.barcode, x.upc) || null,
     isAvailable: avail === false || /out ?of ?stock|unavailable|sold ?out/.test(stock) ? false : true,
     unitPriceText: first(x.unitPriceDisplay, x.unitPriceFormatted) || null,
@@ -89,6 +89,11 @@ export const SOURCES = {
     specials: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], onSaleOnly: true, maxItems: 600, fetchDetails: false }, max: 600 }],
     catalogue: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], maxItems: 3500, fetchDetails: false }, max: 3500 }],
     refresh: urlRefresh('urls', { fetchDetails: false }),
+    probeAlternatives: [
+      { mode: 'search', searchTerms: ['milk'], fetchDetails: false },
+      { mode: 'url', urls: ['https://www.aldi.com.au/products/dairy-eggs-fridge/k/960000000'], fetchDetails: false },
+      { mode: 'search', searchTerms: [], specialsCategory: 'Special Buys', fetchDetails: false },
+    ],
   },
   costco: {
     actor: 'abotapi~costco-au-scraper',
@@ -113,6 +118,10 @@ export const SOURCES = {
     ],
     catalogue: [{ input: { mode: 'search', searchTerms: Q.kmart, maxItems: 3000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 3000 }],
     refresh: urlRefresh('urls', { fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }),
+    probeAlternatives: [
+      { mode: 'search', searchTerms: ['towel'], fetchReviews: false, maxReviews: 0 },
+      { mode: 'search', searchTerms: ['towel'] },
+    ],
   },
   bigw: {
     actor: 'abotapi~bigw-marketplace-scraper',
@@ -122,6 +131,10 @@ export const SOURCES = {
     specials: [{ input: { mode: 'search', queries: [], soldBy: 'bigw', marketplaceOnly: false, sortBy: 'priceAsc', maxItems: 400, ...NO_EXTRAS }, max: 400 }],
     catalogue: searches('bigw', 3000, { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
     refresh: urlRefresh('urls', { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
+    probeAlternatives: [
+      { mode: 'search', queries: ['lego'], soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS },
+      { mode: 'search', queries: ['lego'], marketplaceOnly: false, ...NO_EXTRAS },
+    ],
   },
   officeworks: {
     actor: 'abotapi~officeworks-scraper',
