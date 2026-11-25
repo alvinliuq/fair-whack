@@ -16,6 +16,7 @@ const unitText = (p) => {
   if (p.unit == null || !p.unitBasis) return p.retailerUnit || '';
   return `${money(p.unit)} / ${p.unitBasis === 'each' ? 'each' : p.unitBasis}`;
 };
+const monthName = (key) => { const [y, m] = String(key || '').split('-').map(Number); return y ? new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
 const ago = (iso) => {
   if (!iso) return '';
   const d = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
@@ -831,9 +832,10 @@ views.admin = async () => {
     const counts = o.counts.filter((c) => STORES.includes(c.retailer));
     const tally = (key, labels) => { const m = {}; for (const u of o.users) { const k = u[key] || '—'; m[k] = (m[k] || 0) + 1; } return Object.entries(m).map(([k, n]) => `${labels[k] || k}: ${n}`).join(' · '); };
     app.innerHTML = `<h1>Admin</h1>
-      <div class="card"><div class="row"><b>Data spend</b><span class="spacer"></span><b class="num">$${o.spendUsd.toFixed(2)} / $${o.budgetUsd}</b></div>
-        <div class="meter ${o.spendUsd >= 80 ? 'hot' : ''}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
-        <p class="small muted">At $80, only weekly specials keep running. At $95, everything stops. Apify's own figures are the final word.</p></div>
+      <div class="card"><div class="row"><b>Data spend · ${esc(monthName(o.month))}</b><span class="spacer"></span><b class="num">$${o.spendUsd.toFixed(2)} / $${o.budgetUsd}</b></div>
+        <div class="meter ${o.level !== 'ok' ? 'hot' : ''}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
+        <p class="small muted">Apify $${o.spendBy.apify.toFixed(2)} · Zyte $${o.spendBy.zyte.toFixed(2)} (estimate) · SerpApi $${o.spendBy.serpapi.toFixed(2)} (plan fee) · Google Shopping lookups ${o.serpUsed}/${o.serpCap}</p>
+        <p class="small muted">${o.level === 'hard' ? '<b>Hard stop reached:</b> nothing runs until the 1st.' : o.level === 'soft' ? '<b>Soft limit reached:</b> only specials and list refreshes run.' : 'All jobs running.'} At $${o.softUsd} a month, catalogue crawls stop. At $${o.hardUsd}, everything stops. Resets on the 1st (Melbourne time). The services' own figures are the final word.</p></div>
       <h2>Products</h2><div class="card" style="overflow-x:auto"><table class="t"><tr><th>Store</th><th>Products</th><th>Last 28d</th><th>Specials</th><th>Matched</th><th>Updated</th></tr>
         ${counts.map((c) => `<tr><td>${RET[c.retailer] || c.retailer}</td><td class="num">${c.products}</td><td class="num">${c.fresh28}</td><td class="num">${c.specials}</td><td class="num">${c.matched}</td><td>${ago(c.updated)}</td></tr>`).join('')}</table></div>
       <div class="row"><h2 style="flex:1;justify-content:flex-start;gap:8px">Testers <span class="small muted">${o.users.length}</span></h2><button class="btn small ghost" id="csv">Download list (CSV)</button></div>
@@ -848,7 +850,7 @@ views.admin = async () => {
         <div><span class="ret ${m.b_retailer}">${RET[m.b_retailer]}</span><div class="small">${esc(m.b_name)} ${esc(m.b_size || '')}</div><b class="num">${money(m.b_price)}</b></div></div>
         <div class="row" style="margin-top:8px"><span class="small muted">score ${m.score}</span><span class="spacer"></span><button class="btn small danger" data-m="${m.id}" data-a="reject">Different</button><button class="btn small" data-m="${m.id}" data-a="approve">Same product</button></div></div>`).join('') : '<p class="small muted">Nothing to review.</p>'}</div>
       <h2>Data runs</h2><div class="card" style="overflow-x:auto"><table class="t"><tr><th>When</th><th>Job</th><th>Status</th><th>Items</th><th>$</th><th>Note</th></tr>
-        ${o.runs.map((r) => `<tr><td>${ago(r.started_at)}</td><td>${r.mode} ${r.retailer || ''}</td><td>${r.status}</td><td class="num">${r.items ?? ''}</td><td class="num">${(r.cost_usd || 0).toFixed(2)}</td><td class="small">${esc((r.message || '').slice(0, 140))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet</td></tr>'}</table></div>`;
+        ${o.runs.map((r) => `<tr><td>${ago(r.started_at)}</td><td>${r.mode} ${RET[r.retailer] || r.retailer || ''}${r.provider && r.provider !== 'apify' ? ` <span class="muted">${esc(r.provider)}</span>` : ''}</td><td>${r.status}</td><td class="num">${r.items ?? ''}</td><td class="num">${(r.cost_usd || 0).toFixed(2)}</td><td class="small">${esc((r.message || '').slice(0, 140))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet</td></tr>'}</table></div>`;
     app.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => { await api(`/api/admin/matches/${b.dataset.m}`, { method: 'POST', body: { action: b.dataset.a } }); toast('Saved'); views.admin(); }));
     app.querySelectorAll('[data-u]').forEach((b) => (b.onclick = () => testerSheet(o.users.find((u) => u.id === b.dataset.u), o.users.filter((u) => u.id !== b.dataset.u))));
     app.querySelectorAll('[data-back]').forEach((b) => (b.onclick = async () => { await api('/api/admin/users', { method: 'POST', body: { action: 'restore', id: b.dataset.back } }); toast('They can sign in again'); views.admin(); }));

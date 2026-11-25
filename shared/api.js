@@ -7,6 +7,7 @@ import {
 import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-index.js';
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
+import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
@@ -910,8 +911,9 @@ function manualUpsert(env, { retailer, name, brand, size_text, price_cents, was_
 }
 
 route('GET', '/api/admin/overview', async ({ env, user }) => {
-  const spend = await env.DB.prepare('SELECT COALESCE(SUM(cost_usd),0) AS usd FROM pipeline_runs').first();
-  const runs = (await env.DB.prepare('SELECT id, mode, retailer, started_at, finished_at, status, items, cost_usd, message FROM pipeline_runs ORDER BY id DESC LIMIT 20').all()).results;
+  const spend = await monthSpend(async (sql, p) => (await env.DB.prepare(sql).bind(...p).all()).results);
+  const serp = await env.DB.prepare('SELECT n FROM api_quota WHERE key = ?').bind(`serp:m:${spend.month}`).first().catch(() => null);
+  const runs = (await env.DB.prepare('SELECT id, mode, retailer, provider, started_at, finished_at, status, items, cost_usd, message FROM pipeline_runs ORDER BY id DESC LIMIT 20').all()).results;
   const counts = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS products,
       SUM(CASE WHEN cur_captured_at >= ? THEN 1 ELSE 0 END) AS fresh28,
       SUM(CASE WHEN cur_is_special = 1 AND cur_captured_at >= ? THEN 1 ELSE 0 END) AS specials,
@@ -925,7 +927,9 @@ route('GET', '/api/admin/overview', async ({ env, user }) => {
       (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
       (SELECT COUNT(*) FROM push_subs s WHERE s.user_id = u.id) AS devices FROM users u ORDER BY u.created_at`).all()).results;
   const removed = (await env.DB.prepare('SELECT id, name, removed_at FROM removed_users ORDER BY removed_at DESC').all().catch(() => ({ results: [] }))).results;
-  return json({ spendUsd: spend.usd, budgetUsd: 100, runs, counts, pending, users, removed, me: user.id });
+  return json({
+    spendUsd: spend.total, spendBy: spend.by, month: spend.month, budgetUsd: BUDGET.monthlyUsd, softUsd: BUDGET.softUsd, hardUsd: BUDGET.hardUsd,
+    level: budgetLevel(spend.total), serpUsed: serp?.n || 0, serpCap: SERPAPI.stopAtSearches, runs, counts, pending, users, removed, me: user.id });
 }, { admin: true });
 
 // ----- admin: testers -----

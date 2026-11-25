@@ -48,7 +48,8 @@ export const LIMITS = {
   excludeCategories: ['Liquor'],
 };
 
-// Hard caps per Apify run (USD). Apify stops the run when reached.
+// Hard caps per Apify run (USD). Apify stops the run when reached. Every run is also capped by what is
+// left under this month's hard limit.
 export const RUN_CAPS_USD = {
   'specials:woolworths': 2,
   'specials:coles': 3,
@@ -58,13 +59,8 @@ export const RUN_CAPS_USD = {
   'wishlist:coles': 1,
 };
 
-export const BUDGET = {
-  totalUsd: 100,
-  // At this total, only the weekly specials keep running; extras stop.
-  pauseExtrasAtUsd: 80,
-  // At this total, everything stops.
-  hardStopUsd: 95,
-};
+// The monthly budget (soft and hard limits, what counts) is in shared/budget.js,
+// so the app and the pipeline use the same figures.
 
 export const MATCH = {
   autoAccept: 0.9,     // >= : link automatically

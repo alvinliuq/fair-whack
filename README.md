@@ -21,6 +21,8 @@ Add these **GitHub → Settings → Secrets and variables → Actions → New re
 | `ADMIN_CODE` | Code that signs you in as admin (different from the invite code) |
 | `DESIGN_CODE` *(optional)* | Code for design reviewers. Signs in to a separate "design review" account (never a tester's account, never admin). Delete the secret and redeploy to end the review; anyone signed in with it is signed out |
 | `SESSION_SECRET` | Any long random string (40+ characters). Also used to derive the push-notification keys, so don't change it later |
+| `SERPAPI_KEY` | SerpApi → Api Key (Google Shopping comparison in search) |
+| `ZYTE_API_KEY` | Zyte → API key (technical checks of second-batch retailers) |
 
 Then **Actions → Deploy → Run workflow**. The first deploy creates the database, publishes the site at `https://fair-whack.pages.dev` (Cloudflare may add a suffix if the name is taken — see the Deploy log) and starts the first data collection.
 
@@ -36,7 +38,10 @@ In Apify, set a monthly usage limit (Settings → Usage & billing) as a second s
 
 Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows spend).
 
-Budget guard: per-run caps in `pipeline/config.js`; at $80 recorded spend only specials keep running; at $95 everything stops.
+Budget guard (monthly, Melbourne calendar month, resets on the 1st; figures in `shared/budget.js`):
+this month's Apify runs + Zyte requests (estimated) + the SerpApi plan fee (US$75) are added up. At **$240** catalogue
+crawls stop and only specials and list refreshes run; at **$285** everything stops, including new Google Shopping lookups.
+Per-run caps are in `pipeline/config.js`. `status` also prints Apify's and SerpApi's own account figures.
 
 ## Matching products across stores
 

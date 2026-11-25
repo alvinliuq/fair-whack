@@ -36,6 +36,8 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+      ZYTE_API_KEY: ${{ secrets.ZYTE_API_KEY }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
       APP_URL: https://fair-whack.pages.dev
     steps:
