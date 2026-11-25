@@ -358,21 +358,40 @@ views.deals = async (q, store) => {
   await loadDeals();
 };
 
-// ----- Browse a store's full range -----
+// ----- Browse: stores in 8 groups, then a store's range -----
+const STORE_GROUPS = [
+  ['Groceries', ['woolworths', 'coles', 'aldi', 'costco']],
+  ['Department Stores', ['kmart', 'bigw', 'target']],
+  ['Electronics', ['jbhifi', 'thegoodguys']],
+  ['Tools & Home', ['bunnings']],
+  ['Health & Beauty', ['chemistwarehouse']],
+  ['Pets', ['petbarn', 'peto']],
+  ['Office', ['officeworks']],
+  ['Sports & Gaming', ['decathlon', 'ebgames']],
+];
+const BROWSE_SORTS = [['popular', 'Most popular'], ['new', null], ['special', 'On special'], ['mine', 'On my list']];
+
 views.browse = async (q, store) => {
   if (!STORES.includes(store)) {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
+    const grouped = new Set(STORE_GROUPS.flatMap(([, ids]) => ids));
+    const groups = [...STORE_GROUPS, ['More stores', STORES.filter((r) => !grouped.has(r))]]
+      .map(([g, ids]) => [g, ids.filter((r) => STORES.includes(r))]).filter(([, ids]) => ids.length);
     app.innerHTML = `<h1>Browse</h1><p class="lead">Walk the aisles of each store, see what's new, and tap ♡ to track prices on anything.</p>
-      <div class="stores">${STORES.map((r) => `<a class="storecard ${r}" href="#/browse/${r}">${storeLogo(r)}<span class="sc-t"><b>${RET[r]}</b><span class="muted small">${count(r).toLocaleString('en-AU')} products · ${esc(meta.newLabel || 'New this week')}</span></span><span class="go">›</span></a>`).join('')}</div>`;
+      ${groups.map(([g, ids]) => `<div class="sec-head"><h2>${esc(g)}</h2></div>
+        <div class="store-row">${ids.map((r) => `<a class="store-tile" href="#/browse/${r}">${storeLogo(r, 'big')}<span class="st-name">${esc(RET[r])}</span><span class="st-count">${count(r).toLocaleString('en-AU')} products</span></a>`).join('')}</div>`).join('')}`;
     return;
   }
-  const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: ['new', 'saving', 'price_asc', 'price_desc'].includes(q.get('sort')) ? q.get('sort') : 'saving' };
-  const link = (patch) => `#/browse/${store}${qs({ ...f, ...patch })}`;
   const newLabel = state.meta?.newLabel || 'New this week';
-  app.innerHTML = `<div class="row"><a href="#/browse" class="back" aria-label="All stores">‹</a><h1 style="margin:0;display:flex;align-items:center;gap:10px">${storeLogo(store, 'sm')}${RET[store]}</h1></div>
-    <div id="c1" style="margin-top:10px"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
-    <div class="chips sorts">${[['new', newLabel], ['saving', 'Biggest saving'], ['price_asc', 'Price: low to high'], ['price_desc', 'Price: high to low']].map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}">${l}</a>`).join('')}</div>
+  const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: BROWSE_SORTS.some(([k]) => k === q.get('sort')) ? q.get('sort') : 'popular' };
+  const link = (patch) => `#/browse/${store}${qs({ ...f, ...patch })}`;
+  const total = (state.meta?.retailers || []).find((x) => x.retailer === store)?.products || 0;
+  app.innerHTML = `<a class="back" href="#/browse">‹ Browse</a>
+    <div class="store-head">${storeLogo(store, 'big')}<div><h1>${esc(RET[store])}</h1><p class="lead small">${total.toLocaleString('en-AU')} products</p></div></div>
+    <div id="c1"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
+    <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}">${esc(l || newLabel)}</a>`).join('')}</div>
+    <p class="small muted" id="blabel" style="margin:0 0 8px"></p>
     <div id="res"></div>`;
   api(`/api/categories${qs({ retailer: store })}`).then((c) => {
     $('#c1').innerHTML = chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles' });
@@ -380,10 +399,14 @@ views.browse = async (q, store) => {
     if (top && top.children.length > 1) $('#c2').innerHTML = chips(top.children, f.cat2, (name) => link({ cat2: name }), { all: `All ${f.cat1}`, cls: 'sub' });
     app.querySelector('#c1 .chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   }).catch(() => {});
-  pagedGrid($('#res'), (page) => api(`/api/browse${qs({ retailer: store, cat1: f.cat1, cat2: f.cat2, sort: f.sort, page })}`),
-    f.sort === 'new'
-      ? `<b>Nothing new ${newLabel.includes('month') ? 'this month' : 'this week'} yet</b>New arrivals show up after each Wednesday update.`
-      : '<b>No products here</b>Try another aisle.');
+  const empty = {
+    new: `<b>Nothing new ${newLabel.includes('month') ? 'this month' : 'this week'} yet</b>New arrivals show up after each Wednesday update.`,
+    special: '<b>Nothing on special here right now</b>Try another aisle.',
+    mine: `<b>Nothing from your lists here</b>Tap ♡ on a ${esc(RET[store])} product to add it.`,
+  }[f.sort] || '<b>No products here</b>Try another aisle.';
+  if (f.sort === 'popular') $('#blabel').textContent = 'Most viewed and listed in the last 30 days';
+  if (f.sort === 'special') $('#blabel').textContent = 'Biggest discount first';
+  pagedGrid($('#res'), (page) => api(`/api/browse${qs({ retailer: store, cat1: f.cat1, cat2: f.cat2, sort: f.sort, page })}`), empty);
 };
 
 // ----- Search & Compare -----

@@ -1,6 +1,6 @@
 // Fair Whack service worker: offline shell + push notifications.
-const CACHE = 'fw-shell-v29';
-const SHELL = ['/', '/index.html', '/app.css?v=21', '/app.js?v=26', '/profile.js?v=10', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=1', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'fw-shell-v30';
+const SHELL = ['/', '/index.html', '/app.css?v=22', '/app.js?v=27', '/profile.js?v=10', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=1', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

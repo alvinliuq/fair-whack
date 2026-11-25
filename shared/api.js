@@ -394,6 +394,17 @@ async function categoryCounts(env, retailer, deals) {
   return { retailer: null, categories: list };
 }
 
+const BROWSE_SORTS = ['new', 'popular', 'special', 'mine', 'saving', 'price_asc', 'price_desc'];
+/** "Most popular": page views + 3 x people who added it to a list, last 30 days. Ties (and no data yet) fall to the next order. */
+function popularOrder() {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  return {
+    sql: `(SELECT COALESCE(SUM(v.views), 0) FROM product_views v WHERE v.product_id = retailer_product.id AND v.day >= ?)
+      + 3 * (SELECT COUNT(DISTINCT l.user_id) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.product_id = retailer_product.id AND li.created_at >= ?) DESC`,
+    binds: [since.slice(0, 10), since],
+  };
+}
+
 /** Home "Best Deals". No store + no category = personalised ("For you"). */
 async function deals({ env, url, user }) {
   const q = url.searchParams;
@@ -408,13 +419,7 @@ async function deals({ env, url, user }) {
   if (q.get('half') === '1') where.push("cur_promo_type = 'half_price'");
   const sort = ['price', 'popular'].includes(q.get('sort')) ? q.get('sort') : 'saving';
   let order = sort === 'price' ? 'cur_price_cents ASC, name' : `${SAVING_ORDER}, name`;
-  if (sort === 'popular') {
-    // Page views + 3 x people who added it to a list, last 30 days. Ties (and no data yet) fall back to the biggest saving.
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    order = `(SELECT COALESCE(SUM(v.views), 0) FROM product_views v WHERE v.product_id = retailer_product.id AND v.day >= ?)
-      + 3 * (SELECT COUNT(DISTINCT l.user_id) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.product_id = retailer_product.id AND li.created_at >= ?) DESC, ${order}`;
-    binds.push(since.slice(0, 10), since);
-  }
+  if (sort === 'popular') { const pop = popularOrder(); order = `${pop.sql}, ${order}`; binds.push(...pop.binds); }
   let forYou = false;
   let prefer = [];
   if (!retailer && !category && user) {
@@ -500,7 +505,7 @@ route('GET', '/api/top20', async ({ env, user }) => {
 route('GET', '/api/specials', deals);
 
 /** Browse a store's range: every product, filtered by the store's own categories. */
-route('GET', '/api/browse', async ({ env, url }) => {
+route('GET', '/api/browse', async ({ env, url, user }) => {
   const q = url.searchParams;
   const retailer = q.get('retailer');
   if (!isActive(retailer)) throw new HttpError(400, 'Choose a store');
@@ -508,23 +513,35 @@ route('GET', '/api/browse', async ({ env, url }) => {
   const binds = [retailer];
   if (q.get('cat1')) { where.push('cat1 = ?'); binds.push(q.get('cat1')); }
   if (q.get('cat2')) { where.push('cat2 = ?'); binds.push(q.get('cat2')); }
-  const sort = ['new', 'saving', 'price_asc', 'price_desc'].includes(q.get('sort')) ? q.get('sort') : 'new';
+  const sort = BROWSE_SORTS.includes(q.get('sort')) ? q.get('sort') : 'popular';
   const nw = await newWindow(env);
   if (sort === 'new') {
     where.push('first_seen_at > ?'); binds.push(nw.since);
     if (!nw.baseline) where.push('0'); // nothing counts as new until the starting range is in
   }
-  const order = {
+  if (sort === 'special') { where.push('cur_is_special = 1', 'cur_captured_at >= ?'); binds.push(freshCut()); }
+  if (sort === 'mine') {
+    // This store's products on the tester's lists, and this store's version of anything matched to them.
+    where.push(`(id IN (SELECT li.product_id FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ?)
+      OR canonical_product_id IN (SELECT p2.canonical_product_id FROM list_items li JOIN lists l ON l.id = li.list_id JOIN retailer_product p2 ON p2.id = li.product_id WHERE l.user_id = ? AND p2.canonical_product_id IS NOT NULL))`);
+    binds.push(user.id, user.id);
+  }
+  let order = {
     new: 'first_seen_at DESC, name',
+    special: `${SAVING_ORDER}, name`,
     saving: `${SAVING_ORDER}, name`,
+    mine: 'name',
     price_asc: 'COALESCE(cur_price_cents, 1e12) ASC, name',
     price_desc: 'cur_price_cents DESC, name',
   }[sort];
+  if (sort === 'popular') { const pop = popularOrder(); order = `${pop.sql}, ${SAVING_ORDER}, name`; binds.push(...pop.binds); }
   const page = pageOf(q);
-  return json(await cached(env, cacheKey('browse', retailer, q.get('cat1'), q.get('cat2'), sort, page), async () => {
+  const run = async () => {
     const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${page * PAGE}`).bind(...binds).all()).results;
     return { items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page, newLabel: nw.label, newSince: nw.since };
-  }));
+  };
+  // "On my list" is personal, so it is never cached.
+  return json(sort === 'mine' ? await run() : await cached(env, cacheKey('browse', retailer, q.get('cat1'), q.get('cat2'), sort, page), run));
 });
 
 // ----- search -----
