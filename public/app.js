@@ -2,16 +2,17 @@
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 // Store names and the stores shown: filled from /api/meta (stores that have products). These are the fallbacks.
-const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco', jbhifi: 'JB Hi-Fi', bunnings: 'Bunnings', kmart: 'Kmart', bigw: 'BIG W', officeworks: 'Officeworks', chemistwarehouse: 'Chemist Warehouse', target: 'Target', thegoodguys: 'The Good Guys', petbarn: 'Petbarn', peto: 'PetO', decathlon: 'Decathlon', ebgames: 'EB Games' };
+const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon' };
 const STORES = ['woolworths', 'coles'];
 function applyStores(meta) {
   if (!meta || !Array.isArray(meta.stores) || !meta.stores.length) return;
   for (const s of meta.stores) RET[s.id] = s.name;
   STORES.splice(0, STORES.length, ...meta.stores.map((s) => s.id));
 }
-// Store logo files: put official artwork in public/icons/stores/ and list it here. Until then a coloured badge shows.
-const STORE_LOGOS = { woolworths: null, coles: null };
-const storeLogo = (r, cls = '') => `<span class="slogo ${r} ${cls}" aria-hidden="true">${STORE_LOGOS[r] ? `<img src="${STORE_LOGOS[r]}" alt="">` : `<b>${(RET[r] || '?')[0]}</b>`}</span>`;
+// Store logos (88×88, supplied by Alvin 25 Nov): public/icons/stores/<id>.png. A store without one shows a coloured badge.
+const STORE_LOGOS = Object.fromEntries(['woolworths', 'coles', 'aldi', 'jbhifi', 'costco', 'kmart', 'bunnings', 'petbarn', 'bigw', 'chemistwarehouse',
+  'thegoodguys', 'target', 'officeworks', 'ebgames', 'peto', 'decathlon'].map((r) => [r, `/icons/stores/${r}.png`]));
+const storeLogo = (r, cls = '') => `<span class="slogo ${r} ${cls} ${STORE_LOGOS[r] ? 'has-img' : ''}" aria-hidden="true">${STORE_LOGOS[r] ? `<img src="${STORE_LOGOS[r]}" alt="" width="88" height="88">` : `<b>${(RET[r] || '?')[0]}</b>`}</span>`;
 const MARK = '<svg class="mark" viewBox="34 57 100 102" aria-hidden="true"><polygon points="76,59 89,79 111,66 108,91 132,101 113,115 124,138 99,134 88,157 76,136 52,145 58,119 36,106 58,92 52,68" fill="#C8F169"/><path d="M84 82v37M69 106l15 16 15-16" fill="none" stroke="#5B2BE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const state = { me: null, profile: null, needsProfile: false, meta: null, vapid: null, saved: new Map(), products: new Map(), listOpen: {} };
 
@@ -618,10 +619,11 @@ function sparkline(history) {
   const W = 320, H = 80, P = 6;
   const x = (t) => P + ((Date.parse(t) - t0) / (t1 - t0)) * (W - 2 * P);
   const y = (c) => H - P - ((c - lo) / span) * (H - 2 * P);
-  const col = { woolworths: 'var(--woolworths)', coles: 'var(--coles)' };
-  const dash = { coles: ' stroke-dasharray="5 4"' };
-  const lines = Object.entries(byRet).map(([r, hs]) => `<polyline fill="none" stroke="${col[r] || '#888'}"${dash[r] || ''} stroke-width="2.5" stroke-linejoin="round" points="${hs.map((h) => `${x(h.captured_at).toFixed(1)},${y(h.price_cents).toFixed(1)}`).join(' ')}"/>`).join('');
-  const legend = Object.keys(byRet).length > 1 ? `<div class="spark-legend">${Object.keys(byRet).map((r) => `<span><i class="${r} ${r === 'coles' ? 'dash' : ''}"></i>${RET[r] || r}</span>`).join('')}</div>` : '';
+  const col = (r) => (RET[r] ? `var(--${r})` : '#888');
+  // Every second line dashed, so two stores stay apart even if their colours are close.
+  const dashed = new Set(Object.keys(byRet).filter((_, i) => i % 2 === 1));
+  const lines = Object.entries(byRet).map(([r, hs]) => `<polyline fill="none" stroke="${col(r)}"${dashed.has(r) ? ' stroke-dasharray="5 4"' : ''} stroke-width="2.5" stroke-linejoin="round" points="${hs.map((h) => `${x(h.captured_at).toFixed(1)},${y(h.price_cents).toFixed(1)}`).join(' ')}"/>`).join('');
+  const legend = Object.keys(byRet).length > 1 ? `<div class="spark-legend">${Object.keys(byRet).map((r) => `<span><i class="${r} ${dashed.has(r) ? 'dash' : ''}"></i>${RET[r] || r}</span>`).join('')}</div>` : '';
   return `${legend}<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price over the last 12 weeks">${lines}</svg>
     <div class="row small muted"><span>${new Date(t0).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span><span class="spacer"></span><span>Low ${money(lo)} · High ${money(hi)}</span></div>`;
 }

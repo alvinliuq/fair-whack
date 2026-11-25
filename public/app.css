@@ -569,3 +569,57 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .btn.icon-btn svg { width: 22px; height: 22px; fill: currentColor; }
 .rail > .shared-tile { flex: 0 0 42%; max-width: 190px; scroll-snap-align: start; }
 .shared-tile > .tile { width: 100%; min-height: 0; }
+
+/* ---------- stage 7: a colour per store (generated from shared/retailers.js) ---------- */
+:root {
+  --woolworths: #178841;
+  --coles: #E01A22;
+  --aldi: #00205B;
+  --jbhifi: #E8B800;
+  --costco: #005DAA;
+  --kmart: #E4002B;
+  --bunnings: #0D6B3C;
+  --petbarn: #F37021;
+  --bigw: #0046BE;
+  --chemistwarehouse: #E6007E;
+  --thegoodguys: #2B2B2B;
+  --target: #CC0000;
+  --officeworks: #0072CE;
+  --ebgames: #7B2FBE;
+  --peto: #00A3AD;
+  --decathlon: #0082C3;
+}
+.ret.woolworths, .storecard.woolworths, .slogo.woolworths, .toggle.woolworths, .chip .ret.woolworths { --c: var(--woolworths); }
+.spark-legend i.woolworths { border-top-color: var(--woolworths); }
+.ret.coles, .storecard.coles, .slogo.coles, .toggle.coles, .chip .ret.coles { --c: var(--coles); }
+.spark-legend i.coles { border-top-color: var(--coles); }
+.ret.aldi, .storecard.aldi, .slogo.aldi, .toggle.aldi, .chip .ret.aldi { --c: var(--aldi); }
+.spark-legend i.aldi { border-top-color: var(--aldi); }
+.ret.jbhifi, .storecard.jbhifi, .slogo.jbhifi, .toggle.jbhifi, .chip .ret.jbhifi { --c: var(--jbhifi); }
+.spark-legend i.jbhifi { border-top-color: var(--jbhifi); }
+.ret.costco, .storecard.costco, .slogo.costco, .toggle.costco, .chip .ret.costco { --c: var(--costco); }
+.spark-legend i.costco { border-top-color: var(--costco); }
+.ret.kmart, .storecard.kmart, .slogo.kmart, .toggle.kmart, .chip .ret.kmart { --c: var(--kmart); }
+.spark-legend i.kmart { border-top-color: var(--kmart); }
+.ret.bunnings, .storecard.bunnings, .slogo.bunnings, .toggle.bunnings, .chip .ret.bunnings { --c: var(--bunnings); }
+.spark-legend i.bunnings { border-top-color: var(--bunnings); }
+.ret.petbarn, .storecard.petbarn, .slogo.petbarn, .toggle.petbarn, .chip .ret.petbarn { --c: var(--petbarn); }
+.spark-legend i.petbarn { border-top-color: var(--petbarn); }
+.ret.bigw, .storecard.bigw, .slogo.bigw, .toggle.bigw, .chip .ret.bigw { --c: var(--bigw); }
+.spark-legend i.bigw { border-top-color: var(--bigw); }
+.ret.chemistwarehouse, .storecard.chemistwarehouse, .slogo.chemistwarehouse, .toggle.chemistwarehouse, .chip .ret.chemistwarehouse { --c: var(--chemistwarehouse); }
+.spark-legend i.chemistwarehouse { border-top-color: var(--chemistwarehouse); }
+.ret.thegoodguys, .storecard.thegoodguys, .slogo.thegoodguys, .toggle.thegoodguys, .chip .ret.thegoodguys { --c: var(--thegoodguys); }
+.spark-legend i.thegoodguys { border-top-color: var(--thegoodguys); }
+.ret.target, .storecard.target, .slogo.target, .toggle.target, .chip .ret.target { --c: var(--target); }
+.spark-legend i.target { border-top-color: var(--target); }
+.ret.officeworks, .storecard.officeworks, .slogo.officeworks, .toggle.officeworks, .chip .ret.officeworks { --c: var(--officeworks); }
+.spark-legend i.officeworks { border-top-color: var(--officeworks); }
+.ret.ebgames, .storecard.ebgames, .slogo.ebgames, .toggle.ebgames, .chip .ret.ebgames { --c: var(--ebgames); }
+.spark-legend i.ebgames { border-top-color: var(--ebgames); }
+.ret.peto, .storecard.peto, .slogo.peto, .toggle.peto, .chip .ret.peto { --c: var(--peto); }
+.spark-legend i.peto { border-top-color: var(--peto); }
+.ret.decathlon, .storecard.decathlon, .slogo.decathlon, .toggle.decathlon, .chip .ret.decathlon { --c: var(--decathlon); }
+.spark-legend i.decathlon { border-top-color: var(--decathlon); }
+.slogo.has-img { background: transparent; }
+.slogo.has-img img { object-fit: cover; background: transparent; }
