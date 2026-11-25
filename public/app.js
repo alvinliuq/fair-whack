@@ -221,6 +221,10 @@ views.welcome = async () => {
 
 // ----- Home: your list (list picker + stores) · Shared with you · Bargains (store tiles) · Top 20 -----
 const HOME_PICK = 'fw.homePick';
+// When two stores have the same product at the same price, Home shows this store first (big supermarkets, then
+// the general stores most testers use, then the rest).
+const SAME_PRICE_ORDER = ['woolworths', 'coles', 'aldi', 'costco', 'chemistwarehouse', 'kmart', 'bigw', 'target', 'jbhifi', 'thegoodguys',
+  'officeworks', 'bunnings', 'petbarn', 'peto', 'ebgames', 'decathlon'];
 function homePick() { try { return JSON.parse(localStorage.getItem(HOME_PICK)) || {}; } catch { return {}; } }
 function saveHomePick(v) { try { localStorage.setItem(HOME_PICK, JSON.stringify(v)); } catch {} }
 
@@ -231,20 +235,31 @@ function renderMine(el, d) {
   const inList = (d.byStore || []).filter((o) => o.listId === listId);
   const stores = STORES.filter((r) => inList.some((o) => o.retailer === r));
   const sel = (pick.stores || []).filter((r) => stores.includes(r)); // empty = All stores
+  // Same product = matched across stores (canonical id), or the same name.
+  const nameKey = (o) => String(o.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const rank = (r) => { const i = SAME_PRICE_ORDER.indexOf(r); return i < 0 ? 99 : i; };
   let pool;
-  if (sel.length) pool = inList.filter((o) => sel.includes(o.retailer));
-  else { // All stores: the cheapest store for each item
-    const best = new Map();
-    for (const o of inList) { const p = best.get(o.itemId); if (!p || o.effective < p.effective) best.set(o.itemId, o); }
+  if (sel.length) {
+    // Single stores: every special on the list at those stores; a store listing the same thing twice shows once.
+    const seen = new Set();
+    pool = inList.filter((o) => sel.includes(o.retailer)).filter((o) => {
+      const k = [o.id, `${o.retailer}|${o.canonical || o.id}`, `${o.retailer}|${nameKey(o)}|${o.effective}`];
+      if (k.some((x) => seen.has(x))) return false; k.forEach((x) => seen.add(x)); return true;
+    });
+  } else {
+    // All stores: one card per product, the cheapest store; on the same price the store higher in SAME_PRICE_ORDER.
+    const better = (o, p) => o.effective < p.effective || (o.effective === p.effective && rank(o.retailer) < rank(p.retailer));
+    const best = new Map(); const alias = new Map();
+    for (const o of inList) {
+      const keys = [o.canonical && `c|${o.canonical}`, `n|${nameKey(o)}`].filter(Boolean);
+      const k = keys.map((x) => alias.get(x)).find(Boolean) || keys[0];
+      keys.forEach((x) => alias.set(x, k));
+      const p = best.get(k);
+      if (!p || better(o, p)) best.set(k, o);
+    }
     pool = [...best.values()];
   }
-  // Two list items can point at the same product (e.g. saved at two stores and matched): show each special once.
-  // Also when one store lists the same product twice (same name and price, or matched as the same product).
-  const key = (o) => `${o.retailer}|${o.canonical || o.id}`;
-  const twin = (o) => `${o.retailer}|${String(o.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}|${o.effective}`;
-  const seen = new Set();
-  pool = pool.filter((o) => { const k = [o.id, key(o), twin(o)]; if (k.some((x) => seen.has(x))) return false; k.forEach((x) => seen.add(x)); return true; })
-    .sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  pool.sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
     ? `<label class="list-pick"><span class="sr-only">List</span><select id="homelist">${lists.map((l) => `<option value="${esc(l.id)}" ${l.id === listId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>`
     : `<a class="list-pick one" href="#/lists">${esc(lists[0]?.name || 'My List')} ›</a>`;
