@@ -459,7 +459,7 @@ views.search = async (q) => {
     $('#via-edit').onclick = () => { const i = $('#sf input'); i.focus(); i.select(); };
   }
   if (!term) {
-    body.innerHTML = `<h2>Hot Keywords</h2><div id="hot" class="chips wrap"><span class="chip">…</span></div><div id="hist"></div>`;
+    body.innerHTML = `<h2>People are searching</h2><div id="hot" class="chips wrap"><span class="chip">…</span></div><div id="hist"></div>`;
     api('/api/search/hot').then((h) => { $('#hot').innerHTML = h.keywords.map((t) => `<a class="chip" href="#/search?q=${encodeURIComponent(t)}">${esc(t)}</a>`).join(''); }).catch(() => {});
     const renderHistory = async () => {
       const { history } = await api('/api/search/history');
@@ -498,16 +498,16 @@ async function webPrices(term, el) {
     el.innerHTML = why ? `<div class="sec-head"><h2>Elsewhere online</h2></div><p class="small muted">${why}</p>` : '';
     return;
   }
-  const row = (r) => `<a class="offer" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
-      <span class="l"><span class="ret">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span><span class="small">${esc(r.title)}</span>${r.delivery ? `<span class="note">${esc(r.delivery)}</span>` : ''}</span>
-      <span class="p">${money(r.priceCents)}</span>${r.wasCents && r.wasCents > r.priceCents ? `<span class="u">was ${money(r.wasCents)}</span>` : ''}</a>`;
-  const show = 8;
+  const card = (r) => `<a class="web-card" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+      <span class="wc-img">${r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<b>?</b>'}</span>
+      <span class="wc-store">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span>
+      <span class="wc-name">${esc(r.title)}</span>
+      <span class="wc-price num">${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}</span>
+      ${r.delivery ? `<span class="wc-note">${esc(r.delivery)}</span>` : ''}
+    </a>`;
   el.innerHTML = `<div class="sec-head"><h2>Elsewhere online</h2><span class="small muted">Google Shopping</span></div>
-    <div class="group web">${rows.slice(0, show).map(row).join('')}
-      ${rows.length > show ? `<button class="offer more linkbtn" id="web-more">Show ${rows.length - show} more</button>` : ''}</div>
+    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, swipe for more">${rows.map(card).join('')}</div>
     <p class="small muted">Most relevant first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Shown as listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
-  const more = $('#web-more', el);
-  if (more) more.onclick = () => { more.outerHTML = rows.slice(show).map(row).join(''); };
 }
 const normQ = (t) => String(t || '').trim();
 

@@ -729,7 +729,7 @@ export function serpResults(data) {
       priceCents: price,
       wasCents: typeof r.extracted_old_price === 'number' ? Math.round(r.extracted_old_price * 100) : null,
       link: [r.link, r.product_link].find((u) => typeof u === 'string' && /^https:\/\//.test(u)) || null,
-      thumb: r.thumbnail || null,
+      thumb: typeof r.thumbnail === 'string' && /^https:\/\//.test(r.thumbnail) ? r.thumbnail : null,
       delivery: r.delivery ? String(r.delivery).slice(0, 60) : null,
       used: !!(r.second_hand_condition || /\b(used|pre-?owned|refurbished|second[- ]hand)\b/i.test(`${r.title} ${(r.extensions || []).join(' ')}`)),
     });

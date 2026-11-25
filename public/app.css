@@ -710,3 +710,14 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 /* ---- Stage 7.5 Browse ---- */
 .store-row { display: grid; grid-auto-flow: column; grid-auto-columns: 96px; gap: 10px; overflow-x: auto; margin: 0 -14px; padding: 4px 14px 6px; scroll-snap-type: x mandatory; scroll-padding-left: 14px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .store-row::-webkit-scrollbar { display: none; }
+
+/* ---- Stage 7.6 Search: Google Shopping carousel ---- */
+.web-rail > .web-card { flex: 0 0 40%; max-width: 170px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 3px; background: #fff; border-radius: var(--r); padding: 10px; text-decoration: none; color: var(--ink); box-shadow: 0 1px 3px rgba(40, 20, 90, .08); }
+.wc-img { aspect-ratio: 1; border-radius: 10px; background: #fff; display: grid; place-items: center; overflow: hidden; margin-bottom: 4px; }
+.wc-img img { width: 100%; height: 100%; object-fit: contain; }
+.wc-img b { font-size: 28px; color: var(--lilac); }
+.wc-store { font-size: 11.5px; font-weight: 800; color: var(--grape-d); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc-name { font-size: 12.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: 3.9em; }
+.wc-price { font-family: var(--display); font-size: 17px; font-weight: 800; margin-top: auto; }
+.wc-price small { font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-decoration: line-through; margin-left: 5px; }
+.wc-note { font-size: 11px; color: var(--ink-3); }
