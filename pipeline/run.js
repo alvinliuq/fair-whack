@@ -223,7 +223,7 @@ async function probe(db) {
         log(label, msg);
         if (res.items[0]) log(label, 'first item:', JSON.stringify(res.items[0]).slice(0, 1500));
         await endRun(db, id, good.length ? 'ok' : 'failed', good.length, res.costUsd, msg);
-        if (good.length) break;
+        if (good.length && !opt.force) break; // --force: try every alternative
       } catch (e) {
         log(label, 'FAILED', e.message.slice(0, 700));
         await endRun(db, id, 'failed', 0, 0, e.message);

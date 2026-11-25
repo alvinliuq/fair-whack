@@ -48,3 +48,10 @@ test('Woolworths and Coles items pass through unchanged', () => {
   const it = { productId: '1', name: 'Milk', price: 3 };
   assert.equal(adaptItem('woolworths', it), it);
 });
+
+test('Chemist Warehouse: prescriptionType "None" is an ordinary product; site root levels dropped from the category', () => {
+  const x = adaptItem('chemistwarehouse', { productId: 'a', sku: '2622193', name: 'QV Gentle Wash 1.25Kg', price: 23.99, rrp: 23.99, prescriptionType: 'None', schedule: 'None', categories: ['Chemist Warehouse Australia', 'Categories', 'Personal Care', 'Bath & Shower'] });
+  assert.equal(x.error, undefined);
+  assert.equal(x.category, 'Personal Care > Bath & Shower');
+  assert.equal(x.productId, '2622193');
+});

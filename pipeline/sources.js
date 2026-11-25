@@ -72,7 +72,10 @@ export function adaptGeneric(x, host) {
 /** Chemist Warehouse: drop prescription-only medicines (not shown in the beta). */
 function adaptChemist(x) {
   const out = adaptGeneric(x, 'www.chemistwarehouse.com.au');
-  if (x && (x.prescriptionType || /^S4|^S8|prescription/i.test(String(x.schedule || '')))) return { ...out, error: 'prescription' };
+  const rx = (v) => v && !/^(none|null|otc|n\/a)$/i.test(String(v).trim());
+  if (x && (rx(x.prescriptionType) && /prescri|s4|s8/i.test(String(x.prescriptionType)) || /^S4|^S8/i.test(String(x.schedule || '')))) return { ...out, error: 'prescription' };
+  // Category names start with the site's own root levels.
+  if (out.category) out.category = out.category.replace(/^Chemist Warehouse Australia > (Categories > )?/, '') || null;
   return out;
 }
 
@@ -90,9 +93,10 @@ export const SOURCES = {
     catalogue: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], maxItems: 3500, fetchDetails: false }, max: 3500 }],
     refresh: urlRefresh('urls', { fetchDetails: false }),
     probeAlternatives: [
-      { mode: 'search', searchTerms: ['milk'], fetchDetails: false },
-      { mode: 'url', urls: ['https://www.aldi.com.au/products/dairy-eggs-fridge/k/960000000'], fetchDetails: false },
+      { mode: 'search', searchTerms: [], categories: ['pantry'], fetchDetails: false },
       { mode: 'search', searchTerms: [], specialsCategory: 'Special Buys', fetchDetails: false },
+      { mode: 'search', searchTerms: [], onSaleOnly: true, categories: ['pantry'], fetchDetails: false },
+      { mode: 'url', urls: ['https://www.aldi.com.au/products/pantry/k/970000000'], fetchDetails: false },
     ],
   },
   costco: {
