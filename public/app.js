@@ -370,27 +370,74 @@ views.deals = async (q, store) => {
 
 // ----- Browse: stores in 8 groups, then a store's range -----
 const STORE_GROUPS = [
-  ['Groceries', ['woolworths', 'coles', 'aldi', 'costco']],
-  ['Department Stores', ['kmart', 'bigw', 'target']],
-  ['Electronics', ['jbhifi', 'thegoodguys']],
-  ['Tools & Home', ['bunnings']],
-  ['Health & Beauty', ['chemistwarehouse']],
-  ['Pets', ['petbarn', 'peto']],
-  ['Office', ['officeworks']],
-  ['Sports & Gaming', ['decathlon', 'ebgames']],
+  ['Groceries', ['woolworths', 'coles', 'aldi', 'costco'], '🛒', '#E8F6EC'],
+  ['Department Stores', ['kmart', 'bigw', 'target'], '🏬', '#FDEBEC'],
+  ['Electronics', ['jbhifi', 'thegoodguys'], '🎧', '#FFF6D6'],
+  ['Tools & Home', ['bunnings'], '🔨', '#E6F2EA'],
+  ['Health & Beauty', ['chemistwarehouse'], '💊', '#FCE8F3'],
+  ['Pets', ['petbarn', 'peto'], '🐾', '#FFEFE2'],
+  ['Office', ['officeworks'], '📎', '#E6F0FB'],
+  ['Sports & Gaming', ['decathlon', 'ebgames'], '⚽', '#EEE7FB'],
 ];
 const BROWSE_SORTS = [['popular', 'Most popular'], ['new', null], ['special', 'On special'], ['mine', 'On my list']];
+
+/** Browse groups: 8 cards; tapping one lifts it and opens it into a panel of its stores. */
+function openGroup(card, [name, ids, icon, bg], count) {
+  const from = card.getBoundingClientRect();
+  const back = document.createElement('div'); back.className = 'grp-back';
+  const panel = document.createElement('div'); panel.className = 'grp-panel'; panel.style.setProperty('--bg', bg);
+  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', name);
+  panel.innerHTML = `<div class="grp-top"><span class="grp-icon" aria-hidden="true">${icon}</span><div><h2>${esc(name)}</h2><span class="small muted">${ids.length} store${ids.length > 1 ? 's' : ''}</span></div>
+      <button class="grp-x" aria-label="Close">✕</button></div>
+    <div class="grp-stores">${ids.map((r) => `<a class="store-tile" href="#/browse/${r}">${storeLogo(r, 'big')}<span class="st-name">${esc(RET[r])}</span><span class="st-count">${count(r).toLocaleString('en-AU')} products</span></a>`).join('')}</div>`;
+  document.body.append(back, panel);
+  const to = panel.getBoundingClientRect();
+  card.style.visibility = 'hidden';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fromT = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
+  const dur = reduce ? 0 : 340;
+  back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur, fill: 'both' });
+  // Lift first (a little bigger, deeper shadow), then grow into the panel.
+  panel.animate([
+    { transform: fromT, borderRadius: '18px', boxShadow: '0 1px 3px rgba(40,20,90,.1)' },
+    { transform: `${fromT} translateY(-6px) scale(1.04)`, boxShadow: '0 18px 40px rgba(40,20,90,.28)', offset: 0.25 },
+    { transform: 'none', borderRadius: '24px', boxShadow: '0 24px 60px rgba(40,20,90,.30)' },
+  ], { duration: reduce ? 0 : 420, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+  panel.querySelectorAll('.store-tile').forEach((t, i) => t.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: reduce ? 0 : 260, delay: reduce ? 0 : 220 + i * 50, fill: 'both' }));
+  let closed = false;
+  const close = (go) => {
+    if (closed) return; closed = true;
+    removeEventListener('hashchange', onHash);
+    const now = card.getBoundingClientRect();
+    const t = `translate(${now.left - to.left}px, ${now.top - to.top}px) scale(${now.width / to.width}, ${now.height / to.height})`;
+    back.animate([{ opacity: 1 }, { opacity: 0 }], { duration: go ? 0 : dur, fill: 'both' });
+    const a = panel.animate([{ transform: 'none', opacity: 1 }, { transform: t, opacity: 0.4 }], { duration: go ? 0 : 300, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'both' });
+    a.onfinish = () => { panel.remove(); back.remove(); card.style.visibility = ''; };
+  };
+  const onHash = () => close(true);
+  addEventListener('hashchange', onHash);
+  back.onclick = () => close();
+  panel.querySelector('.grp-x').onclick = () => close();
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  panel.querySelector('.grp-x').focus({ preventScroll: true });
+}
 
 views.browse = async (q, store) => {
   if (!STORES.includes(store)) {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
     const grouped = new Set(STORE_GROUPS.flatMap(([, ids]) => ids));
-    const groups = [...STORE_GROUPS, ['More stores', STORES.filter((r) => !grouped.has(r))]]
-      .map(([g, ids]) => [g, ids.filter((r) => STORES.includes(r))]).filter(([, ids]) => ids.length);
-    app.innerHTML = `<h1>Browse</h1><p class="lead">Walk the aisles of each store, see what's new, and tap ♡ to track prices on anything.</p>
-      ${groups.map(([g, ids]) => `<div class="sec-head"><h2>${esc(g)}</h2></div>
-        <div class="store-row">${ids.map((r) => `<a class="store-tile" href="#/browse/${r}">${storeLogo(r, 'big')}<span class="st-name">${esc(RET[r])}</span><span class="st-count">${count(r).toLocaleString('en-AU')} products</span></a>`).join('')}</div>`).join('')}`;
+    const extra = STORES.filter((r) => !grouped.has(r));
+    const groups = [...STORE_GROUPS, ...(extra.length ? [['More stores', extra, '🛍️', '#F1EEF8']] : [])]
+      .map(([g, ids, icon, bg]) => [g, ids.filter((r) => STORES.includes(r)), icon, bg]).filter(([, ids]) => ids.length);
+    app.innerHTML = `<h1>Browse</h1><p class="lead">Pick a kind of shop, then a store, to walk its aisles and see what's new.</p>
+      <div class="grp-grid">${groups.map(([g, ids, icon, bg], i) => `<button type="button" class="grp-card" data-g="${i}" style="--bg:${bg}">
+        <span class="grp-icon" aria-hidden="true">${icon}</span>
+        <b>${esc(g)}</b>
+        <span class="small muted">${ids.length} store${ids.length > 1 ? 's' : ''} · ${ids.reduce((n, r) => n + count(r), 0).toLocaleString('en-AU')} products</span>
+        <span class="grp-logos">${ids.slice(0, 4).map((r) => storeLogo(r, 'sm')).join('')}</span>
+      </button>`).join('')}</div>`;
+    app.querySelectorAll('.grp-card').forEach((b) => (b.onclick = () => openGroup(b, groups[+b.dataset.g], count)));
     return;
   }
   const newLabel = state.meta?.newLabel || 'New this week';
