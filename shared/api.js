@@ -873,7 +873,14 @@ route('DELETE', '/api/search/history', async ({ env, user, url }) => {
 /** Which products are on the tester's lists (for the heart buttons). */
 route('GET', '/api/saved', async ({ env, user }) => {
   const rows = (await env.DB.prepare('SELECT li.id, li.product_id, li.alert_mode, li.target_cents, l.id AS list_id, l.name AS list_name FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ?').bind(user.id).all()).results;
-  return json({ saved: rows });
+  // The same product at other stores (matched) counts as on your list too, unless you said it isn't the same.
+  const tw = (await env.DB.prepare(`SELECT li.id AS item_id, li.product_id, p2.id AS twin FROM list_items li JOIN lists l ON l.id = li.list_id
+      JOIN retailer_product p ON p.id = li.product_id
+      JOIN retailer_product p2 ON p2.canonical_product_id = p.canonical_product_id AND p2.id != p.id
+      WHERE l.user_id = ? AND p.canonical_product_id IS NOT NULL`).bind(user.id).all()).results;
+  const hidden = tw.length ? await hiddenPairs(env, user.id) : new Set();
+  const twins = tw.filter((t) => !hidden.has(`${t.product_id}|${t.twin}`)).map((t) => ({ product_id: t.twin, item_id: t.item_id }));
+  return json({ saved: rows, twins });
 });
 
 route('GET', '/api/product/:id', async ({ env, params, user }) => {

@@ -72,7 +72,9 @@ function badges(p, { stale = true } = {}) {
 const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6s-7.4-4.5-9.3-9.1C1.3 8.1 3.4 4.8 6.8 4.8c2 0 3.4 1.1 4.2 2.4h2c.8-1.3 2.2-2.4 4.2-2.4 3.4 0 5.5 3.3 4.1 6.7-1.9 4.6-9.3 9.1-9.3 9.1z"/></svg>';
 const BELL = '<svg class="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.4-2h-4.8a2.5 2.5 0 0 0 2.4 2zm7-6V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>';
 // 💜 with a bell = on a list with alerts; 💜 alone = on a list, no alerts of its own; outline = not saved.
-const heartState = (id) => { const s = state.saved.get(id); return !s ? '' : s.alert_mode === 'off' ? 'quiet' : 'alert'; };
+// A product counts as on your list if you saved it, or saved the same product at another store.
+const savedFor = (id) => state.saved.get(id) || state.savedTwins?.get(id) || null;
+const heartState = (id) => { const s = savedFor(id); return !s ? '' : s.alert_mode === 'off' ? 'quiet' : 'alert'; };
 const heartLabel = (st) => (st === 'alert' ? 'On your list, alerts on — settings' : st === 'quiet' ? 'On your list, no alerts — settings' : 'Add to my list');
 function heart(p) {
   state.products.set(p.id, p);
@@ -87,16 +89,18 @@ function refreshHearts() {
     b.setAttribute('aria-label', heartLabel(st));
   });
   const w = $('#watch');
-  if (w) { const on = state.saved.has(w.dataset.pid); w.textContent = on ? '♥ On your list' : '♡ Add to my list'; w.classList.toggle('ghost', on); }
+  if (w) { const on = !!savedFor(w.dataset.pid); w.textContent = on ? '♥ On your list' : '♡ Add to my list'; w.classList.toggle('ghost', on); }
 }
 async function loadSaved() {
-  const { saved } = await api('/api/saved');
+  const { saved, twins = [] } = await api('/api/saved');
   state.saved = new Map(saved.map((s) => [s.product_id, s]));
+  const byItem = new Map(saved.map((s) => [s.id, s]));
+  state.savedTwins = new Map(twins.filter((t) => !state.saved.has(t.product_id) && byItem.has(t.item_id)).map((t) => [t.product_id, byItem.get(t.item_id)]));
   refreshHearts();
 }
 async function onHeart(id) {
   const p = state.products.get(id) || { id, name: 'this product' };
-  const saved = state.saved.get(id);
+  const saved = savedFor(id);
   if (saved) return editItemSheet(saved, p, async () => { await loadSaved(); if (location.hash.startsWith('#/lists')) views.lists(); });
   const { lists } = await api('/api/lists');
   addToListSheet(p, lists, async () => { await loadSaved(); });
@@ -820,7 +824,7 @@ views.product = async (q, id) => {
     const d = await api(`/api/product/${encodeURIComponent(id)}`);
     const p = d.product;
     state.products.set(p.id, p);
-    const on = state.saved.has(p.id);
+    const on = !!savedFor(p.id);
     app.innerHTML = `
       <div class="hero">${thumb(p)}<div><span class="ret ${p.retailer}">${RET[p.retailer]}</span><h1>${esc(p.name)}</h1><div class="small muted">${esc(p.size || '')}${p.brand ? ` · ${esc(p.brand)}` : ''}</div>${badges(p, { stale: false })}</div></div>
       <div class="facts">
@@ -1176,7 +1180,7 @@ async function maybeAskPush() {
 
 
 // ----- More, profile, Save More modules (FW2.0): public/profile.js, loaded on demand -----
-const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
+const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
   if (!profMod) { profMod = await import('/profile.js?v=11'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }

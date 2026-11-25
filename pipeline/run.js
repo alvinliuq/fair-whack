@@ -12,7 +12,8 @@
 //   node pipeline/run.js serpcheck   one live Google Shopping lookup ("dyson v8"), saved like a tester's search
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
-import { makeDb } from './d1.js';
+import { makeDb, sqlLiteral } from './d1.js';
+import { parseSize, unitPriceCents, unitBasisFor } from '../shared/normalize.js';
 import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { ACTIVE_SOURCES as SOURCES, adaptItem } from './sources.js';
@@ -344,6 +345,29 @@ async function serpCheck(db) {
   for (const r of [...out].sort((a, b) => a.priceCents - b.priceCents).slice(0, 5)) log(`  $${(r.priceCents / 100).toFixed(2)}  ${r.store}  ${r.title.slice(0, 70)}${r.link ? '' : '  (no link)'}`);
 }
 
+/** One-off: re-read pack sizes with the current rules (e.g. "250mg" is a dose, not the pack weight). */
+async function resize(db) {
+  let last = '', checked = 0, changed = 0;
+  for (;;) {
+    const rows = await db.all(`SELECT id, name, size_text, size_value, size_unit, pack_count, cur_price_cents FROM retailer_product
+      WHERE id > ? AND (lower(name) LIKE '%mg%' OR lower(COALESCE(size_text, '')) LIKE '%mg%' OR lower(name) LIKE '%soft gel%' OR lower(name) LIKE '%gumm%' OR lower(name) LIKE '%chewable%' OR lower(name) LIKE '%lozenge%' OR lower(name) LIKE '%vegecap%')
+      ORDER BY id LIMIT 2000`, [last]);
+    if (!rows.length) break;
+    last = rows[rows.length - 1].id; checked += rows.length;
+    const ups = [];
+    for (const r of rows) {
+      const z = parseSize(r.size_text, r.name);
+      if (z.size_unit === r.size_unit && z.size_value === r.size_value && z.pack_count === r.pack_count) continue;
+      const unit = unitPriceCents(r.cur_price_cents, z.size_value, z.size_unit);
+      ups.push(`UPDATE retailer_product SET size_value = ${sqlLiteral(z.size_value)}, size_unit = ${sqlLiteral(z.size_unit)}, pack_count = ${sqlLiteral(z.pack_count)}, cur_unit_cents = ${sqlLiteral(unit)}, cur_unit_basis = ${sqlLiteral(unitBasisFor(z.size_unit))} WHERE id = ${sqlLiteral(r.id)};`);
+    }
+    for (let i = 0; i < ups.length; i += 100) await db.exec(ups.slice(i, i + 100).join('\n'));
+    changed += ups.length;
+  }
+  if (changed) await clearApiCache(db);
+  log(`resize: checked ${checked}, corrected ${changed}`);
+}
+
 async function index(db) {
   if (opt['if-missing'] && await indexIsCurrent(db)) { log('search index: up to date, nothing to do'); return false; }
   const r = await syncWordIndex(db, await loadIndexProducts(db));
@@ -401,6 +425,7 @@ else if (mode === 'review') { if (opt.apply) await match(db); else { await revie
 else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);
+else if (mode === 'resize') await resize(db);
 else if (mode === 'probe') await probe(db);
 else if (mode === 'zyte') await zyteCheck(db);
 else if (mode === 'serpcheck') await serpCheck(db);

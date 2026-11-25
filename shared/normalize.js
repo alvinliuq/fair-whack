@@ -35,12 +35,11 @@ export function toCents(v) {
 const UNIT_MAP = {
   g: ['g', 1], gm: ['g', 1], gms: ['g', 1], gram: ['g', 1], grams: ['g', 1],
   kg: ['g', 1000], kgs: ['g', 1000], kilo: ['g', 1000],
-  mg: ['g', 0.001],
   ml: ['ml', 1], mls: ['ml', 1],
   l: ['ml', 1000], lt: ['ml', 1000], ltr: ['ml', 1000], litre: ['ml', 1000], litres: ['ml', 1000], liter: ['ml', 1000],
   cl: ['ml', 10],
 };
-const COUNT_WORDS = 'pack|pk|each|ea|pieces|piece|pcs|pc|rolls|roll|sheets|bags|bag|tablets|tabs|capsules|caps|pods|sachets|bars|eggs|count|ct|cans|bottles|x';
+const COUNT_WORDS = 'pack|pk|each|ea|pieces|piece|pcs|pc|rolls|roll|sheets|bags|bag|tablets|tablet|tabs|capsules|capsule|caps|vegecaps|vcaps|softgels|softgel|soft gels|chewables|chewable|gummies|lozenges|pods|sachets|bars|eggs|count|ct|cans|bottles|x';
 
 function num(s) { return parseFloat(String(s).replace(',', '.')); }
 
@@ -49,22 +48,24 @@ function num(s) { return parseFloat(String(s).replace(',', '.')); }
  * Returns { pack_count, size_value, size_unit } where size_value is the TOTAL
  * quantity in g / ml / each, or nulls when it cannot be parsed.
  */
+// Note: "250mg", "1000 IU" etc. are a dose per tablet or capsule, never the weight of the pack, so mg is
+// not a weight unit here; "60 Tablets" in the same name then gives a per-each price.
 export function parseSize(sizeText, name = '') {
   const tryParse = (raw) => {
     if (!raw) return null;
     const s = String(raw).toLowerCase().replace(/\s+/g, ' ').trim();
     if (/\bper\s*kg\b|\/\s*kg\b/.test(s)) return { pack_count: 1, size_value: 1000, size_unit: 'g', per_kg: true };
-    let m = s.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|gm|gms|mg|ml|mls|l|lt|ltr|litre|litres|cl)\b/);
+    let m = s.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|gm|gms|ml|mls|l|lt|ltr|litre|litres|cl)\b/);
     if (m) {
       const [unit, f] = UNIT_MAP[m[3]];
       return { pack_count: parseInt(m[1], 10), size_value: round(parseInt(m[1], 10) * num(m[2]) * f), size_unit: unit };
     }
-    m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|gm|gms|mg|ml|mls|l|lt|ltr|litre|litres|cl)\s*[x×]\s*(\d+)\b/);
+    m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|gm|gms|ml|mls|l|lt|ltr|litre|litres|cl)\s*[x×]\s*(\d+)\b/);
     if (m) {
       const [unit, f] = UNIT_MAP[m[2]];
       return { pack_count: parseInt(m[3], 10), size_value: round(parseInt(m[3], 10) * num(m[1]) * f), size_unit: unit };
     }
-    m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|kgs|kilo|g|gm|gms|gram|grams|mg|ml|mls|l|lt|ltr|litre|litres|liter|cl)\b/);
+    m = s.match(/(\d+(?:[.,]\d+)?)\s*(kg|kgs|kilo|g|gm|gms|gram|grams|ml|mls|l|lt|ltr|litre|litres|liter|cl)\b/);
     if (m) {
       const [unit, f] = UNIT_MAP[m[2]];
       return { pack_count: 1, size_value: round(num(m[1]) * f), size_unit: unit };

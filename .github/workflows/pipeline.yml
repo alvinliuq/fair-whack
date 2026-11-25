@@ -12,7 +12,7 @@ on:
       mode:
         description: 'What to run'
         type: choice
-        options: [weekly, saturday, alerts, catalogue, first, match, review, probe, zyte, serpcheck, status]
+        options: [weekly, saturday, alerts, catalogue, first, match, review, probe, zyte, serpcheck, status, resize]
         default: status
       force:
         description: 'Catalogue: ignore the 4-week wait'
