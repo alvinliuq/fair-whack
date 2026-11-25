@@ -491,7 +491,7 @@ views.browse = async (q, store) => {
         <input type="search" name="q" value="${esc(q.get('q') || '')}" placeholder="Search ${esc(RET[store])}" enterkeyhint="search" aria-label="Search ${esc(RET[store])}"></form></div></div>
     <div id="browsebody">
     <div id="c1"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
-    <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}">${esc(l || newLabel)}</a>`).join('')}</div>
+    <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}" data-replace>${esc(l || newLabel)}</a>`).join('')}</div>
     <p class="small muted" id="blabel" style="margin:0 0 8px"></p>
     <div id="res"></div></div><div id="searchres" hidden></div>`;
   // Search this store: results replace the aisles until the box is cleared.
@@ -520,6 +520,8 @@ views.browse = async (q, store) => {
     $('#c1').innerHTML = chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles' });
     const top = c.categories.find((x) => x.name === f.cat1);
     if (top && top.children.length > 1) $('#c2').innerHTML = chips(top.children, f.cat2, (name) => link({ cat2: name }), { all: `All ${f.cat1}`, cls: 'sub' });
+    // Aisles and sorts swap the page in place: swiping back leaves the store, not the last aisle.
+    app.querySelectorAll('#c1 a, #c2 a').forEach((a) => a.setAttribute('data-replace', ''));
     app.querySelector('#c1 .chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   }).catch(() => {});
   const empty = {
@@ -596,7 +598,7 @@ views.search = async (q) => {
     if (!/iPhone|iPad/.test(navigator.userAgent)) $('#sf input').focus();
     return;
   }
-  body.innerHTML = `<div class="chips sorts">${SEARCH_SORTS.map(([k, l]) => `<a class="chip ${sort === k ? 'on' : ''}" href="#/search?q=${encodeURIComponent(term)}&sort=${k}">${l}</a>`).join('')}</div><div id="res"><div class="skeleton"></div></div>`;
+  body.innerHTML = `<div class="chips sorts">${SEARCH_SORTS.map(([k, l]) => `<a class="chip ${sort === k ? 'on' : ''}" href="#/search?q=${encodeURIComponent(term)}&sort=${k}" data-replace>${l}</a>`).join('')}</div><div id="res"><div class="skeleton"></div></div>`;
   try {
     // Re-sorting the same search is not logged again.
     const d = await api(`/api/search?q=${encodeURIComponent(term)}&sort=${sort}${q.get('sort') ? '&log=0' : ''}`);
