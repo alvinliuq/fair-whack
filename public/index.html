@@ -17,12 +17,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="/app.css?v=13">
+  <link rel="stylesheet" href="/app.css?v=15">
 </head>
 <body>
   <header class="topbar">
     <a href="#/" class="brand"><svg class="mark" viewBox="34 57 100 102" aria-hidden="true"><polygon points="76,59 89,79 111,66 108,91 132,101 113,115 124,138 99,134 88,157 76,136 52,145 58,119 36,106 58,92 52,68" fill="#C8F169"/><path d="M84 82v37M69 106l15 16 15-16" fill="none" stroke="#5B2BE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Fair Whack</span><em>beta</em></a>
-    <form class="topsearch" id="topsearch" role="search"><input type="search" name="q" placeholder="Search products" autocomplete="off" enterkeyhint="search" aria-label="Search products"></form>
+    <span class="spacer"></span>
+    <a href="#/settings" class="top-btn" id="set-btn" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4L10.7 6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg></a>
+    <button type="button" class="top-btn me" id="me-btn" aria-label="Me"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5z"/></svg><span>Me</span></button>
   </header>
   <main id="app" aria-live="polite"></main>
   <nav class="tabs" id="tabs" aria-label="Main">
@@ -34,6 +36,6 @@
   </nav>
   <div id="sheet" class="sheet" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
-  <script type="module" src="/app.js?v=20"></script>
+  <script type="module" src="/app.js?v=22"></script>
 </body>
 </html>

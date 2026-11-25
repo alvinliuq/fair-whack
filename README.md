@@ -104,3 +104,12 @@ Search shows an **Elsewhere online** section under our own results (Google's rel
 Shopping via SerpApi (`GET /api/search/web`, Developer plan, 5,000 searches a month). Each keyword is looked up at most
 once every 24 hours for everyone (`serp_cache`). Lookups stop at 4,900 a month, 60 per tester a day, and at the monthly
 budget's hard stop; the last saved results are shown instead. Settings: `shared/budget.js` → `SERPAPI`.
+
+## Friends and sharing (stage 7)
+
+Top right on every page: **Settings** and **Me** (Friends, Shared with you, My account, My profile, Admin, Sign out).
+Friends are added by @user name or by scanning a friend's QR code (Me → Friends); either way the other person must
+accept. Friends see only products shared with them, never lists or profiles. Shared products show in Home →
+"Shared with you" and Me → Shared with you. Friend requests and shares are pushed straight away (`shared/push.js`:
+an empty VAPID wake-up push; the service worker then fetches `/api/notifications/pending`). QR codes use
+`qrcode-generator` and `jsqr`, copied from npm into `public/vendor/` at deploy.

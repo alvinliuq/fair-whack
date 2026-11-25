@@ -69,6 +69,13 @@ jobs:
             npx wrangler pages secret delete DESIGN_CODE --project-name fair-whack || echo "No design code set"
           fi
 
+      # QR codes (Me -> Friends): two small browser libraries copied from npm into the site.
+      - name: QR libraries
+        run: |
+          mkdir -p public/vendor
+          cp node_modules/qrcode-generator/qrcode.js public/vendor/qrcode.js
+          cp node_modules/jsqr/dist/jsQR.js public/vendor/jsQR.js
+
       - name: Deploy site
         run: npx wrangler pages deploy public --project-name=fair-whack --branch=main --commit-dirty=true
 

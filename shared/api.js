@@ -9,6 +9,7 @@ import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORK
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
 import { RETAILER_INFO } from './retailers.js';
+import { notify } from './push.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
@@ -929,6 +930,202 @@ route('GET', '/api/push/status', async ({ env, user }) => {
   return json({ devices: r.n });
 });
 
+// ----- friends and sharing (stage 7) -----
+// Friends are added by user name (@handle) or by scanning a QR code; either way the other person must accept.
+// Friends never see each other's lists or profile, only the products shared with them.
+const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
+const pairOf = (x, y) => (x < y ? { pair: `${x}|${y}`, a: x, b: y } : { pair: `${y}|${x}`, a: y, b: x });
+const otherOf = (row, me) => (row.a === me ? row.b : row.a);
+const randomCode = () => b64Url(crypto.getRandomValues(new Uint8Array(9)));
+function b64Url(bytes) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+
+/** Make sure the user has a @handle and a QR code; the first handle comes from their name. */
+async function ensureSocial(env, user) {
+  if (user.handle && user.friend_code) return user;
+  let handle = user.handle;
+  if (!handle) {
+    const base = (normText(user.name).replace(/[^a-z0-9]+/g, '') || 'friend').slice(0, 16).padEnd(3, '0');
+    for (let n = 0; n < 50 && !handle; n++) {
+      const h = n ? `${base}${n + 1}` : base;
+      if (!(await env.DB.prepare('SELECT 1 FROM users WHERE handle = ?').bind(h).first())) handle = h;
+    }
+    handle = handle || `${base}${Math.floor(Math.random() * 1e6)}`;
+  }
+  const code = user.friend_code || randomCode();
+  await env.DB.prepare('UPDATE users SET handle = ?, friend_code = ? WHERE id = ?').bind(handle, code, user.id).run();
+  return { ...user, handle, friend_code: code };
+}
+const personOut = (u) => ({ id: u.id, name: u.name, handle: u.handle });
+
+route('GET', '/api/social', async ({ env, user }) => {
+  const me = await ensureSocial(env, user);
+  const rows = (await env.DB.prepare(`SELECT f.*, u.id AS uid2, u.name, u.handle FROM friendships f
+      JOIN users u ON u.id = CASE WHEN f.a = ? THEN f.b ELSE f.a END
+      WHERE (f.a = ? OR f.b = ?) ORDER BY f.updated_at DESC`).bind(me.id, me.id, me.id).all()).results;
+  const out = { friends: [], incoming: [], outgoing: [], blocked: [] };
+  for (const r of rows) {
+    const p = { id: r.uid2, name: r.name, handle: r.handle, since: r.updated_at };
+    if (r.status === 'accepted') out.friends.push(p);
+    else if (r.status === 'pending') (r.requested_by === me.id ? out.outgoing : out.incoming).push(p);
+    else if (r.status === 'blocked' && r.blocked_by === me.id) out.blocked.push(p);
+  }
+  const unseen = await env.DB.prepare('SELECT COUNT(*) AS n FROM shares WHERE to_user = ? AND seen_at IS NULL').bind(me.id).first();
+  return json({ me: { id: me.id, name: me.name, handle: me.handle, code: me.friend_code }, ...out, unseenShares: unseen.n });
+});
+
+route('PUT', '/api/social/handle', async ({ env, user, request }) => {
+  const h = String((await body(request)).handle || '').trim().replace(/^@/, '').toLowerCase();
+  if (!HANDLE_RE.test(h)) throw new HttpError(400, 'User names are 3–20 letters, numbers, dots or underscores');
+  const taken = await env.DB.prepare('SELECT id FROM users WHERE handle = ? AND id != ?').bind(h, user.id).first();
+  if (taken) throw new HttpError(409, 'That user name is taken');
+  await ensureSocial(env, user);
+  await env.DB.prepare('UPDATE users SET handle = ? WHERE id = ?').bind(h, user.id).run();
+  return json({ ok: true, handle: h });
+});
+
+route('PUT', '/api/social/name', async ({ env, user, request }) => {
+  const n = String((await body(request)).name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!n) throw new HttpError(400, 'Please enter a name');
+  await env.DB.prepare('UPDATE users SET name = ? WHERE id = ?').bind(n, user.id).run();
+  return json({ ok: true, name: n });
+});
+
+route('POST', '/api/social/code/new', async ({ env, user }) => {
+  const code = randomCode();
+  await ensureSocial(env, user);
+  await env.DB.prepare('UPDATE users SET friend_code = ? WHERE id = ?').bind(code, user.id).run();
+  return json({ ok: true, code });
+});
+
+/** Who is behind a @handle or QR code (shown before sending a request). */
+route('GET', '/api/social/lookup', async ({ env, url, user }) => {
+  const code = url.searchParams.get('code'), handle = String(url.searchParams.get('handle') || '').replace(/^@/, '').toLowerCase();
+  const u = code ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE friend_code = ?').bind(code).first()
+    : handle ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE handle = ?').bind(handle).first() : null;
+  if (!u) throw new HttpError(404, code ? 'This QR code is no longer valid' : 'No one has that user name');
+  if (u.id === user.id) throw new HttpError(400, 'That’s you!');
+  const f = await env.DB.prepare('SELECT status, requested_by, blocked_by FROM friendships WHERE pair = ?').bind(pairOf(user.id, u.id).pair).first();
+  const status = !f ? 'none' : f.status === 'accepted' ? 'friends' : f.status === 'blocked' ? (f.blocked_by === user.id ? 'you_blocked' : 'none')
+    : f.requested_by === user.id ? 'requested' : 'they_requested';
+  return json({ person: personOut(u), status });
+});
+
+route('POST', '/api/friends/request', async ({ env, user, request }) => {
+  const b = await body(request);
+  const handle = String(b.handle || '').replace(/^@/, '').toLowerCase();
+  const u = b.code ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE friend_code = ?').bind(String(b.code)).first()
+    : handle ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE handle = ?').bind(handle).first() : null;
+  if (!u) throw new HttpError(404, b.code ? 'This QR code is no longer valid' : 'No one has that user name');
+  if (u.id === user.id) throw new HttpError(400, 'That’s you!');
+  const me = await ensureSocial(env, user);
+  const pr = pairOf(me.id, u.id);
+  const f = await env.DB.prepare('SELECT * FROM friendships WHERE pair = ?').bind(pr.pair).first();
+  if (f?.status === 'accepted') return json({ ok: true, status: 'friends' });
+  if (f?.status === 'blocked') {
+    if (f.blocked_by === me.id) throw new HttpError(400, 'You blocked this person. Unblock them first.');
+    return json({ ok: true, status: 'requested' }); // don't reveal the block
+  }
+  if (f?.status === 'pending' && f.requested_by === u.id) {
+    // They already asked: this is a yes.
+    await env.DB.prepare("UPDATE friendships SET status = 'accepted', updated_at = ? WHERE pair = ?").bind(nowIso(), pr.pair).run();
+    await notify(env, u.id, { kind: 'friend_accepted', title: `${me.name} accepted your friend request`, body: 'You can now share products with each other.', url: '/#/friends' });
+    return json({ ok: true, status: 'friends' });
+  }
+  if (!f) {
+    await env.DB.prepare("INSERT INTO friendships (pair, a, b, status, requested_by, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)")
+      .bind(pr.pair, pr.a, pr.b, me.id, nowIso(), nowIso()).run();
+    await notify(env, u.id, { kind: 'friend_request', title: `${me.name} wants to be friends`, body: `@${me.handle} · Tap to accept or decline`, url: '/#/friends' });
+  }
+  return json({ ok: true, status: 'requested' });
+});
+
+async function friendRow(env, me, otherId) {
+  const f = await env.DB.prepare('SELECT * FROM friendships WHERE pair = ?').bind(pairOf(me, otherId).pair).first();
+  if (!f) throw new HttpError(404, 'Not found');
+  return f;
+}
+route('POST', '/api/friends/:id/accept', async ({ env, user, params }) => {
+  const f = await friendRow(env, user.id, params.id);
+  if (f.status !== 'pending' || f.requested_by === user.id) throw new HttpError(400, 'Nothing to accept');
+  await env.DB.prepare("UPDATE friendships SET status = 'accepted', updated_at = ? WHERE pair = ?").bind(nowIso(), f.pair).run();
+  await notify(env, params.id, { kind: 'friend_accepted', title: `${user.name} accepted your friend request`, body: 'You can now share products with each other.', url: '/#/friends' });
+  return json({ ok: true });
+});
+// Decline a request, cancel your own, or remove a friend: the row goes, so either can ask again later.
+route('DELETE', '/api/friends/:id', async ({ env, user, params }) => {
+  const f = await friendRow(env, user.id, params.id);
+  if (f.status === 'blocked' && f.blocked_by !== user.id) throw new HttpError(404, 'Not found');
+  await env.DB.prepare('DELETE FROM friendships WHERE pair = ?').bind(f.pair).run();
+  return json({ ok: true });
+});
+route('POST', '/api/friends/:id/block', async ({ env, user, params }) => {
+  const u = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(params.id).first();
+  if (!u || u.id === user.id) throw new HttpError(404, 'Not found');
+  const pr = pairOf(user.id, u.id);
+  await env.DB.prepare(`INSERT INTO friendships (pair, a, b, status, requested_by, blocked_by, created_at, updated_at) VALUES (?, ?, ?, 'blocked', ?, ?, ?, ?)
+      ON CONFLICT(pair) DO UPDATE SET status = 'blocked', blocked_by = excluded.blocked_by, updated_at = excluded.updated_at`)
+    .bind(pr.pair, pr.a, pr.b, user.id, user.id, nowIso(), nowIso()).run();
+  await env.DB.prepare('DELETE FROM shares WHERE from_user = ? AND to_user = ?').bind(u.id, user.id).run();
+  return json({ ok: true });
+});
+
+route('POST', '/api/shares', async ({ env, user, request }) => {
+  const b = await body(request);
+  const to = [...new Set((Array.isArray(b.to) ? b.to : []).map(String))].slice(0, 30);
+  const note = String(b.note || '').trim().slice(0, 200) || null;
+  const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(String(b.product_id || '')).first();
+  if (!p) throw new HttpError(404, 'Product not found');
+  if (!to.length) throw new HttpError(400, 'Choose at least one friend');
+  const me = await ensureSocial(env, user);
+  const ok = (await env.DB.prepare(`SELECT a, b FROM friendships WHERE status = 'accepted' AND (a = ? OR b = ?)`).bind(me.id, me.id).all()).results.map((r) => otherOf(r, me.id));
+  const targets = to.filter((id) => ok.includes(id));
+  if (!targets.length) throw new HttpError(400, 'You can only share with friends');
+  const price = p.cur_price_cents != null ? ` · ${RETAILER_INFO[p.retailer]?.name || p.retailer} $${(p.cur_price_cents / 100).toFixed(2)}` : '';
+  for (const t of targets) {
+    const id = uid();
+    await env.DB.prepare('INSERT INTO shares (id, from_user, to_user, product_id, note, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, me.id, t, p.id, note, nowIso()).run();
+    await notify(env, t, { kind: 'share', title: `${me.name} shared ${p.name}`, body: (note ? `“${note}”` : 'Tap to see prices at every store') + price, url: `/#/shared?s=${id}` });
+  }
+  return json({ ok: true, sent: targets.length });
+});
+
+/** Products shared with me, newest first, with the best current offer across matched stores. */
+route('GET', '/api/shares', async ({ env, user }) => {
+  const rows = (await env.DB.prepare(`SELECT s.id AS share_id, s.note, s.created_at AS shared_at, s.seen_at, u.id AS from_id, u.name AS from_name, u.handle AS from_handle,
+        ${COLS.split(',').map((c) => 'p.' + c.trim()).join(', ')}
+      FROM shares s JOIN users u ON u.id = s.from_user JOIN retailer_product p ON p.id = s.product_id
+      WHERE s.to_user = ? ORDER BY s.created_at DESC LIMIT 60`).bind(user.id).all()).results;
+  const canons = [...new Set(rows.map((r) => r.canonical_product_id).filter(Boolean))];
+  const twins = new Map();
+  for (let i = 0; i < canons.length; i += 80) {
+    const chunk = canons.slice(i, i + 80);
+    for (const r of (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${chunk.map(() => '?').join(',')}) AND ${ACT}`).bind(...chunk).all()).results) {
+      if (!twins.has(r.canonical_product_id)) twins.set(r.canonical_product_id, []);
+      twins.get(r.canonical_product_id).push(pub(r));
+    }
+  }
+  return json({ shares: rows.map((r) => {
+    const product = pub(r);
+    const offers = (twins.get(r.canonical_product_id) || [product]).sort(sortOffers);
+    return { id: r.share_id, note: r.note, sharedAt: r.shared_at, seen: !!r.seen_at, from: { id: r.from_id, name: r.from_name, handle: r.from_handle }, product, best: offers[0], stores: offers.length };
+  }) });
+});
+route('POST', '/api/shares/seen', async ({ env, user }) => {
+  await env.DB.prepare('UPDATE shares SET seen_at = ? WHERE to_user = ? AND seen_at IS NULL').bind(nowIso(), user.id).run();
+  return json({ ok: true });
+});
+route('DELETE', '/api/shares/:id', async ({ env, user, params }) => {
+  await env.DB.prepare('DELETE FROM shares WHERE id = ? AND to_user = ?').bind(params.id, user.id).run();
+  return json({ ok: true });
+});
+
+/** The service worker calls this after a wake-up push: what to show (marked shown, so each shows once). */
+route('GET', '/api/notifications/pending', async ({ env, user }) => {
+  const rows = (await env.DB.prepare('SELECT id, kind, title, body, url FROM notifications WHERE user_id = ? AND shown_at IS NULL ORDER BY created_at LIMIT 10').bind(user.id).all()).results;
+  if (rows.length) await env.DB.prepare(`UPDATE notifications SET shown_at = ? WHERE id IN (${rows.map(() => '?').join(',')})`).bind(nowIso(), ...rows.map((r) => r.id)).run();
+  return json({ notifications: rows });
+});
+
 // ----- Costco reports -----
 route('POST', '/api/reports', async ({ env, user, request }) => {
   const b = await body(request);
@@ -1027,6 +1224,9 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
       db.prepare('DELETE FROM push_log WHERE user_id = ?').bind(src.id),
       db.prepare('DELETE FROM search_history WHERE user_id = ?').bind(src.id),
       db.prepare('DELETE FROM household WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').bind(src.id, src.id),
+      db.prepare('DELETE FROM shares WHERE from_user = ? OR to_user = ?').bind(src.id, src.id),
+      db.prepare('DELETE FROM notifications WHERE user_id = ?').bind(src.id),
       // Search counts stay (they feed the popular searches) but no longer point at a person.
       db.prepare('UPDATE search_log SET user_id = NULL WHERE user_id = ?').bind(src.id),
       db.prepare('INSERT INTO removed_users (id, name, removed_at, removed_by) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET removed_at = excluded.removed_at, removed_by = excluded.removed_by').bind(src.id, src.name, nowIso(), user.id),
@@ -1063,6 +1263,11 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
     // Household profile: the target keeps theirs if they have one.
     db.prepare('INSERT OR IGNORE INTO household (user_id, data, updated_at) SELECT ?, data, updated_at FROM household WHERE user_id = ?').bind(dst.id, src.id),
     db.prepare('DELETE FROM household WHERE user_id = ?').bind(src.id),
+    // Sharing: shares and notifications move; the merged-away name's friendships end (friends can re-add).
+    db.prepare('UPDATE shares SET to_user = ? WHERE to_user = ?').bind(dst.id, src.id),
+    db.prepare('UPDATE shares SET from_user = ? WHERE from_user = ?').bind(dst.id, src.id),
+    db.prepare('UPDATE notifications SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').bind(src.id, src.id),
     db.prepare('UPDATE user_reports SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
     // Keep the earlier join date and the later activity; fill in the profile if the target never did theirs.
     db.prepare(`UPDATE users SET created_at = MIN(created_at, ?), last_active_at = NULLIF(MAX(COALESCE(last_active_at, ''), COALESCE(?, '')), ''),

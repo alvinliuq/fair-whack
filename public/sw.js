@@ -1,6 +1,6 @@
 // Fair Whack service worker: offline shell + push notifications.
-const CACHE = 'fw-shell-v21';
-const SHELL = ['/', '/index.html', '/app.css?v=13', '/app.js?v=20', '/profile.js?v=10', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'fw-shell-v23';
+const SHELL = ['/', '/index.html', '/app.css?v=15', '/app.js?v=22', '/profile.js?v=10', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=1', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -19,15 +19,29 @@ self.addEventListener('fetch', (e) => {
 });
 
 self.addEventListener('push', (e) => {
-  let d = {};
-  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Fair Whack', {
-    body: d.body || 'Items on your list are on special',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/badge-96.png',
-    tag: 'fw-specials',
-    data: { url: d.url || '/#/digest' },
-  }));
+  // Special alerts (pipeline) carry their text. Friend requests and shared products arrive as an empty
+  // wake-up push: fetch what is waiting and show it (iPhone needs every push to show something).
+  if (e.data) {
+    let d = {};
+    try { d = e.data.json(); } catch { d = { body: e.data.text() }; }
+    e.waitUntil(self.registration.showNotification(d.title || 'Fair Whack', {
+      body: d.body || 'Items on your list are on special',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/badge-96.png',
+      tag: 'fw-specials',
+      data: { url: d.url || '/#/digest' },
+    }));
+    return;
+  }
+  e.waitUntil(fetch('/api/notifications/pending', { credentials: 'same-origin' })
+    .then((r) => (r.ok ? r.json() : { notifications: [] }))
+    .catch(() => ({ notifications: [] }))
+    .then(({ notifications: list }) => {
+      const show = (title, body, url, tag) => self.registration.showNotification(title, { body: body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag, data: { url: url || '/#/' } });
+      if (!list.length) return show('Fair Whack', 'You have something new from a friend', '/#/shared', 'fw-social');
+      if (list.length > 3) return show(`${list.length} new from your friends`, list.slice(0, 3).map((n) => n.title).join('\n'), '/#/shared', 'fw-social');
+      return Promise.all(list.map((n) => show(n.title, n.body, n.url, `fw-${n.id}`)));
+    }));
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();

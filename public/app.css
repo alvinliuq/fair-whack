@@ -533,3 +533,37 @@ h1 { letter-spacing: -.025em; }
 /* Stage 6: Google Shopping comparison under search results */
 .group.web .offer .small { color: var(--ink); }
 .group.web .offer.more { display: block; width: 100%; text-align: center; border: 0; border-top: 1px solid var(--line); background: none; font-weight: 700; color: var(--grape); padding: 10px; cursor: pointer; }
+
+/* ---------- stage 7: top buttons, Me menu, friends and sharing ---------- */
+.topbar .spacer { flex: 1; }
+.top-btn { display: inline-flex; align-items: center; gap: 5px; height: 36px; min-width: 36px; padding: 0 9px; border: 0; border-radius: 18px; background: rgba(255, 255, 255, .16); color: #fff; text-decoration: none; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; }
+.top-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.top-btn.me { padding-right: 12px; }
+.top-btn[data-count]:not([data-count=""])::after { content: attr(data-count); position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--lime); color: var(--ink); font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+body.anon .top-btn, body.onboarding .top-btn { display: none; }
+.me-head { display: flex; align-items: center; gap: 12px; margin: 2px 0 12px; }
+.avatar { flex: none; width: 36px; height: 36px; border-radius: 50%; background: #EEEAF8; color: var(--grape); display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.avatar.big { width: 48px; height: 48px; font-size: 17px; }
+.menu .pill { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--grape); color: #fff; font-size: 11px; line-height: 18px; text-align: center; vertical-align: 1px; }
+.list-rows .r.friend .n b { display: block; }
+.list-rows .r.friend .btn { flex: none; }
+label.r.friend { cursor: pointer; }
+label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(--grape); }
+.qr-card { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.qr { width: 156px; height: 156px; flex: none; background: #fff; border-radius: 12px; display: grid; place-items: center; }
+.qr svg { width: 100%; height: 100%; }
+.qr-t { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
+.qr-t b { font-size: 18px; }
+.scanner .frame.square { width: min(66vw, 260px); height: min(66vw, 260px); }
+.shared-list .r.share { align-items: center; }
+.shared-list .share-main { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; text-decoration: none; }
+.shared-list .share-main .thumb { width: 56px; height: 56px; flex: none; }
+.shared-list .share-main .n { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.shared-list .r.share.new .n b::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--grape); margin-right: 6px; vertical-align: 1px; }
+.shared-tile { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.shared-tile .from { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shared-tile .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--grape); margin-right: 5px; vertical-align: 1px; }
+.btn.icon-btn { flex: none; width: 46px; padding: 0; display: inline-grid; place-items: center; align-self: stretch; }
+.btn.icon-btn svg { width: 22px; height: 22px; fill: currentColor; }
+.rail > .shared-tile { flex: 0 0 42%; max-width: 190px; scroll-snap-align: start; }
+.shared-tile > .tile { width: 100%; min-height: 0; }

@@ -262,6 +262,7 @@ views.home = async (q) => {
     ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}
     <div class="sec-head"><h2>On special from your list</h2><a href="#/lists">My List ›</a></div>
     <div id="mine"><div class="skeleton" style="height:120px"></div></div>
+    <div id="sharedrail"></div>
     <div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
     <p class="sec-sub">Specials not on your list yet · tap ♡ to watch</p>
     <div id="dealsbox">
@@ -273,6 +274,7 @@ views.home = async (q) => {
     </div>`;
   if (q.get('store') || q.get('cat') || q.get('sort')) setTimeout(() => $('#deals')?.scrollIntoView({ block: 'start' }), 0);
   api('/api/digest').then((d) => renderMine($('#mine'), d)).catch((e) => fail(e, $('#mine')));
+  soc().then((m) => m.homeRail($('#sharedrail'))).catch(() => {});
 
   // Filters only reload this section: the address is updated without re-running the whole page.
   const remember = () => history.replaceState(null, '', link({}));
@@ -640,12 +642,13 @@ views.product = async (q, id) => {
         ${p.low12 ? `<div class="fact"><b class="num">${money(p.low12)}</b><span>Lowest in ${p.historyWeeks || 12} weeks</span></div>` : ''}
       </div>
       <p class="small muted">Checked ${ago(p.checkedAt)}${p.stale ? ' — may have changed' : ''}. ${p.anomaly ? '<b>Unusual price change, being checked.</b>' : ''}</p>
-      <div class="row" style="margin:12px 0"><button class="btn ${on ? 'ghost' : ''}" id="watch" data-pid="${esc(p.id)}" style="flex:1">${on ? '♥ On your list' : '♡ Add to my list'}</button>${p.url ? `<a class="btn light" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">View at ${RET[p.retailer]}</a>` : ''}</div>
+      <div class="row" style="margin:12px 0;gap:8px"><button class="btn ${on ? 'ghost' : ''}" id="watch" data-pid="${esc(p.id)}" style="flex:1;white-space:nowrap">${on ? '♥ On your list' : '♡ Add to my list'}</button><button class="btn light icon-btn" id="share" aria-label="Share with friends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4.5 4.5-1.4 1.4L13 6.8V15h-2V6.8L8.9 8.9 7.5 7.5zM5 13h2v6h10v-6h2v8H5z"/></svg></button>${p.url ? `<a class="btn light" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" aria-label="View at ${RET[p.retailer]}">${RET[p.retailer]} ↗</a>` : ''}</div>
       ${d.offers.length > 1 ? `<h2>Same product, other store</h2><div class="group">${d.offers.map((o, i) => offerRow(o, i === 0 && (d.offers[1].effective ?? 1e12) > (o.effective ?? 0))).join('')}</div>` : ''}
       <h2>Price history</h2><div class="card">${sparkline(d.history)}</div>
       ${d.sizes.length ? `<h2>Other sizes</h2><div class="group">${d.sizes.map((o) => `<a class="offer" href="#/p/${encodeURIComponent(o.id)}"><div class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span><span class="small">${esc(o.size || o.name)}</span></div><div class="p num">${money(o.effective)}</div><div></div><div class="u num">${esc(unitText(o))}</div></a>`).join('')}</div>` : ''}
       ${d.similar.length ? `<h2>Similar items, by unit price</h2><div class="grid">${d.similar.slice(0, 6).map(tile).join('')}</div>` : ''}`;
     $('#watch').onclick = () => onHeart(p.id).catch((e) => toast(e.message));
+    $('#share').onclick = async () => (await soc()).shareSheet(p).catch((e) => toast(e.message));
   } catch (e) { fail(e); }
 };
 
@@ -824,6 +827,21 @@ async function prof() {
   return profMod;
 }
 views.more = async () => (await prof()).more();
+// Friends and sharing (Me button, top right on every page).
+let socMod;
+async function soc() {
+  if (!socMod) { socMod = await import('/social.js?v=1'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile }); }
+  return socMod;
+}
+views.friends = async () => (await soc()).friendsPage();
+views.account = async () => (await soc()).accountPage();
+views.shared = async () => (await soc()).sharedPage();
+views.settings = () => {
+  app.innerHTML = `<h1>Settings</h1><div class="card menu">
+    <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
+    <a href="#/install"><span class="ic">📲</span><span>Add to Home Screen<span class="sub">Install on iPhone or Android</span></span></a>
+    <a href="#/about"><span class="ic">ℹ️</span><span>About the prices<span class="sub">Where they come from and how often</span></span></a></div>`;
+};
 views.profile = async (q, section) => (section ? (await prof()).editor(section) : (await prof()).hub());
 views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
@@ -958,6 +976,7 @@ async function route() {
   const tab = { home: 'home', digest: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
+  if (state.me && !state.needsProfile) soc().then((m) => m.refreshBadge()).catch(() => {});
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
   try {
     if (name === 'login') return views.login();
@@ -965,15 +984,12 @@ async function route() {
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
     if (name === 'profile') return await views.profile(q, parts[1]);
+    if (name === 'add') return await (await soc()).addPage(decodeURIComponent(parts[1] || ''));
     return await (views[name] || views.home)(q);
   } catch (e) { fail(e); }
 }
 
-$('#topsearch').onsubmit = (e) => {
-  e.preventDefault();
-  const v = e.target.q.value.trim();
-  if (v) { e.target.q.blur(); e.target.q.value = ''; location.hash = `#/search?q=${encodeURIComponent(v)}`; }
-};
+$('#me-btn').onclick = async () => { if (state.me) (await soc()).meSheet().catch((e) => toast(e.message)); };
 addEventListener('hashchange', route);
 // Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
 // so the back swipe goes to the page above (More), not the previous tab.
