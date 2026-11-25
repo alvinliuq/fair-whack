@@ -239,7 +239,12 @@ function renderMine(el, d) {
     pool = [...best.values()];
   }
   // Two list items can point at the same product (e.g. saved at two stores and matched): show each special once.
-  pool = [...new Map(pool.map((o) => [o.id, o])).values()].sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  // Also when one store lists the same product twice (same name and price, or matched as the same product).
+  const key = (o) => `${o.retailer}|${o.canonical || o.id}`;
+  const twin = (o) => `${o.retailer}|${String(o.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}|${o.effective}`;
+  const seen = new Set();
+  pool = pool.filter((o) => { const k = [o.id, key(o), twin(o)]; if (k.some((x) => seen.has(x))) return false; k.forEach((x) => seen.add(x)); return true; })
+    .sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
     ? `<label class="list-pick"><span class="sr-only">List</span><select id="homelist">${lists.map((l) => `<option value="${esc(l.id)}" ${l.id === listId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>`
     : `<a class="list-pick one" href="#/lists">${esc(lists[0]?.name || 'My List')} ›</a>`;
