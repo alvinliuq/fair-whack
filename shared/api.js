@@ -1,5 +1,6 @@
 // Fair Whack API — Cloudflare Pages Function (single router).
 // Bindings: env.DB (D1), env.AI (Workers AI, photo search). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional), SERPAPI_KEY (Google Shopping comparison, optional).
+import { TOP, TOP_GROUPS, groupOf, profileVector, similarity, rankTop } from './home.js';
 import {
   parseSize, unitPriceCents, unitBasisFor, parseUses, familyKey, comparableGroup, mapCategory,
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
@@ -405,8 +406,15 @@ async function deals({ env, url, user }) {
     if (category) { where.push('cat1 = ?'); binds.push(category); }
   } else if (category) { where.push('category = ?'); binds.push(category); }
   if (q.get('half') === '1') where.push("cur_promo_type = 'half_price'");
-  const sort = q.get('sort') === 'price' ? 'price' : 'saving';
+  const sort = ['price', 'popular'].includes(q.get('sort')) ? q.get('sort') : 'saving';
   let order = sort === 'price' ? 'cur_price_cents ASC, name' : `${SAVING_ORDER}, name`;
+  if (sort === 'popular') {
+    // Page views + 3 x people who added it to a list, last 30 days. Ties (and no data yet) fall back to the biggest saving.
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    order = `(SELECT COALESCE(SUM(v.views), 0) FROM product_views v WHERE v.product_id = retailer_product.id AND v.day >= ?)
+      + 3 * (SELECT COUNT(DISTINCT l.user_id) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.product_id = retailer_product.id AND li.created_at >= ?) DESC, ${order}`;
+    binds.push(since.slice(0, 10), since);
+  }
   let forYou = false;
   let prefer = [];
   if (!retailer && !category && user) {
@@ -425,10 +433,70 @@ async function deals({ env, url, user }) {
   const key = cacheKey('deals', isActive(retailer) ? retailer : '', category, q.get('half') === '1' ? 1 : 0, sort, page, [...prefer].sort().join(','));
   return json(await cached(env, key, async () => {
     const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${page * PAGE}`).bind(...binds).all()).results;
-    return { items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page, forYou };
+    let popularReady;
+    if (sort === 'popular' && page === 0 && rows.length) {
+      const ids = rows.slice(0, PAGE).map((r) => r.id);
+      const since = new Date(Date.now() - 30 * 86400000).toISOString();
+      const v = await env.DB.prepare(`SELECT COUNT(*) AS n FROM product_views WHERE day >= ? AND product_id IN (${ids.map(() => '?').join(',')})`).bind(since.slice(0, 10), ...ids).first();
+      popularReady = (v?.n || 0) >= 5;
+    }
+    return { items: rows.slice(0, PAGE).map(pub), more: rows.length > PAGE, page, forYou, popularReady };
   }));
 }
 route('GET', '/api/deals', deals);
+
+/** Home "Bargains you're missing": one tile per store with specials. */
+route('GET', '/api/bargains/stores', async ({ env }) => json(await cached(env, 'bargain-stores', async () => {
+  const rows = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS n,
+      MAX(CASE WHEN cur_was_cents > 0 AND COALESCE(discount_flag,'') != 'inflated' THEN (cur_was_cents - cur_price_cents) * 1.0 / cur_was_cents ELSE 0 END) AS best
+      FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND ${ACT} GROUP BY retailer`).bind(freshCut()).all()).results;
+  // "New deals": this store's specials were refreshed by the Wednesday or Saturday run in the last 2 days.
+  const recent = new Date(Date.now() - 48 * 3600000).toISOString();
+  const fresh = new Set((await env.DB.prepare(`SELECT DISTINCT retailer FROM pipeline_runs WHERE mode = 'specials' AND status = 'ok' AND COALESCE(items, 0) > 0 AND started_at >= ?`).bind(recent).all()).results.map((r) => r.retailer));
+  const order = new Map(ACTIVE_RETAILERS.map((r, i) => [r, i]));
+  const stores = rows.filter((r) => isActive(r.retailer) && r.n > 0).map((r) => ({
+    id: r.retailer, name: RETAILER_INFO[r.retailer]?.name || r.retailer, specials: r.n,
+    upTo: Math.min(90, Math.round((r.best || 0) * 100)), newDeals: fresh.has(r.retailer),
+  })).sort((a, b) => (b.newDeals - a.newDeals) || (order.get(a.id) - order.get(b.id)));
+  return { stores };
+})));
+
+/** "Top 20 Choices By Aussie Families": most added to lists in the last week by people like you. */
+route('GET', '/api/top20', async ({ env, user }) => {
+  const since = new Date(Date.now() - TOP.days * 86400000).toISOString();
+  return json(await cached(env, cacheKey('top20', user.id), async () => {
+    const adds = (await env.DB.prepare(`SELECT DISTINCT l.user_id, li.product_id FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.created_at >= ?`).bind(since).all()).results;
+    const people = [...new Set(adds.map((a) => a.user_id))];
+    let similarUsers = [];
+    if (people.length) {
+      const us = await selectIn(env, 'SELECT id, age_range, gender, household_size, fav_categories FROM users WHERE id IN', [...new Set([user.id, ...people])]);
+      const hh = new Map((await selectIn(env, 'SELECT user_id, data FROM household WHERE user_id IN', [...new Set([user.id, ...people])]))
+        .map((r) => { try { return [r.user_id, JSON.parse(r.data || '{}')]; } catch { return [r.user_id, {}]; } }));
+      const vec = new Map(us.map((u) => [u.id, profileVector(u, hh.get(u.id) || {})]));
+      const me = vec.get(user.id) || profileVector(user, {});
+      similarUsers = people.filter((id) => id !== user.id && vec.has(id) && similarity(me, vec.get(id)) >= TOP.similarity);
+    }
+    const forFamilies = similarUsers.length >= TOP.minSimilarUsers;
+    const ranked = rankTop(adds, forFamilies ? [...similarUsers, user.id] : null);
+    const ids = ranked.map((r) => r.id);
+    const prods = new Map((await selectIn(env, `SELECT ${COLS} FROM retailer_product WHERE id IN`, ids)).filter((p) => isActive(p.retailer) && p.cur_price_cents != null).map((p) => [p.id, p]));
+    const items = [];
+    const perGroup = new Map();
+    for (const r of ranked) {
+      const p = prods.get(r.id);
+      if (!p) continue;
+      const group = groupOf(p.category);
+      // Top 20 overall, plus up to 20 in each group so every filter has its own list.
+      const overall = items.filter((x) => x.top).length < TOP.size;
+      const inGroup = group && (perGroup.get(group) || 0) < TOP.size;
+      if (!overall && !inGroup) continue;
+      if (group) perGroup.set(group, (perGroup.get(group) || 0) + 1);
+      items.push({ ...pub(p), people: r.people, group, top: overall });
+    }
+    return { forFamilies, title: forFamilies ? 'Top 20 Choices By Aussie Families' : 'Top 20 this week',
+      groups: TOP_GROUPS.map(([g]) => g).filter((g) => perGroup.get(g)), items };
+  }));
+});
 route('GET', '/api/specials', deals);
 
 /** Browse a store's range: every product, filtered by the store's own categories. */
@@ -760,6 +828,8 @@ route('GET', '/api/saved', async ({ env, user }) => {
 route('GET', '/api/product/:id', async ({ env, params, user }) => {
   const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
   if (!p) throw new HttpError(404, 'Product not found');
+  await env.DB.prepare(`INSERT INTO product_views (product_id, day, views) VALUES (?, ?, 1)
+      ON CONFLICT(product_id, day) DO UPDATE SET views = views + 1`).bind(p.id, nowIso().slice(0, 10)).run().catch(() => {});
   const canon = p.canonical_product_id || `c:${p.id}`;
   const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map(pub).sort(sortOffers);
   const sizes = p.family_id
@@ -888,7 +958,7 @@ route('GET', '/api/digest', async ({ env, user }) => {
   // List items first, then only the products they point at (and their matched twins).
   // Joining straight onto "every current special" re-read all specials for every list item.
   const items = (await env.DB.prepare(`
-    SELECT li.id AS item_id, li.alert_mode, li.target_cents, li.product_id, l.retailer AS list_retailer, p.canonical_product_id AS canon
+    SELECT li.id AS item_id, li.list_id, li.alert_mode, li.target_cents, li.product_id, l.retailer AS list_retailer, p.canonical_product_id AS canon
       FROM list_items li JOIN lists l ON l.id = li.list_id
       JOIN retailer_product p ON p.id = li.product_id
      WHERE l.user_id = ?`).bind(user.id).all()).results;
@@ -907,7 +977,7 @@ route('GET', '/api/digest', async ({ env, user }) => {
     for (const r of onSpecial) {
       if (r.id !== it.product_id && !(it.canon && r.canonical_product_id === it.canon)) continue;
       if (it.list_retailer && it.list_retailer !== r.retailer) continue;
-      const o = { ...pub(r), alertMode: it.alert_mode, target: it.target_cents, itemId: it.item_id };
+      const o = { ...pub(r), alertMode: it.alert_mode, target: it.target_cents, itemId: it.item_id, listId: it.list_id };
       const prev = best.get(it.item_id);
       if (!prev || o.effective < prev.effective) best.set(it.item_id, o);
       const k = `${it.item_id}|${r.retailer}`;
@@ -918,7 +988,8 @@ route('GET', '/api/digest', async ({ env, user }) => {
   const top = await cached(env, 'digest-top', async () => (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND cur_promo_type = 'half_price' AND ${ACT}
       AND COALESCE(discount_flag,'') != 'inflated' AND cur_was_cents > 0 ORDER BY (cur_was_cents - cur_price_cents) DESC LIMIT 12`).bind(cut).all()).results.map(pub));
   const bySaving = (a, b) => (b.saving || 0) - (a.saving || 0);
-  return json({ fromYourList: [...best.values()].sort(bySaving), byStore: [...byStore.values()].sort(bySaving), topHalfPrice: top });
+  const lists = (await env.DB.prepare('SELECT id, name FROM lists WHERE user_id = ? ORDER BY COALESCE(sort_order, 1000000), created_at').bind(user.id).all()).results;
+  return json({ lists, fromYourList: [...best.values()].sort(bySaving), byStore: [...byStore.values()].sort(bySaving), topHalfPrice: top });
 });
 
 // ----- push -----

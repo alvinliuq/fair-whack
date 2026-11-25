@@ -219,36 +219,75 @@ views.welcome = async () => {
   };
 };
 
-// ----- Home: your list (swipe rail, store toggles) + Bargains you're missing -----
-const HOME_STORES = 'fw_home_stores';
-function homeStores() {
-  try { const v = JSON.parse(localStorage.getItem(HOME_STORES)); if (Array.isArray(v)) return v.filter((r) => STORES.includes(r)); } catch {}
-  return [...STORES];
-}
+// ----- Home: your list (list picker + stores) · Shared with you · Bargains (store tiles) · Top 20 -----
+const HOME_PICK = 'fw.homePick';
+function homePick() { try { return JSON.parse(localStorage.getItem(HOME_PICK)) || {}; } catch { return {}; } }
+function saveHomePick(v) { try { localStorage.setItem(HOME_PICK, JSON.stringify(v)); } catch {} }
+
 function renderMine(el, d) {
-  const sel = homeStores();
-  const all = d.fromYourList || [];
-  const per = d.byStore || all;
-  const pool = sel.length === STORES.length ? all : per.filter((o) => sel.includes(o.retailer));
-  const toggles = `<div class="toggles" role="group" aria-label="Stores">${STORES.map((r) => `<button type="button" class="toggle ${r}" data-store="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}
-    ${sel.length && all.length ? `<span class="count">${pool.length} on special</span>` : ''}</div>`;
+  const lists = d.lists || [];
+  const pick = homePick();
+  const listId = lists.some((l) => l.id === pick.list) ? pick.list : lists[0]?.id;
+  const inList = (d.byStore || []).filter((o) => o.listId === listId);
+  const stores = STORES.filter((r) => inList.some((o) => o.retailer === r));
+  const sel = (pick.stores || []).filter((r) => stores.includes(r)); // empty = All stores
+  let pool;
+  if (sel.length) pool = inList.filter((o) => sel.includes(o.retailer)).sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  else { // All stores: the cheapest store for each item
+    const best = new Map();
+    for (const o of inList) { const p = best.get(o.itemId); if (!p || o.effective < p.effective) best.set(o.itemId, o); }
+    pool = [...best.values()].sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  }
+  const picker = lists.length > 1
+    ? `<label class="list-pick"><span class="sr-only">List</span><select id="homelist">${lists.map((l) => `<option value="${esc(l.id)}" ${l.id === listId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>`
+    : `<a class="list-pick one" href="#/lists">${esc(lists[0]?.name || 'My List')} ›</a>`;
+  $('#minepick').innerHTML = picker;
+  const toggles = stores.length > 1 ? `<div class="toggles" role="group" aria-label="Stores">
+      <button type="button" class="toggle all" data-store="" aria-pressed="${!sel.length}"><span class="tick" aria-hidden="true">✓</span>All stores</button>
+      ${stores.map((r) => `<button type="button" class="toggle ${r}" data-store="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}
+    </div>` : '';
   let body;
-  if (!all.length) body = `<div class="rail-empty"><b>Nothing from your list is on special this week</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
-  else if (!sel.length) body = '<div class="rail-empty"><b>Pick a store</b>Choose one or more stores to see your specials.</div>';
-  else if (!pool.length) body = `<div class="rail-empty"><b>Nothing at ${RET[sel[0]]} this week</b>${all.length} of your items are on special at ${STORES.length > 2 ? 'other stores' : 'the other store'}.</div>`;
+  if (!inList.length) body = `<div class="rail-empty"><b>Nothing from this list is on special right now</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
   else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
-  el.innerHTML = toggles + body;
+  el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${pool.length} on special${sel.length ? '' : ' · cheapest store for each'}</p>` : '') + body;
   el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
-    const cur = homeStores();
-    const next = cur.includes(b.dataset.store) ? cur.filter((r) => r !== b.dataset.store) : [...cur, b.dataset.store];
-    try { localStorage.setItem(HOME_STORES, JSON.stringify(STORES.filter((r) => next.includes(r)))); } catch {}
+    const r = b.dataset.store;
+    let next = r ? (sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r]) : [];
+    if (next.length === stores.length) next = [];
+    saveHomePick({ ...homePick(), stores: next });
     renderMine(el, d);
   }));
+  const ls = $('#homelist');
+  if (ls) ls.onchange = () => { saveHomePick({ list: ls.value, stores: [] }); renderMine(el, d); };
 }
 
-views.home = async (q) => {
-  const f = { store: STORES.includes(q.get('store')) ? q.get('store') : '', cat: q.get('cat') || '', sort: q.get('sort') === 'price' ? 'price' : '' };
-  const link = (patch) => `#/${qs({ ...f, ...patch })}`;
+function bargainTiles(el, stores) {
+  if (!stores.length) { el.innerHTML = '<div class="rail-empty"><b>No specials yet</b>New specials arrive on Wednesdays and Saturdays.</div>'; return; }
+  el.innerHTML = `<div class="store-grid" tabindex="0" aria-label="Stores with specials, swipe for more">${stores.map((s) => `
+    <a class="store-tile" href="#/deals/${s.id}">
+      ${s.newDeals ? '<span class="new-deals">New deals</span>' : ''}
+      ${storeLogo(s.id, 'big')}
+      <span class="st-name">${esc(s.name)}</span>
+      ${s.upTo >= 5 ? `<b class="st-off">Up to ${s.upTo}% off</b>` : '<b class="st-off">&nbsp;</b>'}
+      <span class="st-count">${s.specials.toLocaleString()} on special</span>
+    </a>`).join('')}</div>`;
+}
+
+function topTwenty(el, d) {
+  let g = '';
+  const draw = () => {
+    const items = g ? d.items.filter((p) => p.group === g).slice(0, 20) : d.items.filter((p) => p.top);
+    el.innerHTML = `<div class="sec-head"><h2>${esc(d.title)}</h2></div>
+      <p class="sec-sub">${d.forFamilies ? 'Added to lists this week by households like yours' : 'Most added to lists this week'}</p>
+      ${d.groups.length ? `<div class="chips scroll" id="topcats"><a class="chip ${!g ? 'on' : ''}" data-g="" href="#">All categories</a>${d.groups.map((x) => `<a class="chip ${g === x ? 'on' : ''}" data-g="${esc(x)}" href="#">${esc(x)}</a>`).join('')}</div>` : ''}
+      ${items.length ? `<div class="rail ranked" tabindex="0" aria-label="Top products, swipe for more">${items.map((p, i) => `<div class="rank-wrap"><span class="rank">${i + 1}</span>${tile(p)}</div>`).join('')}</div>`
+        : '<div class="rail-empty"><b>Not enough lists yet</b>Products show up here once at least 2 people add them to a list.</div>'}`;
+    el.querySelectorAll('[data-g]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); g = a.dataset.g; draw(); }));
+  };
+  draw();
+}
+
+views.home = async () => {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const meta = state.meta || {};
   const updRows = (meta.retailers || []).filter((r) => STORES.includes(r.retailer));
@@ -258,61 +297,63 @@ views.home = async (q) => {
     <h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
     <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
     ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}
-    <div class="sec-head"><h2>On special from your list</h2><a href="#/lists">My List ›</a></div>
+    <div class="sec-head"><h2>On special from your list</h2><span id="minepick"></span></div>
     <div id="mine"><div class="skeleton" style="height:120px"></div></div>
     <div id="sharedrail"></div>
     <div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
-    <p class="sec-sub">Specials not on your list yet · tap ♡ to watch</p>
-    <div id="dealsbox">
-      <div class="chips" id="stores"><a class="chip ${!f.store ? 'on' : ''}" data-f-store="" href="${link({ store: '', cat: '' })}">All stores</a>${STORES.map((r) => `<a class="chip store ${f.store === r ? 'on' : ''}" data-f-store="${r}" href="${link({ store: r, cat: '' })}"><span class="ret ${r}"></span>${RET[r]}</a>`).join('')}</div>
-      <div id="cats"></div>
-      <div class="row" style="margin:2px 0 12px"><span class="small muted" id="dlabel"></span><span class="spacer"></span>
-        <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="price" class="${f.sort === 'price' ? 'on' : ''}">Price</button></div></div>
-      <div id="res"></div>
-    </div>`;
-  if (q.get('store') || q.get('cat') || q.get('sort')) setTimeout(() => $('#deals')?.scrollIntoView({ block: 'start' }), 0);
+    <p class="sec-sub">Tap a store to see all its specials</p>
+    <div id="bargains"><div class="skeleton" style="height:230px"></div></div>
+    <div id="top20"></div>`;
   api('/api/digest').then((d) => renderMine($('#mine'), d)).catch((e) => fail(e, $('#mine')));
   soc().then((m) => m.homeRail($('#sharedrail'))).catch(() => {});
+  api('/api/bargains/stores').then((d) => bargainTiles($('#bargains'), d.stores.filter((s) => STORES.includes(s.id)))).catch((e) => fail(e, $('#bargains')));
+  api('/api/top20').then((d) => topTwenty($('#top20'), d)).catch(() => {});
+};
 
-  // Filters only reload this section: the address is updated without re-running the whole page.
+// ----- One store's specials (from a Bargains tile) -----
+views.deals = async (q, store) => {
+  if (!STORES.includes(store)) { location.hash = '#/'; return; }
+  const f = { cat: q.get('cat') || '', sort: q.get('sort') === 'popular' ? 'popular' : '' };
+  const link = (patch) => `#/deals/${store}${qs({ ...f, ...patch })}`;
+  app.innerHTML = `
+    <a class="back" href="#/">‹ Home</a>
+    <div class="store-head">${storeLogo(store, 'big')}<div><h1>${esc(RET[store])}</h1><p class="lead small" id="dcount">Specials this week</p></div></div>
+    <div id="cats"></div>
+    <div class="row" style="margin:2px 0 4px"><span class="spacer"></span>
+      <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="popular" class="${f.sort === 'popular' ? 'on' : ''}">Most popular</button></div></div>
+    <p class="small muted" id="dlabel" style="margin:0 0 10px;text-align:right"></p>
+    <div id="res"></div>`;
   const remember = () => history.replaceState(null, '', link({}));
-  const mark = (sel, attr, val) => app.querySelectorAll(sel).forEach((el) => el.classList.toggle('on', el.getAttribute(attr) === val));
-  const loadCats = () => api(`/api/categories${qs({ scope: 'deals', retailer: f.store })}`).then((c) => {
-    $('#cats').innerHTML = chips(c.categories, f.cat, (name) => link({ cat: name }), { all: f.store ? `All ${RET[f.store]} aisles` : 'All categories' });
-    $('#cats').querySelectorAll('a.chip').forEach((a) => a.setAttribute('data-f-cat', new URLSearchParams(a.getAttribute('href').split('?')[1] || '').get('cat') || ''));
+  const loadCats = () => api(`/api/categories${qs({ scope: 'deals', retailer: store })}`).then((c) => {
+    const total = c.categories.reduce((n, x) => n + x.count, 0);
+    $('#dcount').textContent = `${total.toLocaleString()} on special this week`;
+    $('#cats').innerHTML = chips(c.categories, f.cat, (name) => link({ cat: name }), { all: 'All', cls: 'scroll' });
+    $('#cats').querySelectorAll('a.chip').forEach((a) => (a.onclick = (e) => {
+      e.preventDefault();
+      f.cat = new URLSearchParams(a.getAttribute('href').split('?')[1] || '').get('cat') || '';
+      $('#cats').querySelectorAll('a.chip').forEach((x) => x.classList.toggle('on', x === a));
+      remember(); loadDeals();
+    }));
   }).catch(() => {});
   const loadDeals = async () => {
     const res = $('#res');
     if (!res) return;
-    res.style.minHeight = `${res.offsetHeight}px`; // keep the page from jumping while it reloads
-    const box = document.createElement('div'); // a fresh box per load, so a slow earlier answer can't overwrite a newer one
+    res.style.minHeight = `${res.offsetHeight}px`;
+    const box = document.createElement('div');
     res.replaceChildren(box);
-    const d = await pagedGrid(box, (page) => api(`/api/deals${qs({ retailer: f.store, category: f.cat, sort: f.sort || 'saving', page })}`),
-      '<b>No deals here right now</b>Try another store or category.', (p) => !state.saved.has(p.id));
-    if (box.isConnected) { res.style.minHeight = ''; if ($('#dlabel')) $('#dlabel').textContent = d?.forYou ? 'Picked for you first' : ''; }
-  };
-  $('#dealsbox').addEventListener('click', (e) => {
-    const a = e.target.closest('[data-f-store], [data-f-cat], [data-sort]');
-    if (!a) return;
-    e.preventDefault();
-    if (a.hasAttribute('data-f-store')) {
-      if (f.store === a.dataset.fStore) return;
-      f.store = a.dataset.fStore; f.cat = '';
-      mark('#stores .chip', 'data-f-store', f.store);
-      $('#cats').innerHTML = '';
-      loadCats();
-    } else if (a.hasAttribute('data-f-cat')) {
-      if (f.cat === a.dataset.fCat) return;
-      f.cat = a.dataset.fCat;
-      mark('#cats .chip', 'data-f-cat', f.cat);
-    } else {
-      if (f.sort === a.dataset.sort) return;
-      f.sort = a.dataset.sort;
-      mark('.seg button', 'data-sort', f.sort);
+    const d = await pagedGrid(box, (page) => api(`/api/deals${qs({ retailer: store, category: f.cat, sort: f.sort || 'saving', page })}`),
+      '<b>No specials here right now</b>Try another category.');
+    if (box.isConnected) {
+      res.style.minHeight = '';
+      $('#dlabel').textContent = f.sort === 'popular' && d && d.popularReady === false ? 'Not enough views yet · biggest saving first' : '';
     }
-    remember();
-    loadDeals();
-  });
+  };
+  app.querySelectorAll('[data-sort]').forEach((b) => (b.onclick = () => {
+    if (f.sort === b.dataset.sort) return;
+    f.sort = b.dataset.sort;
+    app.querySelectorAll('[data-sort]').forEach((x) => x.classList.toggle('on', x === b));
+    remember(); loadDeals();
+  }));
   loadCats();
   await loadDeals();
 };
@@ -1108,7 +1149,7 @@ async function route() {
   if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { location.hash = '#/welcome'; return; }
   document.body.classList.toggle('onboarding', name === 'welcome' && state.needsProfile);
   document.body.classList.toggle('on-search', name === 'search');
-  const tab = { home: 'home', digest: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
+  const tab = { home: 'home', digest: 'home', deals: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
   if (state.me && !state.needsProfile) soc().then((m) => m.refreshBadge()).catch(() => {});
@@ -1119,6 +1160,7 @@ async function route() {
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
     if (name === 'profile') return await views.profile(q, parts[1]);
+    if (name === 'deals') return await views.deals(q, parts[1]);
     if (name === 'same') return await views.same(q, decodeURIComponent(parts[1] || ''));
     if (name === 'add') return await (await soc()).addPage(decodeURIComponent(parts[1] || ''));
     return await (views[name] || views.home)(q);
