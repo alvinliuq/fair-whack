@@ -15,7 +15,7 @@
 import { makeDb } from './d1.js';
 import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
-import { SOURCES, adaptItem } from './sources.js';
+import { ACTIVE_SOURCES as SOURCES, adaptItem } from './sources.js';
 import { ZYTE_TARGETS, ZYTE_MAX_USD, checkStore, verdict } from './zyte.js';
 import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';

@@ -96,13 +96,11 @@ export const SOURCES = {
     // promo ranges work. Allowed specialsCategory values: special-buys, lower-prices, super-savers.
     specials: [
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'special-buys', maxItems: 300, fetchDetails: false }, max: 300 },
-      { input: { mode: 'search', searchTerms: [], specialsCategory: 'lower-prices', maxItems: 200, fetchDetails: false }, max: 200 },
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'super-savers', maxItems: 200, fetchDetails: false }, max: 200 },
     ],
     catalogue: [{ input: { mode: 'search', searchTerms: [], categories: ALDI_DEPTS, maxItems: 3500, fetchDetails: false }, max: 3500 }],
     refresh: urlRefresh('urls', { fetchDetails: false }),
     probeAlternatives: [
-      { mode: 'search', searchTerms: [], specialsCategory: 'lower-prices', fetchDetails: false },
       { mode: 'search', searchTerms: [], specialsCategory: 'super-savers', fetchDetails: false },
       { mode: 'search', searchTerms: [], categories: ALDI_DEPTS, fetchDetails: false, maxItems: 60 },
     ],
@@ -124,8 +122,10 @@ export const SOURCES = {
   kmart: {
     actor: 'abotapi~kmart-au-scraper',
     host: 'www.kmart.com.au',
-    // Probe 25 Nov: keyword and category searches return nothing; the three deal views work
-    // (allowed specialsCategory: hot-deals, clearance, smart-savers). Kmart's range here is those views.
+    // PAUSED 25 Nov: this scraper's searches return nothing and its deal views (hot-deals, clearance,
+    // smart-savers) return kogan.com listings, not Kmart's. Nothing runs for Kmart until a working source is found
+    // (Zyte reads Target, a sister site, with plain HTML).
+    disabled: 'scraper returns kogan.com listings, not Kmart products',
     specials: [
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'hot-deals', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'clearance', maxItems: 200, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 200 },
@@ -172,6 +172,9 @@ export const SOURCES = {
     refresh: (urls) => urls.slice(0, 40).map((url) => ({ input: { operation: 'item', url, proxyMode: 'auto' }, max: 1 })),
   },
 };
+
+/** Sources that run. A paused source (disabled) is skipped by every job, so it costs nothing. */
+export const ACTIVE_SOURCES = Object.fromEntries(Object.entries(SOURCES).filter(([, v]) => !v.disabled));
 
 /** Turn one raw item into the shape normaliseScraped() reads, for any retailer. */
 export function adaptItem(retailer, item) {

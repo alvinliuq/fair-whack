@@ -6,12 +6,18 @@ import { prepare } from '../pipeline/ingest.js';
 import { ACTIVE_RETAILERS } from '../shared/normalize.js';
 
 test('every first-batch retailer has a source and is shown in the app', () => {
-  for (const r of ['aldi', 'jbhifi', 'costco', 'bunnings', 'kmart', 'bigw', 'officeworks', 'chemistwarehouse']) {
+  for (const r of ['aldi', 'jbhifi', 'costco', 'bunnings', 'bigw', 'officeworks', 'chemistwarehouse']) {
     assert.ok(SOURCES[r]?.actor, r);
     assert.ok(SOURCES[r].catalogue.length, `${r} catalogue`);
     assert.ok(SOURCES[r].refresh(['https://x/p/1']).length, `${r} refresh`);
     assert.ok(ACTIVE_RETAILERS.includes(r), `${r} active`);
   }
+});
+
+test('Kmart is paused (its scraper returns another site) and listings from other sites are dropped', async () => {
+  const { ACTIVE_SOURCES } = await import('../pipeline/sources.js');
+  assert.ok(!ACTIVE_SOURCES.kmart);
+  assert.match(adaptItem('kmart', { sku: 'K1', title: 'Kogan TV', price: 279, url: 'https://www.kogan.com/au/buy/x/' }).error, /another site/);
 });
 
 test('Kmart item: payable price, was price, barcode, image array', () => {
