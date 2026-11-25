@@ -232,12 +232,14 @@ function renderMine(el, d) {
   const stores = STORES.filter((r) => inList.some((o) => o.retailer === r));
   const sel = (pick.stores || []).filter((r) => stores.includes(r)); // empty = All stores
   let pool;
-  if (sel.length) pool = inList.filter((o) => sel.includes(o.retailer)).sort((a, b) => (b.saving || 0) - (a.saving || 0));
+  if (sel.length) pool = inList.filter((o) => sel.includes(o.retailer));
   else { // All stores: the cheapest store for each item
     const best = new Map();
     for (const o of inList) { const p = best.get(o.itemId); if (!p || o.effective < p.effective) best.set(o.itemId, o); }
-    pool = [...best.values()].sort((a, b) => (b.saving || 0) - (a.saving || 0));
+    pool = [...best.values()];
   }
+  // Two list items can point at the same product (e.g. saved at two stores and matched): show each special once.
+  pool = [...new Map(pool.map((o) => [o.id, o])).values()].sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
     ? `<label class="list-pick"><span class="sr-only">List</span><select id="homelist">${lists.map((l) => `<option value="${esc(l.id)}" ${l.id === listId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>`
     : `<a class="list-pick one" href="#/lists">${esc(lists[0]?.name || 'My List')} ›</a>`;
