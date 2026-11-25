@@ -808,11 +808,12 @@ route('GET', '/api/lists', async ({ env, user }) => {
       twins.get(r.canonical_product_id).push(pub(r));
     }
   }
+  const hidden = await hiddenPairs(env, user.id);
   const byList = new Map(lists.map((l) => [l.id, { ...l, items: [] }]));
   for (const it of items) {
     const list = byList.get(it.list_id);
     const product = pub(it);
-    let offers = (twins.get(it.canonical_product_id) || [product]).filter((o) => !list.retailer || o.retailer === list.retailer);
+    let offers = (twins.get(it.canonical_product_id) || [product]).filter((o) => (!list.retailer || o.retailer === list.retailer) && !hidden.has(`${it.id}|${o.id}`));
     if (!offers.length) offers = [product];
     offers.sort(sortOffers);
     list.items.push({ id: it.item_id, alertMode: it.alert_mode, target: it.target_cents, product, best: offers[0], offers });
@@ -938,6 +939,48 @@ route('POST', '/api/push/unsubscribe', async ({ env, user, request }) => {
 route('GET', '/api/push/status', async ({ env, user }) => {
   const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subs WHERE user_id = ?').bind(user.id).first();
   return json({ devices: r.n });
+});
+
+
+// ----- same product in other stores (stage 7) -----
+/** Pairs a user said are not the same product, both ways round: "a|b". */
+async function hiddenPairs(env, userId) {
+  const rows = (await env.DB.prepare('SELECT product_id, other_id FROM match_hidden WHERE user_id = ?').bind(userId).all().catch(() => ({ results: [] }))).results;
+  const set = new Set();
+  for (const r of rows) { set.add(`${r.product_id}|${r.other_id}`); set.add(`${r.other_id}|${r.product_id}`); }
+  return set;
+}
+async function ownItemWithList(env, user, itemId) {
+  const it = await env.DB.prepare(`SELECT li.id, li.alert_mode, li.target_cents, l.id AS list_id, l.name AS list_name, li.product_id
+      FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.id = ? AND l.user_id = ?`).bind(itemId, user.id).first();
+  if (!it) throw new HttpError(404, 'Not found');
+  return it;
+}
+/** One list item and the same product at every store (minus pairs this user said are different). */
+route('GET', '/api/items/:id/same', async ({ env, user, params }) => {
+  const it = await ownItemWithList(env, user, params.id);
+  const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(it.product_id).first();
+  if (!p) throw new HttpError(404, 'Not found');
+  const hidden = await hiddenPairs(env, user.id);
+  const rows = p.canonical_product_id
+    ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id = ? AND ${ACT}`).bind(p.canonical_product_id).all()).results : [p];
+  const offers = rows.map(pub).filter((o) => o.id === p.id || !hidden.has(`${p.id}|${o.id}`)).sort(sortOffers);
+  return json({ item: { id: it.id, listId: it.list_id, listName: it.list_name, alertMode: it.alert_mode, target: it.target_cents }, product: pub(p), offers });
+});
+/** "Not the same product": hidden for this user now; Admin decides for everyone. */
+route('POST', '/api/items/:id/not-same', async ({ env, user, params, request }) => {
+  const it = await ownItemWithList(env, user, params.id);
+  const other = String((await body(request)).product_id || '');
+  if (!other || other === it.product_id) throw new HttpError(400, 'Choose the other product');
+  const [a, b] = [it.product_id, other].sort();
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO match_hidden (user_id, product_id, other_id, created_at) VALUES (?, ?, ?, ?)').bind(user.id, it.product_id, other, nowIso()),
+    env.DB.prepare(`INSERT INTO match_candidate (product_a, product_b, score, status, created_at, reported_by, reported_other) VALUES (?, ?, 0, 'reported', ?, ?, ?)
+        ON CONFLICT(product_a, product_b) DO UPDATE SET status = CASE WHEN match_candidate.status = 'rejected' THEN 'rejected' ELSE 'reported' END,
+          reported_by = excluded.reported_by, reported_other = excluded.reported_other`)
+      .bind(a, b, nowIso(), user.id, other),
+  ]);
+  return json({ ok: true });
 });
 
 // ----- friends and sharing (stage 7) -----
@@ -1197,7 +1240,7 @@ route('GET', '/api/admin/overview', async ({ env, user }) => {
       SUM(CASE WHEN price_flag = 'anomaly' THEN 1 ELSE 0 END) AS anomalies,
       MAX(cur_captured_at) AS updated
       FROM retailer_product GROUP BY retailer`).bind(new Date(Date.now() - 28 * 86400000).toISOString(), freshCut()).all()).results;
-  const pending = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user_reports WHERE status='pending') AS reports, (SELECT COUNT(*) FROM match_candidate WHERE status='pending') AS matches").first();
+  const pending = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user_reports WHERE status='pending') AS reports, (SELECT COUNT(*) FROM match_candidate WHERE status IN ('pending','reported')) AS matches, (SELECT COUNT(*) FROM match_candidate WHERE status='reported') AS reported").first();
   const users = (await env.DB.prepare(`SELECT u.id, u.name, u.is_admin, u.is_design, u.created_at, u.last_active_at, u.age_range, u.gender, u.household_size, u.fav_categories,
       (SELECT COUNT(*) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = u.id) AS items,
       (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
@@ -1237,6 +1280,7 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
       db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').bind(src.id, src.id),
       db.prepare('DELETE FROM shares WHERE from_user = ? OR to_user = ?').bind(src.id, src.id),
       db.prepare('DELETE FROM notifications WHERE user_id = ?').bind(src.id),
+      db.prepare('DELETE FROM match_hidden WHERE user_id = ?').bind(src.id),
       // Search counts stay (they feed the popular searches) but no longer point at a person.
       db.prepare('UPDATE search_log SET user_id = NULL WHERE user_id = ?').bind(src.id),
       db.prepare('INSERT INTO removed_users (id, name, removed_at, removed_by) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET removed_at = excluded.removed_at, removed_by = excluded.removed_by').bind(src.id, src.name, nowIso(), user.id),
@@ -1277,6 +1321,8 @@ route('POST', '/api/admin/users', async ({ env, user, request }) => {
     db.prepare('UPDATE shares SET to_user = ? WHERE to_user = ?').bind(dst.id, src.id),
     db.prepare('UPDATE shares SET from_user = ? WHERE from_user = ?').bind(dst.id, src.id),
     db.prepare('UPDATE notifications SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('UPDATE OR IGNORE match_hidden SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
+    db.prepare('DELETE FROM match_hidden WHERE user_id = ?').bind(src.id),
     db.prepare('DELETE FROM friendships WHERE a = ? OR b = ?').bind(src.id, src.id),
     db.prepare('UPDATE user_reports SET user_id = ? WHERE user_id = ?').bind(dst.id, src.id),
     // Keep the earlier join date and the later activity; fill in the profile if the target never did theirs.
@@ -1364,10 +1410,10 @@ route('POST', '/api/admin/aldi', async ({ env, request }) => {
 }, { admin: true });
 
 route('GET', '/api/admin/matches', async ({ env }) => {
-  const rows = (await env.DB.prepare(`SELECT m.id, m.score, m.status, a.id AS a_id, a.retailer AS a_retailer, a.name AS a_name, a.size_text AS a_size, a.cur_price_cents AS a_price, a.image_url AS a_image,
+  const rows = (await env.DB.prepare(`SELECT m.id, m.score, m.status, m.reported_by, a.id AS a_id, a.retailer AS a_retailer, a.name AS a_name, a.size_text AS a_size, a.cur_price_cents AS a_price, a.image_url AS a_image,
         b.id AS b_id, b.retailer AS b_retailer, b.name AS b_name, b.size_text AS b_size, b.cur_price_cents AS b_price, b.image_url AS b_image
       FROM match_candidate m JOIN retailer_product a ON a.id = m.product_a JOIN retailer_product b ON b.id = m.product_b
-      WHERE m.status = 'pending' ORDER BY m.score DESC LIMIT 50`).all()).results;
+      WHERE m.status IN ('pending', 'reported') ORDER BY m.status = 'reported' DESC, m.score DESC LIMIT 50`).all()).results;
   return json({ matches: rows });
 }, { admin: true });
 
@@ -1383,7 +1429,15 @@ route('POST', '/api/admin/matches/:id', async ({ env, user, request, params }) =
       env.DB.prepare("UPDATE match_candidate SET status = 'approved', decided_by = ? WHERE id = ?").bind(user.id, m.id),
     ]);
   } else if (action === 'reject') {
-    await env.DB.prepare("UPDATE match_candidate SET status = 'rejected', decided_by = ? WHERE id = ?").bind(user.id, m.id).run();
+    // Already linked (a tester's report): split them now; matching never links a rejected pair again.
+    const pa = await env.DB.prepare('SELECT canonical_product_id FROM retailer_product WHERE id = ?').bind(m.product_a).first();
+    const pb = await env.DB.prepare('SELECT canonical_product_id FROM retailer_product WHERE id = ?').bind(m.product_b).first();
+    const stmts = [env.DB.prepare("UPDATE match_candidate SET status = 'rejected', decided_by = ? WHERE id = ?").bind(user.id, m.id)];
+    if (pa?.canonical_product_id && pa.canonical_product_id === pb?.canonical_product_id) {
+      const off = m.reported_other || m.product_b; // the product the tester said is different
+      stmts.push(env.DB.prepare("UPDATE retailer_product SET canonical_product_id = ?, match_method = 'manual', match_confidence = 1 WHERE id = ?").bind(`x:${off}`, off));
+    }
+    await env.DB.batch(stmts);
   } else throw new HttpError(400, 'action must be approve or reject');
   return json({ ok: true });
 }, { admin: true });

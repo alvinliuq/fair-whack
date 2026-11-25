@@ -669,3 +669,17 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .reorder .linkbtn[disabled] { opacity: .25; }
 .target-field[hidden] { display: none !important; }
 .list-rows .r.item .li-thumb { text-decoration: none; }
+
+/* ---------- stage 7: same product in other stores ---------- */
+.same-tag { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--grape); background: #EFEAFF; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+.same-list .same-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.same-row .same-main { display: flex; gap: 10px; align-items: center; min-width: 0; text-decoration: none; }
+.same-row .same-main .thumb { width: 52px; height: 52px; flex: none; border-radius: 9px; overflow: hidden; background: #fff; display: grid; place-items: center; }
+.same-row .same-main .thumb img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.same-row .same-main .ph { font-size: 18px; }
+.same-row .l { display: flex; flex-direction: column; gap: 3px; min-width: 0; align-items: flex-start; }
+.same-row .p { display: flex; flex-direction: column; align-items: flex-end; font-weight: 800; }
+.same-row .p small { font-weight: 500; font-size: 11.5px; }
+.same-row .acts { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.same-row .acts .heart { position: static; box-shadow: none; background: #EFEAFF; }
+.same-row .acts .linkbtn { font-size: 11.5px; color: var(--warn); white-space: nowrap; }

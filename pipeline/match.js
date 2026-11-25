@@ -31,14 +31,29 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
   const parent = new Map();
   const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
   const rset = new Map(); // root -> Set of retailers in that cluster
+  const clusterOf = new Map(); // root -> product ids in that cluster
   const union = (a, b) => {
     const ra = find(a), rb = find(b);
     if (ra === rb) return;
     const [keepR, dropR] = ra < rb ? [ra, rb] : [rb, ra];
     parent.set(dropR, keepR);
     for (const r of rset.get(dropR)) rset.get(keepR).add(r);
+    clusterOf.get(keepR).push(...clusterOf.get(dropR));
   };
-  for (const [id, p] of byId) { parent.set(id, id); rset.set(id, new Set([p.retailer])); }
+  // A pair someone marked "Different" never ends up together, not even through a third product.
+  const rejectedOf = new Map();
+  for (const k of rejectedPairs) {
+    const [a, b] = k.split('|');
+    for (const [x, y] of [[a, b], [b, a]]) { if (!rejectedOf.has(x)) rejectedOf.set(x, new Set()); rejectedOf.get(x).add(y); }
+  }
+  const splitByPerson = (x, y) => {
+    if (!rejectedOf.size) return false;
+    const rx = find(x), ry = find(y);
+    if (rx === ry) return false;
+    const other = new Set(clusterOf.get(ry));
+    return clusterOf.get(rx).some((id) => [...(rejectedOf.get(id) || [])].some((r) => other.has(r)));
+  };
+  for (const [id, p] of byId) { parent.set(id, id); rset.set(id, new Set([p.retailer])); clusterOf.set(id, [id]); }
   const method = new Map(); // id -> {method, conf}
 
   // Manual links already in the DB: keep products that share a manual canonical id together.
@@ -94,7 +109,7 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
     return rx !== ry && [...rset.get(ry)].some((r) => rset.get(rx).has(r));
   };
   for (const { x, y, s } of scored) {
-    if (s < MATCH.autoAccept || clash(x, y)) continue;
+    if (s < MATCH.autoAccept || clash(x, y) || splitByPerson(x.id, y.id)) continue;
     union(x.id, y.id);
     for (const id of [x.id, y.id]) if (!method.has(id) || method.get(id).c < s) method.set(id, { m: 'rule', c: s });
   }
@@ -102,7 +117,7 @@ export function computeMatches(products, rejectedPairs = new Set(), approvedPair
   // (A product that has its twin does not need a person to look at its near misses.)
   const candidates = [];
   for (const { x, y, s } of scored) {
-    if (find(x.id) === find(y.id) || clash(x, y)) continue;
+    if (find(x.id) === find(y.id) || clash(x, y) || splitByPerson(x.id, y.id)) continue;
     candidates.push({ product_a: x.id, product_b: y.id, score: s });
   }
 

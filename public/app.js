@@ -758,7 +758,8 @@ function itemRow(i, sel) {
   return `<div class="r item">
     <a href="#/p/${encodeURIComponent(best.id)}" class="li-thumb" tabindex="-1" aria-hidden="true">${thumb(i.product.image ? i.product : best)}</a>
     <a href="#/p/${encodeURIComponent(best.id)}" class="n" style="text-decoration:none"><div>${esc(i.product.name)}</div>
-      <div class="small"><span class="ret ${best.retailer}">${RET[best.retailer]}</span> ${best.special ? (best.promoType === 'half_price' ? '<span class="badge b-half">½ PRICE</span>' : '<span class="badge b-promo">Special</span>') : ''} <span class="muted">· ${MODE_LABEL[i.alertMode]}${i.alertMode === 'target' && i.target ? ` ${money(i.target)}` : ''}</span></div></a>
+      <div class="small"><span class="ret ${best.retailer}">${RET[best.retailer]}</span> ${best.special ? (best.promoType === 'half_price' ? '<span class="badge b-half">½ PRICE</span>' : '<span class="badge b-promo">Special</span>') : ''} <span class="muted">· ${MODE_LABEL[i.alertMode]}${i.alertMode === 'target' && i.target ? ` ${money(i.target)}` : ''}</span></div>
+      ${new Set(i.offers.map((o) => o.retailer)).size > 1 ? `<span class="same-tag" data-same="${esc(i.id)}">Same product in ${new Set(i.offers.map((o) => o.retailer)).size - 1} other store${new Set(i.offers.map((o) => o.retailer)).size > 2 ? 's' : ''} ›</span>` : ''}</a>
     <div style="text-align:right"><div class="num" style="font-weight:800">${money(best.effective)}</div>${best.was ? `<div class="small muted num" style="text-decoration:line-through">${money(best.was)}</div>` : ''}</div>
     ${heart(i.product)}
   </div>`;
@@ -791,6 +792,13 @@ views.lists = async () => {
       <div id="pushbox" style="margin-top:14px"></div>`;
     app.querySelectorAll('details[data-list]').forEach((d) => d.addEventListener('toggle', () => { state.listOpen[d.dataset.list] = d.open; }));
     app.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); listSheet(lists.find((l) => l.id === b.dataset.edit), lists.length); }));
+    // "Same product in other stores" opens the comparison for that item.
+    app.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-same]');
+      if (!t) return;
+      e.preventDefault(); e.stopPropagation();
+      location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
+    }, true);
     // Store buttons: "All stores" clears the others; any single store clears "All stores".
     app.addEventListener('click', (e) => {
       const b = e.target.closest('[data-ls]');
@@ -866,6 +874,30 @@ function reorderSheet(lists) {
     };
   });
 }
+/** Same product at every store, for one list item: compare, add another store's, or say it isn't the same. */
+views.same = async (q, itemId) => {
+  loading(1);
+  const d = await api(`/api/items/${encodeURIComponent(itemId)}/same`);
+  const p = d.product;
+  state.products.set(p.id, p);
+  const cheapest = d.offers[0];
+  app.innerHTML = `<a class="back" href="#/lists">‹ My List</a>
+    <div class="hero">${thumb(p)}<div><h1>${esc(p.name)}</h1><div class="small muted">${esc(p.size || '')}${p.brand ? ` · ${esc(p.brand)}` : ''} · on ${esc(d.item.listName)}</div></div></div>
+    <p class="small muted">Same product at ${d.offers.length} store${d.offers.length === 1 ? '' : 's'}, cheapest first. Tap ♡ to add a store's one to a list; tap “Not the same” if we've matched the wrong product.</p>
+    <div class="group same-list">${d.offers.map((o) => `<div class="offer same-row ${o.id === cheapest.id ? 'best' : ''}">
+        <a class="same-main" href="#/p/${encodeURIComponent(o.id)}">${thumb(o)}<span class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span>${badges(o)}${o.id === cheapest.id && d.offers.length > 1 ? '<span class="tag-best">Cheapest</span>' : ''}
+          <span class="small">${esc(o.name)}${o.size && !o.name.toLowerCase().includes(String(o.size).toLowerCase()) ? ` · ${esc(o.size)}` : ''}</span>${o.id === p.id ? '<span class="small muted">On your list</span>' : ''}</span></a>
+        <span class="p num">${money(o.effective)}${o.was ? `<small class="muted">was ${money(o.was)}</small>` : ''}<small class="muted">${esc(unitText(o))}</small></span>
+        <span class="acts">${heart(o)}${o.id === p.id ? '' : `<button class="linkbtn small" data-notsame="${esc(o.id)}">Not the same</button>`}</span>
+      </div>`).join('')}</div>
+    ${d.offers.length === 1 ? '<div class="empty">No other store has this product right now.</div>' : ''}`;
+  app.querySelectorAll('[data-notsame]').forEach((b) => (b.onclick = async () => {
+    const o = d.offers.find((x) => x.id === b.dataset.notsame);
+    if (!confirm(`Not the same product?\n\n${o.name} (${RET[o.retailer]}) will no longer show with this item for you, and we'll check the match.`)) return;
+    try { await api(`/api/items/${encodeURIComponent(itemId)}/not-same`, { method: 'POST', body: { product_id: o.id } }); toast('Thanks, it won\'t show with this item again'); views.same(q, itemId); } catch (e) { toast(e.message); }
+  }));
+};
+
 // ---------- push ----------
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64ToU8(b64) {
@@ -1000,11 +1032,11 @@ views.admin = async () => {
         ${o.users.map((u) => `<tr><td>${esc(u.name)}${u.is_admin ? ' <span class="small muted">admin</span>' : ''}${u.is_design ? ' <span class="small muted">design review</span>' : ''}</td><td>${ago(u.last_active_at) || '—'}</td><td>${AGE_LABEL[u.age_range] || '—'}</td><td>${GENDER_LABEL[u.gender] || '—'}</td><td>${HOUSE_LABEL[u.household_size] || '—'}</td><td class="num">${u.items}</td><td class="num">${u.searches ?? 0}</td><td>${u.devices ? '🔔' : '—'}</td><td>${u.id === o.me ? '<span class="small muted">you</span>' : `<button class="btn small ghost" data-u="${esc(u.id)}">Manage</button>`}</td></tr>`).join('')}</table></div>
       ${o.removed.length ? `<div class="card small stack" style="margin-top:10px"><div><b>Removed</b> <span class="muted">These names cannot sign in.</span></div>
         ${o.removed.map((r) => `<div class="row"><span style="flex:1">${esc(r.name)} <span class="muted">removed ${ago(r.removed_at)}</span></span><button class="btn small ghost" data-back="${esc(r.id)}">Allow back</button></div>`).join('')}</div>` : ''}
-      <h2>Possible matches <span class="small muted">${o.pending.matches} pending</span></h2>
+      <h2>Possible matches <span class="small muted">${o.pending.matches} pending${o.pending.reported ? ` · ${o.pending.reported} reported by testers` : ''}</span></h2>
       <div class="stack">${mt.matches.length ? mt.matches.map((m) => `<div class="card"><div class="pair">
         <div><span class="ret ${m.a_retailer}">${RET[m.a_retailer]}</span><div class="small">${esc(m.a_name)} ${esc(m.a_size || '')}</div><b class="num">${money(m.a_price)}</b></div>
         <div><span class="ret ${m.b_retailer}">${RET[m.b_retailer]}</span><div class="small">${esc(m.b_name)} ${esc(m.b_size || '')}</div><b class="num">${money(m.b_price)}</b></div></div>
-        <div class="row" style="margin-top:8px"><span class="small muted">score ${m.score}</span><span class="spacer"></span><button class="btn small danger" data-m="${m.id}" data-a="reject">Different</button><button class="btn small" data-m="${m.id}" data-a="approve">Same product</button></div></div>`).join('') : '<p class="small muted">Nothing to review.</p>'}</div>
+        <div class="row" style="margin-top:8px"><span class="small muted">${m.status === 'reported' ? '<b class="hot">A tester says these are different</b> · now linked' : `score ${m.score}`}</span><span class="spacer"></span><button class="btn small danger" data-m="${m.id}" data-a="reject">Different</button><button class="btn small" data-m="${m.id}" data-a="approve">Same product</button></div></div>`).join('') : '<p class="small muted">Nothing to review.</p>'}</div>
       <h2>Data runs</h2><div class="card" style="overflow-x:auto"><table class="t"><tr><th>When</th><th>Job</th><th>Status</th><th>Items</th><th>$</th><th>Note</th></tr>
         ${o.runs.map((r) => `<tr><td>${ago(r.started_at)}</td><td>${r.mode} ${RET[r.retailer] || r.retailer || ''}${r.provider && r.provider !== 'apify' ? ` <span class="muted">${esc(r.provider)}</span>` : ''}</td><td>${r.status}</td><td class="num">${r.items ?? ''}</td><td class="num">${(r.cost_usd || 0).toFixed(2)}</td><td class="small">${esc((r.message || '').slice(0, 140))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet</td></tr>'}</table></div>`;
     app.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => { await api(`/api/admin/matches/${b.dataset.m}`, { method: 'POST', body: { action: b.dataset.a } }); toast('Saved'); views.admin(); }));
@@ -1076,7 +1108,7 @@ async function route() {
   if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { location.hash = '#/welcome'; return; }
   document.body.classList.toggle('onboarding', name === 'welcome' && state.needsProfile);
   document.body.classList.toggle('on-search', name === 'search');
-  const tab = { home: 'home', digest: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists' }[name] || 'more';
+  const tab = { home: 'home', digest: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
   if (state.me && !state.needsProfile) soc().then((m) => m.refreshBadge()).catch(() => {});
@@ -1087,6 +1119,7 @@ async function route() {
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
     if (name === 'profile') return await views.profile(q, parts[1]);
+    if (name === 'same') return await views.same(q, decodeURIComponent(parts[1] || ''));
     if (name === 'add') return await (await soc()).addPage(decodeURIComponent(parts[1] || ''));
     return await (views[name] || views.home)(q);
   } catch (e) { fail(e); }
