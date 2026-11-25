@@ -1,8 +1,8 @@
 // Wishlist alerts (spec section 7): one merged push per user per day,
 // dedupe by product + promotion start, only fresh prices (seen in the last 8 days).
 import { ALERTS } from './config.js';
+import { RETAILER_IDS, retailerName } from '../shared/retailers.js';
 
-const RETAILER_NAME = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco' };
 const money = (c) => `$${(c / 100).toFixed(2)}`;
 
 export function itemTriggered(item, offer) {
@@ -21,7 +21,7 @@ export function describeOffer(o) {
   const promo = o.cur_promo_type === 'half_price' ? 'half price'
     : o.cur_promo_type === 'multibuy' && o.cur_promo_text ? o.cur_promo_text
     : o.cur_was_cents ? `was ${money(o.cur_was_cents)}` : 'on special';
-  return `${o.name} ${money(o.cur_price_cents)} at ${RETAILER_NAME[o.retailer] || o.retailer} (${promo})`;
+  return `${o.name} ${money(o.cur_price_cents)} at ${retailerName(o.retailer)} (${promo})`;
 }
 
 /** Work out which users get which alerts. Pure-ish: reads from db, returns a plan. */
@@ -36,7 +36,7 @@ export async function planAlerts(db, now = new Date()) {
       JOIN retailer_product p ON p.id = li.product_id
       JOIN retailer_product o ON (o.id = p.id OR (p.canonical_product_id IS NOT NULL AND o.canonical_product_id = p.canonical_product_id))
      WHERE li.alert_mode != 'off'
-       AND o.retailer IN ('woolworths','coles')
+       AND o.retailer IN (${RETAILER_IDS.map((r) => `'${r}'`).join(',')})
        AND o.cur_is_special = 1
        AND o.cur_captured_at >= ?
        AND (l.retailer IS NULL OR l.retailer = o.retailer)`, [fresh]);

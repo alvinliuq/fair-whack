@@ -7,11 +7,13 @@
 //   node pipeline/run.js match       re-run matching and the automatic review of possible matches
 //   node pipeline/run.js review      dry run of matching + the automatic review (size, name, photo); --apply does it
 //   node pipeline/run.js index       rebuild the search index only (--if-missing: skip when it is up to date)
+//   node pipeline/run.js probe       tiny test run (5 products) of each first-batch retailer's scraper; shows what it returned
 //   node pipeline/run.js status      print spend and recent runs
 // Options: --retailer=woolworths|coles   --force   --dry-run
 import { makeDb } from './d1.js';
 import { runActor } from './apify.js';
 import { prepare, writeRecords, updateFlags } from './ingest.js';
+import { SOURCES, adaptItem } from './sources.js';
 import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
@@ -25,7 +27,8 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   const [k, v] = a.slice(2).split('=');
   return [k, v ?? true];
 }));
-const ALL_RETAILERS = Object.keys(SPECIALS);
+const ALL_RETAILERS = [...Object.keys(SPECIALS), ...Object.keys(SOURCES)];
+if (opt.retailer && !ALL_RETAILERS.includes(opt.retailer)) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
 const RETAILERS = opt.retailer ? [opt.retailer] : ALL_RETAILERS;
 // Saturday's run skips the supermarkets (their specials change on Wednesdays).
 const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
@@ -79,7 +82,9 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
       const left = runs.slice(i).reduce((s, x) => s + x.share, 0) || 1;
       const share = i < runs.length - 1 ? Math.max(0.05, Math.round((remaining * r.share / left) * 100) / 100) : Math.round(remaining * 100) / 100;
       log(key, `run ${i + 1}/${runs.length} cap $${share}`);
-      const res = await runActor(ACTORS[retailer], { ...baseInput(retailer), ...r.input }, { maxChargeUsd: share, label: `${key}_${i}` });
+      const actor = SOURCES[retailer]?.actor || ACTORS[retailer];
+      const input = SOURCES[retailer] ? r.input : { ...baseInput(retailer), ...r.input };
+      const res = await runActor(actor, input, { maxChargeUsd: share, label: `${key}_${i}` });
       cost += res.costUsd; remaining -= res.costUsd;
       raw.push(...res.items);
       log(key, `run ${i + 1}: ${res.items.length} items, $${res.costUsd.toFixed(3)}, ${res.status}`);
@@ -101,9 +106,20 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
   }
 }
 
+/** Source runs ({ input, max }) -> scrapeJob runs ({ input, share }) with the cap split by item count. */
+const withShares = (runs) => {
+  const total = runs.reduce((s, x) => s + (x.max || 1), 0) || 1;
+  return runs.map((x) => ({ input: x.input, share: (x.max || 1) / total }));
+};
+
 async function specials(db, retailers = RETAILERS) {
   if (!retailers.length) log('specials: no retailers for this run');
   for (const r of retailers) {
+    if (SOURCES[r]) {
+      if (!SOURCES[r].specials.length) { log(`specials:${r}`, 'no specials at this store; prices refresh with the catalogue and lists'); continue; }
+      await scrapeJob(db, 'specials', r, withShares(SOURCES[r].specials), { extra: false });
+      continue;
+    }
     const groups = SPECIALS[r];
     const total = groups.reduce((s, g) => s + g.max, 0);
     await scrapeJob(db, 'specials', r, groups.map((g) => ({
@@ -125,7 +141,8 @@ async function wishlist(db) {
        LIMIT ${LIMITS.wishlistMaxItems}`, [r, fresh]);
     const urls = rows.map((x) => x.product_url);
     if (!urls.length) { log(`wishlist:${r}`, 'nothing to refresh'); continue; }
-    await scrapeJob(db, 'wishlist', r, [{ share: 1, input: { productUrls: urls, maxItemsPerQuery: 1 } }], { extra: false });
+    const runs = SOURCES[r] ? withShares(SOURCES[r].refresh(urls)) : [{ share: 1, input: { productUrls: urls, maxItemsPerQuery: 1 } }];
+    await scrapeJob(db, 'wishlist', r, runs, { extra: false });
   }
 }
 
@@ -137,6 +154,7 @@ async function catalogue(db) {
       log(`catalogue:${r}`, `skipped, last ok run ${t.slice(0, 10)}`);
       continue;
     }
+    if (SOURCES[r]) { await scrapeJob(db, 'catalogue', r, withShares(SOURCES[r].catalogue), { extra: true }); continue; }
     // One Apify run per department size (maxItemsPerQuery applies to every URL in a run).
     const bySize = new Map();
     for (const a of AISLES[r]) { if (!bySize.has(a.max)) bySize.set(a.max, []); bySize.get(a.max).push(a.url); }
@@ -175,6 +193,34 @@ async function review(db) {
   log(`match (dry run): queue ${plan.pending.length} now, ${plan.candidates.length} after`);
   await runReview(db, plan, { apply: false, allPhotos: !!opt['all-photos'], log });
   log('dry run: nothing was changed');
+}
+
+/** Tiny run per first-batch retailer: is the scraper reachable, and does its output turn into products? Writes no products. */
+async function probe(db) {
+  for (const r of RETAILERS.filter((x) => SOURCES[x])) {
+    const s = SOURCES[r];
+    const base = (s.specials[0] || s.catalogue[0]).input;
+    const input = { ...base, ...(base.operation ? { limit: 5 } : { maxItems: 5 }) };
+    if (Array.isArray(input.queries) && input.queries.length > 1) input.queries = input.queries.slice(0, 1);
+    if (Array.isArray(input.searchTerms) && input.searchTerms.length > 1) input.searchTerms = input.searchTerms.slice(0, 1);
+    const budget = await capFor(db, `probe:${r}`, { extra: false });
+    const { id } = await startRun(db, 'probe', r);
+    if (budget.skip) { log(`probe:${r}`, budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); continue; }
+    try {
+      const res = await runActor(s.actor, input, { maxChargeUsd: Math.min(0.3, budget.cap), label: `probe:${r}`, timeoutMin: 10 });
+      const adapted = res.items.map((x) => adaptItem(r, x));
+      const good = adapted.filter((x) => !x.error);
+      const msg = `${res.items.length} returned, ${good.length} usable, $${res.costUsd.toFixed(3)}, ${res.status}`
+        + (good[0] ? ` — e.g. ${good[0].name} $${good[0].price}${good[0].wasPrice ? ` (was $${good[0].wasPrice})` : ''}` : '')
+        + (adapted.find((x) => x.error) ? ` — problem: ${adapted.find((x) => x.error).error}` : '');
+      log(`probe:${r}`, msg);
+      if (res.items[0]) log(`probe:${r}`, 'fields:', Object.keys(res.items[0]).slice(0, 40).join(', '));
+      await endRun(db, id, good.length ? 'ok' : 'failed', good.length, res.costUsd, msg);
+    } catch (e) {
+      log(`probe:${r}`, 'FAILED', e.message);
+      await endRun(db, id, 'failed', 0, 0, e.message);
+    }
+  }
 }
 
 async function index(db) {
@@ -233,8 +279,9 @@ else if (mode === 'review') { if (opt.apply) await match(db); else { await revie
 else if (mode === 'index') { if (!(await index(db))) process.exit(0); }
 else if (mode === 'alerts') { const r = await sendAlerts(db, { dryRun: !!opt['dry-run'] }); log('alerts:', JSON.stringify(r)); }
 else if (mode === 'status') await status(db);
+else if (mode === 'probe') await probe(db);
 else { console.error(`Unknown mode ${mode}`); process.exit(2); }
 // Anything that changed products or prices makes the saved API answers out of date.
-if (!['alerts', 'status'].includes(mode)) {
+if (!['alerts', 'status', 'probe'].includes(mode)) {
   await clearApiCache(db).then(() => log('api cache cleared'), (e) => log('api cache NOT cleared:', e.message));
 }

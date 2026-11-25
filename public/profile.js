@@ -1,7 +1,7 @@
 // FW2.0: More page (Save More), profile hub and the three profile sections. Loaded on demand from app.js.
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
-} from './household.js?v=5';
+} from './household.js?v=6';
 import { attachAutocomplete, loadPlaces } from './maps.js?v=1';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.

@@ -329,7 +329,9 @@ h1 { letter-spacing: -.025em; }
 .sec-head h2 { margin: 0; flex: 1; }
 .sec-head a { font-size: 13px; font-weight: 700; color: var(--grape-d); text-decoration: none; white-space: nowrap; }
 .sec-sub { font-size: 13px; color: var(--ink-3); margin: -4px 0 10px; }
-.toggles { display: flex; gap: 8px; margin: 0 0 10px; }
+.toggles { display: flex; gap: 8px; margin: 0 -14px 10px; padding: 2px 14px; overflow-x: auto; scrollbar-width: none; }
+.toggles::-webkit-scrollbar { display: none; }
+.toggle { flex: none; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 13px 7px 10px; font-size: 13.5px; font-weight: 700; color: var(--ink-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .toggle .tick { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--lilac); display: grid; place-items: center; font-size: 11px; line-height: 1; color: transparent; }
 .toggle[aria-pressed="true"] { background: var(--grape); border-color: var(--grape); color: #fff; }

@@ -1,0 +1,161 @@
+// Stage 6, first batch: eight more retailers through ready-made Apify scrapers.
+// Each source says which actor to run, what to ask for (specials, catalogue, refresh of list items),
+// and how to turn the actor's items into the shape normaliseScraped() reads:
+//   { productId, name, brand, size, price, wasPrice, isOnSpecial, promotionText, category, image, url, barcode, isAvailable, unitPriceText }
+//
+// Seven use the same developer's scrapers (abotapi: same inputs, similar output). JB Hi-Fi uses dromb's
+// scraper, which fetches one search page per run. Reviews and extra detail pages are always switched off:
+// they are charged separately and the app does not use them.
+
+const NO_EXTRAS = { fetchReviews: false, incrementalMode: false };
+
+// Broad searches that together cover what households buy at each store (a "catalogue" for a
+// general retailer is these searches; each one walks its result pages up to the item cap).
+const Q = {
+  bunnings: ['cordless drill', 'garden hose', 'paint', 'storage', 'light globe', 'bbq', 'outdoor furniture', 'cleaning', 'pots plants', 'tool set', 'extension lead', 'smoke alarm', 'door handle', 'heater', 'fan'],
+  kmart: ['towel', 'bedding', 'storage', 'kitchen', 'toys', 'lamp', 'cushion', 'kids clothing', 'womens', 'mens', 'shoes', 'phone accessories', 'home decor', 'baby', 'outdoor', 'appliances', 'party', 'fitness'],
+  costco: ['coffee', 'chocolate', 'nuts', 'olive oil', 'laundry', 'toilet paper', 'vitamins', 'tv', 'laptop', 'tyres', 'mattress', 'water', 'snacks', 'baby', 'pet food', 'cleaning'],
+  officeworks: ['paper', 'pens', 'printer ink', 'laptop', 'monitor', 'desk', 'office chair', 'school', 'notebook', 'headphones', 'storage', 'art', 'calculator', 'keyboard', 'mouse'],
+  bigw: ['toys', 'lego', 'bedding', 'towel', 'kitchen', 'tv', 'headphones', 'books', 'video games', 'clothing', 'shoes', 'baby', 'pet', 'vitamins', 'cleaning', 'outdoor'],
+  jbhifi: ['tv', 'laptop', 'headphones', 'speaker', 'iphone', 'samsung', 'ipad', 'nintendo switch', 'playstation', 'xbox', 'camera', 'smart watch', 'monitor', 'vacuum', 'coffee machine', 'air fryer', 'keyboard', 'soundbar'],
+};
+
+// ---------- adapters ----------
+
+const first = (...v) => v.find((x) => x !== undefined && x !== null && x !== '');
+const num = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+};
+const imageOf = (x) => {
+  const v = first(x.imageUrl, x.image, Array.isArray(x.images) ? x.images[0] : null);
+  return typeof v === 'object' && v ? first(v.url, v.src) : v || null;
+};
+const categoryOf = (x) => {
+  for (const v of [x.categoryPath, x.breadcrumbs, x.categoryHierarchy, x.categories]) {
+    if (Array.isArray(v) && v.length) return v.map((c) => (typeof c === 'object' ? first(c.name, c.title, c.label) : c)).filter(Boolean).join(' > ');
+    if (typeof v === 'string' && v) return v.replace(/\s*[/|]\s*/g, ' > ');
+  }
+  return first(x.category, x.department, x.merchDepartment, x.type) || null;
+};
+const absUrl = (u, host) => (!u ? null : /^https?:/.test(u) ? u : `https://${host}${u.startsWith('/') ? '' : '/'}${u}`);
+
+/** abotapi-style item (and most shop scrapers) -> our scraper shape. */
+export function adaptGeneric(x, host) {
+  if (!x || x.error || x.changeType === 'EXPIRED') return { error: x?.error || 'no item' };
+  const price = num(first(x.currentPrice, x.promoPrice, x.discountPrice, x.current_price, x.discount_price, x.salePrice, x.price));
+  const listed = num(first(x.wasPrice, x.compareAtPrice, x.originalPrice, x.listPrice, x.rrp, x.price));
+  const was = listed && price && listed > price + 0.004 ? listed : null;
+  const avail = first(x.inStock, x.isInStock, x.in_stock, x.inStockNationally, x.availableOnline);
+  const stock = String(first(x.stockStatus, x.stock_status, x.availability) || '').toLowerCase();
+  return {
+    productId: first(x.sku, x.code, x.itemNumber, x.articleId, x.productId, x.id, x.object_id),
+    name: first(x.name, x.title),
+    brand: first(x.brand, x.vendor) || null,
+    size: first(x.sellingSize, x.size, x.packSize) || null,
+    price,
+    wasPrice: was,
+    isOnSpecial: !!(x.isOnSpecial || x.onSale || x.isSpecialBuy || was),
+    promotionText: first(x.promoLabel, typeof x.promotion === 'string' ? x.promotion : null, x.priceLabel, x.savingsDisplay,
+      x.isSpecialBuy ? 'Special Buy' : null, was ? `Save $${(was - price).toFixed(2)}` : null) || null,
+    category: categoryOf(x),
+    image: imageOf(x),
+    url: absUrl(first(x.url, x.productUrl, x.link), host),
+    barcode: first(x.gtin, x.apn, x.ean, x.barcode, x.upc) || null,
+    isAvailable: avail === false || /out ?of ?stock|unavailable|sold ?out/.test(stock) ? false : true,
+    unitPriceText: first(x.unitPriceDisplay, x.unitPriceFormatted) || null,
+    _membersOnly: !!(x.priceHidden || x.membershipRequired) && price == null,
+  };
+}
+
+/** Chemist Warehouse: drop prescription-only medicines (not shown in the beta). */
+function adaptChemist(x) {
+  const out = adaptGeneric(x, 'www.chemistwarehouse.com.au');
+  if (x && (x.prescriptionType || /^S4|^S8|prescription/i.test(String(x.schedule || '')))) return { ...out, error: 'prescription' };
+  return out;
+}
+
+// ---------- sources ----------
+// specials: list of runs ({ input, max }); catalogue: list of runs; refresh(urls) -> list of runs.
+const urlRefresh = (field = 'urls', extra = {}) => (urls) => [{ input: { mode: 'url', [field]: urls, maxItems: urls.length, ...extra }, max: urls.length }];
+const searches = (r, total, extra) => [{ input: { mode: 'search', queries: Q[r], maxItems: total, ...extra }, max: total }];
+
+export const SOURCES = {
+  aldi: {
+    actor: 'abotapi~aldi-com-au-scraper',
+    host: 'www.aldi.com.au',
+    // The whole range is the /products page (about 3,000 products).
+    specials: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], onSaleOnly: true, maxItems: 600, fetchDetails: false }, max: 600 }],
+    catalogue: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], maxItems: 3500, fetchDetails: false }, max: 3500 }],
+    refresh: urlRefresh('urls', { fetchDetails: false }),
+  },
+  costco: {
+    actor: 'abotapi~costco-au-scraper',
+    host: 'www.costco.com.au',
+    specials: [{ input: { mode: 'search', queries: [], specialsCategory: 'hot_buys', maxItems: 400, fetchDetails: false, ...NO_EXTRAS }, max: 400 }],
+    catalogue: searches('costco', 2500, { fetchDetails: false, ...NO_EXTRAS }),
+    refresh: urlRefresh('urls', { fetchDetails: false, ...NO_EXTRAS }),
+  },
+  bunnings: {
+    actor: 'abotapi~bunnings-com-au-scraper',
+    host: 'www.bunnings.com.au',
+    specials: [], // Bunnings publishes no was-prices or specials; its prices are refreshed with the catalogue and list.
+    catalogue: searches('bunnings', 3000, { fetchDetails: false, ...NO_EXTRAS }),
+    refresh: urlRefresh('urls', { fetchDetails: false, ...NO_EXTRAS }),
+  },
+  kmart: {
+    actor: 'abotapi~kmart-au-scraper',
+    host: 'www.kmart.com.au',
+    specials: [
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'catalogue', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'clearance', maxItems: 200, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 200 },
+    ],
+    catalogue: [{ input: { mode: 'search', searchTerms: Q.kmart, maxItems: 3000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 3000 }],
+    refresh: urlRefresh('urls', { fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }),
+  },
+  bigw: {
+    actor: 'abotapi~bigw-marketplace-scraper',
+    host: 'www.bigw.com.au',
+    // BIG W's own range only (not marketplace sellers). Its specials views have no documented names,
+    // so specials come from the price-sorted browse plus was-prices in the catalogue.
+    specials: [{ input: { mode: 'search', queries: [], soldBy: 'bigw', marketplaceOnly: false, sortBy: 'priceAsc', maxItems: 400, ...NO_EXTRAS }, max: 400 }],
+    catalogue: searches('bigw', 3000, { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
+    refresh: urlRefresh('urls', { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
+  },
+  officeworks: {
+    actor: 'abotapi~officeworks-scraper',
+    host: 'www.officeworks.com.au',
+    specials: [{ input: { mode: 'search', queries: [], specialsCategory: 'deals', maxItems: 400, detailEnrichment: false, maxReviewsPerProduct: 0, incrementalMode: false }, max: 400 }],
+    catalogue: searches('officeworks', 2500, { detailEnrichment: false, maxReviewsPerProduct: 0, incrementalMode: false }),
+    refresh: urlRefresh('urls', { detailEnrichment: false, maxReviewsPerProduct: 0 }),
+  },
+  chemistwarehouse: {
+    actor: 'abotapi~chemistwarehouse-com-au-scraper',
+    host: 'www.chemistwarehouse.com.au',
+    adapt: adaptChemist,
+    specials: [{ input: { mode: 'search', queries: [], specialsCategory: 'promotions', maxItems: 500, ...NO_EXTRAS }, max: 500 }],
+    // Empty search browses the whole catalogue.
+    catalogue: [{ input: { mode: 'search', queries: [], maxItems: 3000, ...NO_EXTRAS }, max: 3000 }],
+    refresh: urlRefresh('productUrls', NO_EXTRAS),
+  },
+  jbhifi: {
+    actor: 'dromb~jbhifi-au-product-scraper',
+    host: 'www.jbhifi.com.au',
+    // One search page (up to 120 products) per run.
+    specials: Q.jbhifi.slice(0, 6).map((q) => ({ input: { operation: 'search', query: q, page: 1, limit: 60, proxyMode: 'auto' }, max: 60 })),
+    catalogue: Q.jbhifi.flatMap((q) => [1, 2].map((page) => ({ input: { operation: 'search', query: q, page, limit: 80, proxyMode: 'auto' }, max: 80 }))),
+    refresh: (urls) => urls.slice(0, 40).map((url) => ({ input: { operation: 'item', url, proxyMode: 'auto' }, max: 1 })),
+  },
+};
+
+/** Turn one raw item into the shape normaliseScraped() reads, for any retailer. */
+export function adaptItem(retailer, item) {
+  const s = SOURCES[retailer];
+  if (!s) return item; // Woolworths and Coles actors already use that shape
+  const out = (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
+  if (out._membersOnly) return { ...out, error: 'members-only price' };
+  if (out.productId == null || !out.name || out.price == null) return { ...out, error: out.error || 'missing id, name or price' };
+  return out;
+}
+

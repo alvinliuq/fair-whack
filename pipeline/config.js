@@ -61,6 +61,10 @@ export const RUN_CAPS_USD = {
   'catalogue:coles': 12,
   'wishlist:woolworths': 1,
   'wishlist:coles': 1,
+  // Stage 6 first batch (estimates: about US$1-2 per 1,000 products, reviews and detail pages off).
+  ...Object.fromEntries(['aldi', 'costco', 'bunnings', 'kmart', 'bigw', 'officeworks', 'chemistwarehouse', 'jbhifi'].flatMap((r) => [
+    [`specials:${r}`, 2], [`catalogue:${r}`, r === 'jbhifi' ? 4 : 8], [`wishlist:${r}`, 1], [`probe:${r}`, 0.3],
+  ])),
 };
 
 // The monthly budget (soft and hard limits, what counts) is in shared/budget.js,

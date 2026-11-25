@@ -54,7 +54,7 @@ export const SECTIONS = [
       { id: 'pets', type: 'multi', label: 'Any pets?', options: [o('none', 'No pets'), o('dog', 'Dog'), o('cat', 'Cat'), o('other', 'Other')], only: ['none'], counts: ['1', '2', '3', '4+'] },
       { id: 'daytime', type: 'single', star: true, label: 'On weekdays, is anyone home during the day?', options: [o('rarely', 'Rarely'), o('sometimes', 'Sometimes'), o('mostly', 'Most of the time')] },
       { id: 'address', type: 'address', star: true, label: 'Your home address', hint: 'Used to find your electricity and gas network, and as “Home” for fuel prices.' },
-      { id: 'stores', type: 'multi', label: 'Where do you usually shop?', options: [o('woolworths', 'Woolworths'), o('coles', 'Coles')] },
+      { id: 'stores', type: 'multi', label: 'Where do you usually shop?', options: [o('woolworths', 'Woolworths'), o('coles', 'Coles'), o('aldi', 'ALDI'), o('costco', 'Costco'), o('kmart', 'Kmart'), o('bigw', 'BIG W'), o('bunnings', 'Bunnings'), o('jbhifi', 'JB Hi-Fi'), o('officeworks', 'Officeworks'), o('chemistwarehouse', 'Chemist Warehouse')] },
       { id: 'favs', type: 'multi', label: 'What do you want to hear about first?', options: 'categories' },
       { id: 'diet', type: 'multi', label: 'Any food preferences?', options: [o('vegetarian', 'Vegetarian'), o('gluten_free', 'Gluten free'), o('organic', 'Organic'), o('other', 'Other'), o('none', 'No preference')], only: ['none'], other: 'Tell us your other preference' },
       { id: 'grocery_spend', type: 'single', label: 'Roughly how much do you spend on groceries a week?', options: [o('lt100', 'Under $100'), o('100-200', '$100–200'), o('200-300', '$200–300'), o('300+', 'Over $300')] },

@@ -1,6 +1,7 @@
 // Write normalised scraper items into D1 and recompute discount flags.
 import { normaliseScraped, discountFlag } from '../shared/normalize.js';
 import { LIMITS } from './config.js';
+import { adaptItem } from './sources.js';
 
 const PRODUCT_COLS = [
   'id', 'retailer', 'retailer_product_id', 'name', 'brand', 'size_text', 'size_value', 'size_unit',
@@ -53,7 +54,7 @@ export function prepare(retailer, items, capturedAt) {
   const byId = new Map();
   let errors = 0, excluded = 0;
   for (const it of items) {
-    const rec = normaliseScraped(retailer, it, capturedAt);
+    const rec = normaliseScraped(retailer, adaptItem(retailer, it), capturedAt);
     if (!rec) { errors++; continue; }
     if (rec.snapshot.price_cents == null) { errors++; continue; }
     if (LIMITS.excludeCategories.includes(rec.product.category)) { excluded++; continue; }

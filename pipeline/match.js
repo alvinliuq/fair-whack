@@ -205,7 +205,7 @@ export async function runMatching(db, plan = null) {
   // Re-apply category rules (merged category + the store's own levels) where they changed.
   const recat = [];
   for (const p of products) {
-    const c = mapCategory(p.category_path, p.name);
+    const c = mapCategory(p.category_path, p.name, p.retailer);
     const { cat1, cat2 } = splitCategory(p.category_path);
     if (c !== p.category || cat1 !== p.cat1 || (cat2 || null) !== (p.cat2 || null)) recat.push({ id: p.id, category: c, cat1, cat2 });
   }

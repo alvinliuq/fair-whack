@@ -1,6 +1,8 @@
 # Fair Whack — internal beta
 
-Victorian supermarket price comparison PWA (Woolworths, Coles, ALDI, Costco). Internal testing only.
+Shopping list + price comparison PWA across Australian retailers. Internal testing only.
+
+Stores (`shared/retailers.js`): Woolworths, Coles (Apify `atalaia`), and since stage 6 ALDI, Costco, Bunnings, Kmart, BIG W, Officeworks, Chemist Warehouse (Apify `abotapi` scrapers) and JB Hi-Fi (Apify `dromb`). What each scraper is asked for and how its output is read: `pipeline/sources.js`. A store shows in the app once it has products. Test a scraper cheaply: **Actions → Pipeline → Run workflow → `probe`** (5 products per store, no products saved).
 
 - `public/` — the app (static PWA, no build step)
 - `functions/api/[[path]].js` → `shared/api.js` — API on Cloudflare Pages Functions, data in Cloudflare D1

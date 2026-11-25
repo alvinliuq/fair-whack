@@ -1,9 +1,11 @@
 // Shared normalisation helpers. Used by the data pipeline (Node) and the API (Cloudflare Workers).
 // Pure functions only: no I/O.
 
-export const RETAILERS = ['woolworths', 'coles', 'aldi', 'costco'];
-// Stores shown in the app during the beta (ALDI and Costco data is kept but hidden).
-export const ACTIVE_RETAILERS = ['woolworths', 'coles'];
+import { RETAILER_IDS, RETAILER_INFO } from './retailers.js';
+
+export const RETAILERS = RETAILER_IDS;
+// Stores shown in the app (stage 6: every retailer in shared/retailers.js; a store appears once it has products).
+export const ACTIVE_RETAILERS = RETAILER_IDS;
 
 /** "Pantry > Breakfast > Cereal" -> { cat1: 'Pantry', cat2: 'Breakfast' } (the retailer's own levels). */
 export function splitCategory(path) {
@@ -178,7 +180,21 @@ export function familyKey(brand, name) {
 // ---------- categories ----------
 // Merged ("All stores") categories. A store's own top department decides when it is clear;
 // mixed departments (Lunch Box, Dinner, Deli, Christmas...) are sorted by their sub-category, then the product name.
-export const CATEGORY_LIST = ['Fruit & Veg', 'Meat & Seafood', 'Dairy, Eggs & Fridge', 'Bakery', 'Pantry', 'Frozen', 'Snacks & Sweets', 'Drinks', 'Household', 'Health & Beauty', 'Baby', 'Pet', 'Liquor', 'Other'];
+export const CATEGORY_LIST = ['Fruit & Veg', 'Meat & Seafood', 'Dairy, Eggs & Fridge', 'Bakery', 'Pantry', 'Frozen', 'Snacks & Sweets', 'Drinks', 'Household', 'Health & Beauty', 'Baby', 'Pet',
+  'Electronics', 'Home & Hardware', 'Office & School', 'Toys & Games', 'Clothing & Shoes', 'Sports & Outdoors', 'Liquor', 'Other'];
+// Stage 6: general-merchandise departments, checked before the grocery words (a "Kitchen" department at
+// Kmart is homewares, not food). Only used for retailers that are not supermarkets.
+const GENERAL_DEPT = [
+  ['Electronics', /\b(tvs?|televisions?|computers?|laptops?|tablets?|phones?|mobile|audio|headphones?|speakers?|cameras?|gaming|video games?|consoles?|smart home|wearables?|electronics|tech|appliances?|printers?|monitors?|networking|music|movies)\b/],
+  ['Toys & Games', /\b(toys?|games?|lego|puzzles?|dolls?|board games?)\b/],
+  ['Clothing & Shoes', /\b(clothing|clothes|apparel|womens|mens|kids clothing|shoes|footwear|sleepwear|underwear|socks|accessories|bags)\b/],
+  ['Sports & Outdoors', /\b(sports?|fitness|camping|hiking|bikes?|cycling|swim|exercise)\b/],
+  ['Office & School', /\b(office|stationery|school|paper|pens?|art and craft|craft|furniture office|ink|toner)\b/],
+  ['Home & Hardware', /\b(home|homewares?|living|bedding|bed|bath|kitchen|dining|furniture|storage|decor|garden|outdoor living|tools?|hardware|paint|plumbing|electrical|lighting|building|flooring|bbq|heating|cooling)\b/],
+  ['Baby', /\b(baby|nursery|nappies)\b/],
+  ['Pet', /\b(pet|pets|dog|cat)\b/],
+  ['Health & Beauty', /\b(health|beauty|vitamins?|supplements?|skin ?care|cosmetics|fragrance|personal care|medicines?|pharmacy|first aid|oral care|hair care)\b/],
+];
 
 const DEPT = [
   ['Liquor', /^(liquor|beer|wine|spirits)/],
@@ -211,14 +227,20 @@ const KEYWORDS = [
   ['Household', /\b(household|cleaning|laundry|dishwash\w*|kitchen|paper towels?|toilet|tissues?|bin bags|garbage|home|lifestyle|pest|air fresheners?|batteries|party)\b/],
 ];
 
-export function mapCategory(categoryPath, name = '') {
+export function mapCategory(categoryPath, name = '', retailer = '') {
   const parts = String(categoryPath || '').split('>').map((x) => normText(x)).filter(Boolean);
+  const info = RETAILER_INFO[retailer];
+  if (info && info.kind !== 'supermarket') {
+    // Groceries sold by a general retailer (Costco, BIG W, Chemist Warehouse...) still use the grocery rules below.
+    for (const t of [...parts, normText(name)]) for (const [cat, re] of GENERAL_DEPT) if (re.test(t)) return cat;
+    if (!parts.length && info.fallbackCategory) return info.fallbackCategory;
+  }
   if (parts[0]) for (const [cat, re] of DEPT) if (re.test(parts[0])) return cat;
   // Mixed department: deepest level first, then the product name, then the top level.
   for (const t of [...parts.slice(1).reverse(), normText(name), parts[0] || '']) {
     for (const [cat, re] of KEYWORDS) if (re.test(t)) return cat;
   }
-  return 'Other';
+  return info?.fallbackCategory || 'Other';
 }
 
 // ---------- comparable groups (curated staples) ----------
@@ -325,7 +347,7 @@ export function normaliseScraped(retailer, item, capturedAt) {
   const unitCents = unitPriceCents(priceCents, size.size_value, size.size_unit);
   const ptype = item.isOnSpecial ? promoType(item) : null;
   const mb = ptype === 'multibuy' ? parseMultibuy(item.promotionText || item.promotionType) : null;
-  const category = mapCategory(item.category, item.name);
+  const category = mapCategory(item.category, item.name, retailer);
   return {
     product: {
       id: `${retailer}:${item.productId}`,

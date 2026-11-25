@@ -1,8 +1,14 @@
 // Fair Whack beta — single-page app (no build step).
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
-const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco' };
+// Store names and the stores shown: filled from /api/meta (stores that have products). These are the fallbacks.
+const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco', jbhifi: 'JB Hi-Fi', bunnings: 'Bunnings', kmart: 'Kmart', bigw: 'BIG W', officeworks: 'Officeworks', chemistwarehouse: 'Chemist Warehouse' };
 const STORES = ['woolworths', 'coles'];
+function applyStores(meta) {
+  if (!meta || !Array.isArray(meta.stores) || !meta.stores.length) return;
+  for (const s of meta.stores) RET[s.id] = s.name;
+  STORES.splice(0, STORES.length, ...meta.stores.map((s) => s.id));
+}
 // Store logo files: put official artwork in public/icons/stores/ and list it here. Until then a coloured badge shows.
 const STORE_LOGOS = { woolworths: null, coles: null };
 const storeLogo = (r, cls = '') => `<span class="slogo ${r} ${cls}" aria-hidden="true">${STORE_LOGOS[r] ? `<img src="${STORE_LOGOS[r]}" alt="">` : `<b>${(RET[r] || '?')[0]}</b>`}</span>`;
@@ -161,7 +167,7 @@ views.login = () => {
     ${MARK}
     <h1>Fair Whack</h1>
     <p class="tagline">Same trolley. Less whack.</p>
-    <p class="lead">Compare Woolworths and Coles prices, and get told when the things you buy go on special. Internal beta.</p>
+    <p class="lead">Keep one shopping list across Woolworths, Coles, ALDI, Kmart, JB Hi-Fi and more, compare prices, and get told when the things you buy go on special. Internal beta.</p>
     <div class="field"><label for="name">Your name</label><input id="name" name="name" autocomplete="name" placeholder="e.g. Sam Nguyen" required></div>
     <div class="field"><label for="code">Invite or design code</label><input id="code" name="code" autocomplete="off" autocapitalize="off" required></div>
     <div class="err" id="err"></div>
@@ -230,8 +236,8 @@ function renderMine(el, d) {
     ${sel.length && all.length ? `<span class="count">${pool.length} on special</span>` : ''}</div>`;
   let body;
   if (!all.length) body = `<div class="rail-empty"><b>Nothing from your list is on special this week</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
-  else if (!sel.length) body = '<div class="rail-empty"><b>Pick a store</b>Choose Woolworths, Coles or both to see your specials.</div>';
-  else if (!pool.length) body = `<div class="rail-empty"><b>Nothing at ${RET[sel[0]]} this week</b>${all.length} of your items are on special at the other store.</div>`;
+  else if (!sel.length) body = '<div class="rail-empty"><b>Pick a store</b>Choose one or more stores to see your specials.</div>';
+  else if (!pool.length) body = `<div class="rail-empty"><b>Nothing at ${RET[sel[0]]} this week</b>${all.length} of your items are on special at ${STORES.length > 2 ? 'other stores' : 'the other store'}.</div>`;
   else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
   el.innerHTML = toggles + body;
   el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
@@ -247,7 +253,9 @@ views.home = async (q) => {
   const link = (patch) => `#/${qs({ ...f, ...patch })}`;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const meta = state.meta || {};
-  const upd = (meta.retailers || []).filter((r) => STORES.includes(r.retailer)).map((r) => `${RET[r.retailer]} ${ago(r.updated)}`).join(' · ');
+  const updRows = (meta.retailers || []).filter((r) => STORES.includes(r.retailer));
+  const newest = updRows.map((r) => r.updated).filter(Boolean).sort().pop();
+  const upd = updRows.length > 3 ? `${ago(newest)} · ${updRows.length} stores` : updRows.map((r) => `${RET[r.retailer]} ${ago(r.updated)}`).join(' · ');
   app.innerHTML = `
     <h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
     <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
@@ -461,7 +469,7 @@ async function runPhoto(file) {
       return;
     }
     close();
-    notFoundSheet(r.label ? `We think it's <b>${esc(r.label)}</b>, but couldn't find it at Woolworths or Coles.` : "We couldn't recognise a product in that photo.", r.label, photoSearch, 'Try another photo');
+    notFoundSheet(r.label ? `We think it's <b>${esc(r.label)}</b>, but couldn't find it at our stores yet.` : "We couldn't recognise a product in that photo.", r.label, photoSearch, 'Try another photo');
   } catch (e) { close(); toast(e.message); }
 }
 function notFoundSheet(msg, guess, retry, retryLabel, tip = 'Tip: get the brand name and product name in the shot, in good light.') {
@@ -785,7 +793,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=8'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  if (!profMod) { profMod = await import('/profile.js?v=9'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
@@ -813,7 +821,7 @@ views.install = () => {
 
 views.about = () => {
   app.innerHTML = `<h1>About the prices</h1><div class="card stack small">
-    <p><b>Stores:</b> during the beta Fair Whack covers <b>Woolworths</b> and <b>Coles</b> (Victorian prices).</p>
+    <p><b>Stores:</b> during the beta Fair Whack covers ${STORES.map((r) => `<b>${RET[r]}</b>`).join(', ')} (Victorian prices where a store prices by state). A store appears once its first prices are in.</p>
     <p><b>How often:</b> specials are collected early on Wednesday (every store) and Saturday (stores other than the supermarkets, whose specials change on Wednesdays). Each store's full range is refreshed every four weeks, and anything on someone's list is refreshed every Wednesday.</p>
     <p><b>Browse</b> uses each store's own aisles, so it looks like their website. <b>“All stores”</b> uses a combined set of categories.</p>
     <p><b>“New”</b> means we saw the product for the first time this week (this month once the beta has run for a month).</p>
@@ -911,6 +919,7 @@ async function route() {
       const r = await api('/api/me');
       state.me = r.user; state.profile = r.profile; state.needsProfile = r.needsProfile; state.vapid = r.vapidPublicKey;
       [state.meta] = await Promise.all([api('/api/meta').catch(() => null), loadSaved().catch(() => {})]);
+      applyStores(state.meta);
     } catch { return; } // api() sends to login
   }
   if (state.me) document.body.classList.remove('anon');

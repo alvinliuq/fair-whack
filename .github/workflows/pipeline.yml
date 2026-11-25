@@ -12,7 +12,7 @@ on:
       mode:
         description: 'What to run'
         type: choice
-        options: [weekly, saturday, alerts, catalogue, first, match, review, status]
+        options: [weekly, saturday, alerts, catalogue, first, match, review, probe, status]
         default: status
       force:
         description: 'Catalogue: ignore the 4-week wait'
@@ -22,6 +22,10 @@ on:
         description: 'Review: link the pairs that pass (off = dry run, report only)'
         type: boolean
         default: false
+      retailer:
+        description: 'Only this retailer (e.g. kmart); leave empty for all'
+        type: string
+        default: ''
   workflow_call:
     inputs:
       mode:
@@ -64,11 +68,14 @@ jobs:
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
       - name: Run
+        env:
+          RETAILER: ${{ inputs.retailer }}
         run: |
           export D1_DATABASE_ID=$(./scripts/d1-id.sh)
           eval "$(node scripts/vapid.js)"; export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
           extra=""; [ "${{ inputs.force }}" = "true" ] && extra="--force"
           [ "${{ inputs.apply }}" = "true" ] && extra="$extra --apply"
+          case "$RETAILER" in ''|*[!a-z]*) ;; *) extra="$extra --retailer=$RETAILER" ;; esac
           node pipeline/run.js ${{ steps.m.outputs.mode }} $extra 2>&1 | tee run.log
           node pipeline/run.js status | tee -a run.log
           { echo '```'; tail -n 60 run.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

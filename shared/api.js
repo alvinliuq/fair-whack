@@ -8,11 +8,12 @@ import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-i
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
+import { RETAILER_INFO } from './retailers.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
 const PAGE = 40;
-const RETAILERS = ['woolworths', 'coles', 'aldi', 'costco'];
+const RETAILERS = ACTIVE_RETAILERS;
 
 // ---------- helpers ----------
 const json = (data, status = 200, headers = {}) =>
@@ -177,7 +178,7 @@ route('POST', '/api/login', async ({ env, request }) => {
 
 route('POST', '/api/logout', async ({ request }) => json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0, request) }), { public: true });
 
-const ACT = "retailer IN ('woolworths','coles')";
+const ACT = `retailer IN (${ACTIVE_RETAILERS.map((r) => `'${r}'`).join(',')})`;
 const isActive = (r) => ACTIVE_RETAILERS.includes(r);
 const AGE_RANGES = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
 const GENDERS = ['male', 'female', 'other'];
@@ -357,7 +358,10 @@ route('GET', '/api/meta', async ({ env }) => json(await cached(env, 'meta', asyn
       SUM(CASE WHEN cur_is_special = 1 AND cur_captured_at >= ? THEN 1 ELSE 0 END) AS specials
       FROM retailer_product WHERE ${ACT} GROUP BY retailer`).bind(freshCut()).all()).results;
   const nw = await newWindow(env);
-  return { categories: SHOP_CATEGORIES, retailers: rows, newSince: nw.since, newLabel: nw.label, newReady: !!nw.baseline };
+  // Stores shown in the app: those with products, in the order of shared/retailers.js.
+  const has = new Set(rows.filter((r) => r.products > 0).map((r) => r.retailer));
+  const stores = ACTIVE_RETAILERS.filter((r) => has.has(r)).map((id) => ({ id, name: RETAILER_INFO[id].name, kind: RETAILER_INFO[id].kind }));
+  return { categories: SHOP_CATEGORIES, retailers: rows, stores, newSince: nw.since, newLabel: nw.label, newReady: !!nw.baseline };
 })));
 
 /** Category options. scope=deals counts current specials only; scope=all counts every product (Browse). */
@@ -430,7 +434,7 @@ route('GET', '/api/specials', deals);
 route('GET', '/api/browse', async ({ env, url }) => {
   const q = url.searchParams;
   const retailer = q.get('retailer');
-  if (!isActive(retailer)) throw new HttpError(400, 'Choose Woolworths or Coles');
+  if (!isActive(retailer)) throw new HttpError(400, 'Choose a store');
   const where = ['retailer = ?', 'cur_price_cents IS NOT NULL'];
   const binds = [retailer];
   if (q.get('cat1')) { where.push('cat1 = ?'); binds.push(q.get('cat1')); }
