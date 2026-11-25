@@ -9,6 +9,10 @@
 
 const NO_EXTRAS = { fetchReviews: false, incrementalMode: false };
 
+// ALDI departments (URL slugs, as on aldi.com.au/products/<slug>/k/<key>).
+const ALDI_DEPTS = ['fruits-vegetables', 'meat-seafood', 'deli-chilled-meats', 'dairy-eggs-fridge', 'pantry', 'bakery',
+  'freezer', 'drinks', 'health-beauty', 'baby', 'cleaning-household', 'pets', 'snacks-confectionery'];
+
 // Broad searches that together cover what households buy at each store (a "catalogue" for a
 // general retailer is these searches; each one walks its result pages up to the item cap).
 const Q = {
@@ -88,15 +92,19 @@ export const SOURCES = {
   aldi: {
     actor: 'abotapi~aldi-com-au-scraper',
     host: 'www.aldi.com.au',
-    // The whole range is the /products page (about 3,000 products).
-    specials: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], onSaleOnly: true, maxItems: 600, fetchDetails: false }, max: 600 }],
-    catalogue: [{ input: { mode: 'url', urls: ['https://www.aldi.com.au/products'], maxItems: 3500, fetchDetails: false }, max: 3500 }],
+    // Probe 25 Nov: the /products page returns nothing; browsing by department (categories) and the three
+    // promo ranges work. Allowed specialsCategory values: special-buys, lower-prices, super-savers.
+    specials: [
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'special-buys', maxItems: 300, fetchDetails: false }, max: 300 },
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'lower-prices', maxItems: 200, fetchDetails: false }, max: 200 },
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'super-savers', maxItems: 200, fetchDetails: false }, max: 200 },
+    ],
+    catalogue: [{ input: { mode: 'search', searchTerms: [], categories: ALDI_DEPTS, maxItems: 3500, fetchDetails: false }, max: 3500 }],
     refresh: urlRefresh('urls', { fetchDetails: false }),
     probeAlternatives: [
-      { mode: 'search', searchTerms: [], categories: ['pantry'], fetchDetails: false },
-      { mode: 'search', searchTerms: [], specialsCategory: 'Special Buys', fetchDetails: false },
-      { mode: 'search', searchTerms: [], onSaleOnly: true, categories: ['pantry'], fetchDetails: false },
-      { mode: 'url', urls: ['https://www.aldi.com.au/products/pantry/k/970000000'], fetchDetails: false },
+      { mode: 'search', searchTerms: [], specialsCategory: 'lower-prices', fetchDetails: false },
+      { mode: 'search', searchTerms: [], specialsCategory: 'super-savers', fetchDetails: false },
+      { mode: 'search', searchTerms: [], categories: ALDI_DEPTS, fetchDetails: false, maxItems: 60 },
     ],
   },
   costco: {
@@ -116,16 +124,17 @@ export const SOURCES = {
   kmart: {
     actor: 'abotapi~kmart-au-scraper',
     host: 'www.kmart.com.au',
+    // Probe 25 Nov: keyword and category searches return nothing; the three deal views work
+    // (allowed specialsCategory: hot-deals, clearance, smart-savers). Kmart's range here is those views.
     specials: [
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'hot-deals', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'clearance', maxItems: 200, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 200 },
     ],
-    catalogue: [{ input: { mode: 'search', searchTerms: Q.kmart, maxItems: 3000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 3000 }],
+    catalogue: ['hot-deals', 'clearance', 'smart-savers'].map((c) => ({ input: { mode: 'search', searchTerms: [], specialsCategory: c, maxItems: 1000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 1000 })),
     refresh: urlRefresh('urls', { fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }),
     probeAlternatives: [
-      { mode: 'url', urls: ['https://www.kmart.com.au/search/?searchTerm=towel'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false },
-      { mode: 'search', searchTerms: ['towel'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, proxy: { useApifyProxy: true, apifyProxyCountry: 'AU' } },
-      { mode: 'url', urls: ['https://www.kmart.com.au/category/home/bathroom/towels/'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false },
+      { mode: 'search', searchTerms: [], specialsCategory: 'clearance', fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, maxItems: 30 },
+      { mode: 'search', searchTerms: [], specialsCategory: 'smart-savers', fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, maxItems: 30 },
     ],
   },
   bigw: {
@@ -133,13 +142,10 @@ export const SOURCES = {
     host: 'www.bigw.com.au',
     // BIG W's own range only (not marketplace sellers). Its specials views have no documented names,
     // so specials come from the price-sorted browse plus was-prices in the catalogue.
-    specials: [{ input: { mode: 'search', queries: [], soldBy: 'bigw', marketplaceOnly: false, sortBy: 'priceAsc', maxItems: 400, ...NO_EXTRAS }, max: 400 }],
+    // Probe 25 Nov: an empty browse returns nothing, keyword searches work (was-prices included).
+    specials: [{ input: { mode: 'search', queries: Q.bigw.slice(0, 8), soldBy: 'bigw', marketplaceOnly: false, maxItems: 400, ...NO_EXTRAS }, max: 400 }],
     catalogue: searches('bigw', 3000, { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
     refresh: urlRefresh('urls', { soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS }),
-    probeAlternatives: [
-      { mode: 'search', queries: ['lego'], soldBy: 'bigw', marketplaceOnly: false, ...NO_EXTRAS },
-      { mode: 'search', queries: ['lego'], marketplaceOnly: false, ...NO_EXTRAS },
-    ],
   },
   officeworks: {
     actor: 'abotapi~officeworks-scraper',
@@ -173,6 +179,9 @@ export function adaptItem(retailer, item) {
   if (!s) return item; // Woolworths and Coles actors already use that shape
   const out = (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
   if (out._membersOnly) return { ...out, error: 'members-only price' };
+  // A listing that links to another website (e.g. a partner's deal) is not this store's product.
+  const site = s.host.replace(/^www\./, '');
+  if (out.url && !new URL(out.url).hostname.endsWith(site)) return { ...out, error: `links to another site (${new URL(out.url).hostname})` };
   if (out.productId == null || !out.name || out.price == null) return { ...out, error: out.error || 'missing id, name or price' };
   return out;
 }

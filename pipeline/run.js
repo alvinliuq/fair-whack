@@ -222,6 +222,11 @@ async function probe(db) {
         log(label, `input ${JSON.stringify(input).slice(0, 300)}`);
         log(label, msg);
         if (res.items[0]) log(label, 'first item:', JSON.stringify(res.items[0]).slice(0, 1500));
+        const tally = (f) => Object.entries(adapted.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {})).map(([k, v]) => `${k}: ${v}`).join(' · ');
+        if (res.items.length > 5) {
+          log(label, 'by category:', tally((x) => String(x.category || '—').split(' > ')[0]));
+          log(label, 'by result:', tally((x) => x.error || (x.isOnSpecial ? 'ok, on special' : 'ok')));
+        }
         await endRun(db, id, good.length ? 'ok' : 'failed', good.length, res.costUsd, msg);
         if (good.length && !opt.force) break; // --force: try every alternative
       } catch (e) {
