@@ -2,7 +2,7 @@
 
 Shopping list + price comparison PWA across Australian retailers. Internal testing only.
 
-Stores (`shared/retailers.js`): Woolworths, Coles (Apify `atalaia`), and since stage 6 ALDI, Costco, Bunnings, Kmart, BIG W, Officeworks, Chemist Warehouse (Apify `abotapi` scrapers) and JB Hi-Fi (Apify `dromb`). What each scraper is asked for and how its output is read: `pipeline/sources.js`. A store shows in the app once it has products. Test a scraper cheaply: **Actions → Pipeline → Run workflow → `probe`** (5 products per store, no products saved).
+Stores (`shared/retailers.js`): Woolworths, Coles (Apify `atalaia`), and since stage 6 ALDI, Costco, Bunnings, BIG W, Officeworks, Chemist Warehouse (Apify `abotapi` scrapers; Kmart paused: its scraper returns kogan.com listings) and JB Hi-Fi (Apify `dromb`). What each scraper is asked for and how its output is read: `pipeline/sources.js`. A store shows in the app once it has products. Test a scraper cheaply: **Actions → Pipeline → Run workflow → `probe`** (5 products per store, no products saved).
 
 - `public/` — the app (static PWA, no build step)
 - `functions/api/[[path]].js` → `shared/api.js` — API on Cloudflare Pages Functions, data in Cloudflare D1
@@ -45,7 +45,7 @@ Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows s
 Budget guard (monthly, Melbourne calendar month, resets on the 1st; figures in `shared/budget.js`):
 this month's Apify runs + Zyte requests (estimated) + the SerpApi plan fee (US$75) are added up. At **$240** catalogue
 crawls stop and only specials and list refreshes run; at **$285** everything stops, including new Google Shopping lookups.
-Per-run caps are in `pipeline/config.js`. `status` also prints Apify's and SerpApi's own account figures.
+Per-run caps are in `pipeline/config.js`. Apify's own account limit (US$100, its own billing cycle) is read before each run: catalogue crawls stop $15 before it and everything $3 before it, so Apify never blocks the specials. `status` also prints Apify's and SerpApi's own account figures.
 
 ## Matching products across stores
 

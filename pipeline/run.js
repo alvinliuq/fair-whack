@@ -22,7 +22,7 @@ import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
 import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
 import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD, SUPERMARKETS } from './config.js';
-import { BUDGET, SERPAPI, monthSpend, budgetLevel } from '../shared/budget.js';
+import { BUDGET, SERPAPI, APIFY_ACCOUNT, monthSpend, budgetLevel } from '../shared/budget.js';
 
 const args = process.argv.slice(2);
 const mode = args.find((a) => !a.startsWith('--')) || 'weekly';
@@ -40,6 +40,27 @@ const log = (...m) => console.log(new Date().toISOString().slice(11, 19), ...m);
 
 /** This Melbourne month's spend: Apify + Zyte (recorded runs) + SerpApi (fixed plan fee). */
 const spentUsd = async (db) => (await monthSpend((sql, p) => db.all(sql, p))).total;
+
+/**
+ * Room left under Apify's own monthly limit: Apify's figure read once per job, plus what this job has spent since.
+ * null when it can't be read (local runs, or Apify unreachable): then only our own monthly budget applies.
+ */
+let apifyAcct;
+async function apifyRoom(db) {
+  if (!process.env.APIFY_TOKEN || process.env.APIFY_FIXTURE_DIR) return null;
+  if (apifyAcct === undefined) {
+    try {
+      const d = (await (await fetch('https://api.apify.com/v2/users/me/limits', { headers: { Authorization: `Bearer ${process.env.APIFY_TOKEN}` } })).json()).data || {};
+      const used = Number(d.current?.monthlyUsageUsd), max = Number(d.limits?.maxMonthlyUsageUsd);
+      const since = new Date().toISOString();
+      apifyAcct = Number.isFinite(used) && Number.isFinite(max) ? { used, max, since } : null;
+    } catch { apifyAcct = null; }
+  }
+  if (!apifyAcct) return null;
+  const r = await db.all("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM pipeline_runs WHERE started_at >= ? AND COALESCE(provider, 'apify') = 'apify'", [apifyAcct.since]);
+  const used = apifyAcct.used + Number(r[0]?.s || 0);
+  return { used, max: apifyAcct.max, room: apifyAcct.max - used };
+}
 
 async function startRun(db, m, retailer, provider = null) {
   const startedAt = new Date().toISOString();
@@ -61,7 +82,11 @@ async function capFor(db, key, { extra }) {
   const level = budgetLevel(spent);
   if (level === 'hard') return { skip: `monthly hard stop: $${spent.toFixed(2)} of $${BUDGET.hardUsd} this month` };
   if (extra && level === 'soft') return { skip: `catalogue paused: $${spent.toFixed(2)} this month (soft limit $${BUDGET.softUsd})` };
-  const cap = Math.min(RUN_CAPS_USD[key] ?? 1, BUDGET.hardUsd - spent);
+  // Apify's own account limit: once reached Apify refuses every run, specials included, so stop before it.
+  const acct = await apifyRoom(db);
+  if (acct && acct.room <= APIFY_ACCOUNT.allStopBeforeUsd) return { skip: `Apify account limit: $${acct.used.toFixed(2)} of $${acct.max} used (stops $${APIFY_ACCOUNT.allStopBeforeUsd} before it)` };
+  if (acct && extra && acct.room <= APIFY_ACCOUNT.extrasStopBeforeUsd) return { skip: `catalogue paused: Apify account at $${acct.used.toFixed(2)} of $${acct.max} (keeps $${APIFY_ACCOUNT.extrasStopBeforeUsd} for specials)` };
+  const cap = Math.min(RUN_CAPS_USD[key] ?? 1, BUDGET.hardUsd - spent, acct ? acct.room - APIFY_ACCOUNT.allStopBeforeUsd : Infinity);
   return { cap: Math.max(0.05, Math.round(cap * 100) / 100), spent };
 }
 
@@ -307,7 +332,8 @@ async function accountChecks() {
       const r = await fetch('https://api.apify.com/v2/users/me/limits', { headers: { Authorization: `Bearer ${process.env.APIFY_TOKEN}` } });
       const d = (await r.json()).data || {};
       const used = d.current?.monthlyUsageUsd, max = d.limits?.maxMonthlyUsageUsd;
-      if (used != null) console.log(`Apify account (its own billing cycle): $${Number(used).toFixed(2)} used of a $${max} monthly limit${max != null && max < 200 ? ' — BELOW the planned US$200: raise it in Apify → Settings → Usage & billing' : ''}${max != null && used >= max ? ' — LIMIT REACHED, Apify blocks every run until it is raised or the cycle resets' : ''}`);
+      if (d.monthlyUsageCycle?.endAt) console.log(`Apify billing cycle: ${String(d.monthlyUsageCycle.startAt).slice(0, 10)} to ${String(d.monthlyUsageCycle.endAt).slice(0, 10)}; catalogue crawls stop $${APIFY_ACCOUNT.extrasStopBeforeUsd} before its limit, everything $${APIFY_ACCOUNT.allStopBeforeUsd} before`);
+      if (used != null) console.log(`Apify account (its own billing cycle): $${Number(used).toFixed(2)} used of a $${max} monthly limit${''}${max != null && used >= max ? ' — LIMIT REACHED, Apify blocks every run until it is raised or the cycle resets' : ''}`);
       else console.log(`Apify account: could not read limits (${r.status})`);
     } catch (e) { console.log('Apify account: could not read limits,', e.message); }
   }

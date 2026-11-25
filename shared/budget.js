@@ -16,6 +16,13 @@ export const BUDGET = {
   fixedUsd: { serpapi: 75 },
 };
 
+// Apify's own account limit (Apify billing cycle, not our calendar month). Before each run the pipeline reads
+// Apify's usage; when it reaches the limit Apify blocks every run, so we stop earlier:
+export const APIFY_ACCOUNT = {
+  extrasStopBeforeUsd: 15, // catalogue crawls stop when usage is within this of the limit (keeps specials going)
+  allStopBeforeUsd: 3,     // every Apify run stops within this of the limit
+};
+
 export const SERPAPI = {
   monthlySearches: 5000,   // plan size
   stopAtSearches: 4900,    // keep a small margin for retries
