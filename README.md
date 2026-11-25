@@ -97,3 +97,10 @@ Australian Energy Regulator (the same data as Energy Made Easy and Victorian Ene
 Run it by hand: **Actions → Energy → Run workflow → `plans`**. The calculator is `shared/energy.js`: it turns the household
 profile (More → Your profile → Save more on Bills) into yearly usage, matches it to the last bill when one is entered,
 and prices every eligible plan at the home's postcode, including GST.
+
+## Google Shopping comparison (stage 6)
+
+Search shows an **Elsewhere online** section under our own results: other shops' prices for the same words from Google
+Shopping via SerpApi (`GET /api/search/web`, Developer plan, 5,000 searches a month). Each keyword is looked up at most
+once every 24 hours for everyone (`serp_cache`). Lookups stop at 4,900 a month, 60 per tester a day, and at the monthly
+budget's hard stop; the last saved results are shown instead. Settings: `shared/budget.js` → `SERPAPI`.

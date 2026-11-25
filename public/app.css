@@ -529,3 +529,7 @@ h1 { letter-spacing: -.025em; }
 .srow { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
 .srow > div:first-child { min-width: 0; display: flex; flex-direction: column; }
 .srow small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Stage 6: Google Shopping comparison under search results */
+.group.web .offer .small { color: var(--ink); }
+.group.web .offer.more { display: block; width: 100%; text-align: center; border: 0; border-top: 1px solid var(--line); background: none; font-weight: 700; color: var(--grape); padding: 10px; cursor: pointer; }

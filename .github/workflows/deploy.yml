@@ -53,12 +53,15 @@ jobs:
           ADMIN_CODE: ${{ secrets.ADMIN_CODE }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           DESIGN_CODE: ${{ secrets.DESIGN_CODE }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
         run: |
           eval "$(node scripts/vapid.js)"
           printf '%s' "$INVITE_CODE"      | npx wrangler pages secret put INVITE_CODE --project-name fair-whack
           printf '%s' "$ADMIN_CODE"       | npx wrangler pages secret put ADMIN_CODE --project-name fair-whack
           printf '%s' "$SESSION_SECRET"   | npx wrangler pages secret put SESSION_SECRET --project-name fair-whack
           printf '%s' "$VAPID_PUBLIC_KEY" | npx wrangler pages secret put VAPID_PUBLIC_KEY --project-name fair-whack
+          # Google Shopping comparison in search (stage 6). Without it the section just doesn't show.
+          if [ -n "$SERPAPI_KEY" ]; then printf '%s' "$SERPAPI_KEY" | npx wrangler pages secret put SERPAPI_KEY --project-name fair-whack; fi
           # Optional design review code: set it to let designers in; delete the GitHub secret and redeploy to end it.
           if [ -n "$DESIGN_CODE" ]; then
             printf '%s' "$DESIGN_CODE" | npx wrangler pages secret put DESIGN_CODE --project-name fair-whack

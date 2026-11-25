@@ -1,5 +1,5 @@
 // Fair Whack API — Cloudflare Pages Function (single router).
-// Bindings: env.DB (D1), env.AI (Workers AI, photo search). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional).
+// Bindings: env.DB (D1), env.AI (Workers AI, photo search). Secrets: INVITE_CODE, ADMIN_CODE, SESSION_SECRET, VAPID_PUBLIC_KEY, DESIGN_CODE (optional), SERPAPI_KEY (Google Shopping comparison, optional).
 import {
   parseSize, unitPriceCents, unitBasisFor, parseUses, familyKey, comparableGroup, mapCategory,
   toCents, CATEGORY_LIST, normText, ACTIVE_RETAILERS, RETAILER_CATEGORY_ORDER,
@@ -622,6 +622,70 @@ export function barcodeForms(code) {
   const bare = c.replace(/^0+/, '');
   return [...new Set([c, bare, bare.padStart(12, '0'), bare.padStart(13, '0'), bare.padStart(14, '0')])].filter((x) => x.length >= 8);
 }
+
+// ----- Google Shopping comparison (stage 6, SerpApi) -----
+// Each keyword is looked up at most once every SERPAPI.cacheHours, for everyone. Lookups stop at the month's cap,
+// a per-tester daily cap, and the budget's hard stop; then the last saved results (if any) are shown instead.
+const serpKey = (q) => normText(q).slice(0, 80);
+function serpResults(data) {
+  const rows = [...(data.shopping_results || []), ...(data.inline_shopping_results || [])];
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    const price = typeof r.extracted_price === 'number' ? Math.round(r.extracted_price * 100) : toCents(r.price);
+    if (!r.title || price == null) continue;
+    const k = `${r.source}|${r.title}|${price}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      title: String(r.title).slice(0, 160),
+      store: r.source ? String(r.source).slice(0, 60) : null,
+      priceCents: price,
+      wasCents: typeof r.extracted_old_price === 'number' ? Math.round(r.extracted_old_price * 100) : null,
+      link: [r.link, r.product_link].find((u) => typeof u === 'string' && /^https:\/\//.test(u)) || null,
+      thumb: r.thumbnail || null,
+      delivery: r.delivery ? String(r.delivery).slice(0, 60) : null,
+    });
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+route('GET', '/api/search/web', async ({ env, url, user }) => {
+  const q = serpKey(url.searchParams.get('q') || '');
+  if (q.length < 2) return json({ q, results: [] });
+  const row = await env.DB.prepare('SELECT fetched_at, data FROM serp_cache WHERE q = ?').bind(q).first().catch(() => null);
+  const saved = row ? { q, fetchedAt: row.fetched_at, ...JSON.parse(row.data) } : null;
+  if (saved && Date.now() - Date.parse(row.fetched_at) < SERPAPI.cacheHours * 3600000) return json({ ...saved, cached: true });
+  const stale = (why) => json(saved ? { ...saved, cached: true, stale: why } : { q, results: [], unavailable: why });
+  if (!env.SERPAPI_KEY) return stale('not set up');
+  const spend = await monthSpend(async (sql, p) => (await env.DB.prepare(sql).bind(...p).all()).results);
+  if (budgetLevel(spend.total) === 'hard') return stale('budget');
+  const mk = `serp:m:${spend.month}`, dk = `serp:d:${user.id}:${melDay()}`;
+  const used = (await env.DB.prepare('SELECT key, n FROM api_quota WHERE key IN (?, ?)').bind(mk, dk).all()).results;
+  const n = (k) => used.find((r) => r.key === k)?.n || 0;
+  if (n(mk) >= SERPAPI.stopAtSearches) return stale('month');
+  if (!user.is_admin && n(dk) >= SERPAPI.perUserPerDay) return stale('today');
+  // Count the lookup before making it, so two quick requests can't both slip past the cap.
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(mk),
+    env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(dk),
+  ]);
+  const p = new URLSearchParams({ engine: 'google_shopping', q, gl: 'au', hl: 'en', google_domain: 'google.com.au', location: 'Melbourne,Victoria,Australia', api_key: env.SERPAPI_KEY });
+  let data;
+  try {
+    const res = await fetch(`https://serpapi.com/search.json?${p}`);
+    data = await res.json();
+    if (!res.ok || data.error) {
+      // "no results" is an answer worth saving; anything else is not.
+      if (!/hasn't returned any results/i.test(data.error || '')) return stale('error');
+      data = {};
+    }
+  } catch { return stale('error'); }
+  const out = { q, fetchedAt: nowIso(), results: serpResults(data) };
+  await env.DB.prepare('INSERT INTO serp_cache (q, fetched_at, data) VALUES (?, ?, ?) ON CONFLICT(q) DO UPDATE SET fetched_at = excluded.fetched_at, data = excluded.data')
+    .bind(q, out.fetchedAt, JSON.stringify({ results: out.results })).run();
+  return json({ ...out, cached: false });
+});
 
 route('GET', '/api/search/barcode', async ({ env, url }) => {
   const forms = barcodeForms(url.searchParams.get('code'));

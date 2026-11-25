@@ -417,8 +417,35 @@ views.search = async (q) => {
         <a class="group-head" href="#/p/${encodeURIComponent(g.best.id)}">${thumb(g.best)}<div class="t"><div class="name">${esc(g.name)}</div><div class="small muted">${esc(g.size || '')}${g.offers.length > 1 ? ` · ${g.offers.length} stores` : ''}</div></div>${heart(g.best)}</a>
         ${g.offers.map((o, i) => offerRow(o, i === 0 && g.offers.length > 1 && (g.offers[1].effective ?? 1e12) > (o.effective ?? 0))).join('')}
       </div>`).join('') : `<div class="empty"><b>No matches</b>Try a shorter word or a brand name.</div>`;
+    $('#res').insertAdjacentHTML('beforeend', '<div id="web"></div>');
+    webPrices(term, $('#web'));
   } catch (e) { fail(e, $('#res')); }
 };
+
+// Google Shopping comparison (stage 6): other shops' prices for the same words, looked up at most once a day per keyword.
+async function webPrices(term, el) {
+  if (normQ(term).length < 2) return;
+  el.innerHTML = '<div class="sec-head"><h2>Elsewhere online</h2></div><div class="skeleton" style="height:90px"></div>';
+  let d;
+  try { d = await api(`/api/search/web?q=${encodeURIComponent(term)}`); } catch { el.innerHTML = ''; return; }
+  const rows = [...(d.results || [])].sort((a, b) => a.priceCents - b.priceCents);
+  if (!rows.length) {
+    const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s lookups. More tomorrow!' }[d.unavailable];
+    el.innerHTML = why ? `<div class="sec-head"><h2>Elsewhere online</h2></div><p class="small muted">${why}</p>` : '';
+    return;
+  }
+  const row = (r) => `<a class="offer" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+      <span class="l"><span class="ret">${esc(r.store || 'Online shop')}</span><span class="small">${esc(r.title)}</span>${r.delivery ? `<span class="note">${esc(r.delivery)}</span>` : ''}</span>
+      <span class="p">${money(r.priceCents)}</span>${r.wasCents && r.wasCents > r.priceCents ? `<span class="u">was ${money(r.wasCents)}</span>` : ''}</a>`;
+  const show = 8;
+  el.innerHTML = `<div class="sec-head"><h2>Elsewhere online</h2><span class="small muted">Google Shopping</span></div>
+    <div class="group web">${rows.slice(0, show).map(row).join('')}
+      ${rows.length > show ? `<button class="offer more linkbtn" id="web-more">Show ${rows.length - show} more</button>` : ''}</div>
+    <p class="small muted">Lowest price first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Shown as listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
+  const more = $('#web-more', el);
+  if (more) more.onclick = () => { more.outerHTML = rows.slice(show).map(row).join(''); };
+}
+const normQ = (t) => String(t || '').trim();
 
 // ----- search by photo -----
 function pickFile(capture) {
