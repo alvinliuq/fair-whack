@@ -60,12 +60,25 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
   const work = async () => {
     while (jobs.length && !stopped) {
       const j = jobs.shift();
-      if (cost + est > budgetUsd) { stopped = true; log(`${label}: run budget $${budgetUsd} reached, stopping`); break; }
+      if (cost + perRequest(j.product ? (input.productExtractFrom || input.extractFrom) : input.extractFrom) > budgetUsd) { stopped = true; log(`${label}: run budget $${budgetUsd} reached, stopping`); break; }
+      const pEx = j.product ? (input.productExtractFrom || input.extractFrom) : input.extractFrom;
       const body = j.product
-        ? { url: j.url, product: true, productOptions: { extractFrom: input.extractFrom }, geolocation: 'AU' }
-        : { url: j.url, productList: true, productListOptions: { extractFrom: input.extractFrom }, geolocation: 'AU' };
+        ? { url: j.url, product: true, productOptions: { extractFrom: pEx }, geolocation: 'AU' }
+        : input.navigation
+          ? { url: j.url, productNavigation: true, productNavigationOptions: { extractFrom: pEx }, geolocation: 'AU' }
+          : { url: j.url, productList: true, productListOptions: { extractFrom: pEx }, geolocation: 'AU' };
       const { status, data } = await zyte(body);
-      if (status === 200) cost += est;
+      if (status === 200) cost += perRequest(pEx);
+      if (!j.product && input.navigation) {
+        // Navigation: product links (+ next page) -> each product page read on its own.
+        const links = (data.productNavigation?.items || []).map((x) => x.url).filter(Boolean);
+        const fresh = links.filter((u) => !queued.has(u));
+        log(`${label}: ${j.url} -> ${status}${status === 200 ? `, ${links.length} product links, ${fresh.length} new` : ` ${String(data.detail || data.title || '').slice(0, 100)}`}`);
+        for (const u of fresh) { queued.add(u); jobs.push({ url: u, product: true, category: j.category }); }
+        const next = data.productNavigation?.nextPage?.url;
+        if (status === 200 && next && fresh.length && j.page < (input.maxPages || 1)) jobs.unshift({ ...j, url: next, page: j.page + 1 });
+        continue;
+      }
       if (j.product) {
         if (status === 200 && data.product) items.push({ ...data.product, _url: j.url, _category: j.category });
         else log(`${label}: product ${j.url} -> ${status}`);
