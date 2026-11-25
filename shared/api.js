@@ -169,7 +169,7 @@ route('POST', '/api/login', async ({ env, request }) => {
   }
   if (!existing) {
     await env.DB.prepare('INSERT INTO users (id, name, is_admin, is_design, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, cleanName, isAdmin ? 1 : 0, isDesign ? 1 : 0, nowIso()).run();
-    await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, NULL, ?)').bind(uid(), id, 'My list', nowIso()).run();
+    await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at, sort_order) VALUES (?, ?, ?, NULL, ?, 1)').bind(uid(), id, 'My list', nowIso()).run();
   } else if (isAdmin && !existing.is_admin) {
     await env.DB.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(id).run();
   }
@@ -788,10 +788,10 @@ async function ownItem(env, user, itemId) {
 const ALERT_MODES = ['any', 'half', 'target', 'off'];
 
 route('GET', '/api/lists', async ({ env, user }) => {
-  let lists = (await env.DB.prepare('SELECT id, name, retailer, created_at FROM lists WHERE user_id = ? ORDER BY created_at').bind(user.id).all()).results;
+  let lists = (await env.DB.prepare('SELECT id, name, retailer, created_at FROM lists WHERE user_id = ? ORDER BY COALESCE(sort_order, 1000000), created_at').bind(user.id).all()).results;
   if (!lists.length) {
     const id = uid();
-    await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, NULL, ?)').bind(id, user.id, 'My list', nowIso()).run();
+    await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at, sort_order) VALUES (?, ?, ?, NULL, ?, 1)').bind(id, user.id, 'My list', nowIso()).run();
     lists = [{ id, name: 'My list', retailer: null }];
   }
   const items = (await env.DB.prepare(`SELECT li.id AS item_id, li.list_id, li.alert_mode, li.target_cents, ${COLS.split(',').map((c) => 'p.' + c.trim()).join(', ')}
@@ -821,19 +821,29 @@ route('GET', '/api/lists', async ({ env, user }) => {
 });
 
 route('POST', '/api/lists', async ({ env, user, request }) => {
-  const { name, retailer } = await body(request);
+  const { name } = await body(request);
   const n = String(name || '').trim().slice(0, 60) || 'New list';
-  const r = isActive(retailer) ? retailer : null;
   const id = uid();
-  await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, user.id, n, r, nowIso()).run();
-  return json({ id, name: n, retailer: r });
+  // New lists go to the bottom. Stores are no longer set per list (stage 7: store buttons filter instead).
+  const last = await env.DB.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m, COUNT(*) AS c FROM lists WHERE user_id = ?').bind(user.id).first();
+  await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at, sort_order) VALUES (?, ?, ?, NULL, ?, ?)').bind(id, user.id, n, nowIso(), Math.max(last.m, last.c) + 1).run();
+  return json({ id, name: n, retailer: null });
+});
+
+/** Put lists in order: ids in the order wanted. */
+route('PUT', '/api/lists/order', async ({ env, user, request }) => {
+  const ids = (await body(request)).ids;
+  if (!Array.isArray(ids)) throw new HttpError(400, 'ids required');
+  const mine = new Set((await env.DB.prepare('SELECT id FROM lists WHERE user_id = ?').bind(user.id).all()).results.map((r) => r.id));
+  const stmts = ids.filter((id) => mine.has(id)).map((id, i) => env.DB.prepare('UPDATE lists SET sort_order = ? WHERE id = ?').bind(i + 1, id));
+  if (stmts.length) await env.DB.batch(stmts);
+  return json({ ok: true });
 });
 
 route('PATCH', '/api/lists/:id', async ({ env, user, request, params }) => {
   await ownList(env, user, params.id);
-  const { name, retailer } = await body(request);
+  const { name } = await body(request);
   if (name !== undefined) await env.DB.prepare('UPDATE lists SET name = ? WHERE id = ?').bind(String(name).trim().slice(0, 60) || 'List', params.id).run();
-  if (retailer !== undefined) await env.DB.prepare('UPDATE lists SET retailer = ? WHERE id = ?').bind(isActive(retailer) ? retailer : null, params.id).run();
   return json({ ok: true });
 });
 

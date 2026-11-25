@@ -91,6 +91,7 @@ export const REVIEW = {
 };
 
 export const ALERTS = {
-  maxPushesPerUserPerDay: 1,
+  maxPushesPerUserPerDay: 5,
+  maxSinglePushes: 3, // ❤️ items on special: one push each up to this many, otherwise one merged push
   appUrl: process.env.APP_URL || 'https://fair-whack.pages.dev',
 };

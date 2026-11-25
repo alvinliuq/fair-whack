@@ -68,17 +68,21 @@ function badges(p, { stale = true } = {}) {
 
 // ---------- hearts ----------
 const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6s-7.4-4.5-9.3-9.1C1.3 8.1 3.4 4.8 6.8 4.8c2 0 3.4 1.1 4.2 2.4h2c.8-1.3 2.2-2.4 4.2-2.4 3.4 0 5.5 3.3 4.1 6.7-1.9 4.6-9.3 9.1-9.3 9.1z"/></svg>';
+const BELL = '<svg class="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.4-2h-4.8a2.5 2.5 0 0 0 2.4 2zm7-6V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>';
+// ❤️ (red, with a bell) = on a list with alerts; 💜 (purple) = on a list, no alerts of its own; outline = not saved.
+const heartState = (id) => { const s = state.saved.get(id); return !s ? '' : s.alert_mode === 'off' ? 'quiet' : 'alert'; };
+const heartLabel = (st) => (st === 'alert' ? 'On your list, alerts on — settings' : st === 'quiet' ? 'On your list, no alerts — settings' : 'Add to my list');
 function heart(p) {
   state.products.set(p.id, p);
-  const on = state.saved.has(p.id);
-  return `<button type="button" class="heart ${on ? 'on' : ''}" data-heart="${esc(p.id)}" aria-pressed="${on}" aria-label="${on ? 'On your list — alert settings' : 'Add to my list'}">${HEART}</button>`;
+  const st = heartState(p.id);
+  return `<button type="button" class="heart ${st ? 'on' : ''} ${st}" data-heart="${esc(p.id)}" aria-pressed="${!!st}" aria-label="${heartLabel(st)}">${HEART}${BELL}</button>`;
 }
 function refreshHearts() {
   document.querySelectorAll('[data-heart]').forEach((b) => {
-    const on = state.saved.has(b.dataset.heart);
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-pressed', on);
-    b.setAttribute('aria-label', on ? 'On your list — alert settings' : 'Add to my list');
+    const st = heartState(b.dataset.heart);
+    b.classList.toggle('on', !!st); b.classList.toggle('alert', st === 'alert'); b.classList.toggle('quiet', st === 'quiet');
+    b.setAttribute('aria-pressed', !!st);
+    b.setAttribute('aria-label', heartLabel(st));
   });
   const w = $('#watch');
   if (w) { const on = state.saved.has(w.dataset.pid); w.textContent = on ? '♥ On your list' : '♡ Add to my list'; w.classList.toggle('ghost', on); }
@@ -93,13 +97,6 @@ async function onHeart(id) {
   const saved = state.saved.get(id);
   if (saved) return editItemSheet(saved, p, async () => { await loadSaved(); if (location.hash.startsWith('#/lists')) views.lists(); });
   const { lists } = await api('/api/lists');
-  if (lists.length === 1) {
-    await api(`/api/lists/${lists[0].id}/items`, { method: 'POST', body: { product_id: id, alert_mode: 'any' } });
-    await loadSaved();
-    toast(`Added to ${lists[0].name}`);
-    maybeAskPush();
-    return;
-  }
   addToListSheet(p, lists, async () => { await loadSaved(); });
 }
 document.addEventListener('click', (e) => {
@@ -666,19 +663,34 @@ function sheet(html, onMount) {
 }
 
 function alertOptions(cur = 'any', target = null, price = null) {
-  const opts = [
-    ['any', 'Any special', 'Tell me whenever it goes on special'],
-    ['half', 'Half price only', 'Only when it is ½ price'],
-    ['target', 'Below my price', 'When it drops to my target price'],
-    ['off', 'No alerts', 'Just keep it on my list'],
-  ];
-  return opts.map(([k, t, s]) => `<label class="opt ${cur === k ? 'on' : ''}"><input type="radio" name="mode" value="${k}" ${cur === k ? 'checked' : ''}><div><b>${t}</b><span>${s}</span>
-    ${k === 'target' ? `<div class="field" style="margin-top:8px"><input name="target" inputmode="decimal" placeholder="${price ? (price / 100 * 0.7).toFixed(2) : '5.00'}" value="${target ? (target / 100).toFixed(2) : ''}" aria-label="Target price in dollars"></div>` : ''}</div></label>`).join('');
+  const on = cur !== 'off';
+  const sub = [['any', 'Any special'], ['half', 'Half price only'], ['target', 'Below my price']];
+  return `<div class="alert-kinds">
+    <label class="opt ${on ? 'on' : ''}" data-kind="alert"><input type="radio" name="kind" value="alert" ${on ? 'checked' : ''}><span class="hk alert">${HEART}${BELL}</span>
+      <div><b>Alerts</b><span>A notification of its own when it goes on special</span>
+      <div class="subopts">${sub.map(([k, t]) => `<label class="sub ${(on ? cur : 'any') === k ? 'on' : ''}"><input type="radio" name="mode" value="${k}" ${(on ? cur : 'any') === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
+      <div class="field target-field" ${(on ? cur : '') === 'target' ? '' : 'hidden'}><input name="target" inputmode="decimal" placeholder="${price ? (price / 100 * 0.7).toFixed(2) : '5.00'}" value="${target ? (target / 100).toFixed(2) : ''}" aria-label="Target price in dollars"></div></div></label>
+    <label class="opt ${on ? '' : 'on'}" data-kind="off"><input type="radio" name="kind" value="off" ${on ? '' : 'checked'}><span class="hk quiet">${HEART}</span>
+      <div><b>No alerts</b><span>Just keep it on my list. It still counts in the Wednesday and Saturday summary.</span></div></label></div>`;
 }
 function bindOpts(s) {
-  s.querySelectorAll('.opt').forEach((o) => o.addEventListener('click', () => { s.querySelectorAll('.opt').forEach((x) => x.classList.remove('on')); o.classList.add('on'); }));
+  s.querySelectorAll('[data-kind]').forEach((o) => o.addEventListener('click', () => {
+    s.querySelectorAll('[data-kind]').forEach((x) => x.classList.toggle('on', x === o));
+    o.querySelector('input[name=kind]').checked = true;
+  }));
+  s.querySelectorAll('.subopts label').forEach((l) => l.addEventListener('click', (e) => {
+    e.stopPropagation();
+    l.querySelector('input').checked = true;
+    s.querySelectorAll('.subopts label').forEach((x) => x.classList.toggle('on', x === l));
+    const alert = s.querySelector('[data-kind=alert]');
+    s.querySelectorAll('[data-kind]').forEach((x) => x.classList.toggle('on', x === alert));
+    alert.querySelector('input[name=kind]').checked = true;
+    s.querySelector('.target-field').hidden = l.querySelector('input').value !== 'target';
+  }));
+  s.querySelector('.target-field input')?.addEventListener('click', (e) => e.stopPropagation());
 }
 function readOpts(s) {
+  if (s.querySelector('input[name=kind]:checked')?.value === 'off') return { alert_mode: 'off', target_cents: null };
   const mode = s.querySelector('input[name=mode]:checked')?.value || 'any';
   const t = parseFloat(String(s.querySelector('input[name=target]')?.value || '').replace(/[^0-9.]/g, ''));
   if (mode === 'target' && !(t > 0)) throw new Error('Enter a target price');
@@ -686,15 +698,17 @@ function readOpts(s) {
 }
 
 function addToListSheet(p, lists, done) {
-  sheet(`<h3>Add “${esc(p.name)}” to…</h3>
-    <div class="stack">${lists.map((l, i) => `<label class="opt ${i === 0 ? 'on' : ''}" data-l><input type="radio" name="list" value="${l.id}" ${i === 0 ? 'checked' : ''}><div><b>${esc(l.name)}</b><span>${l.retailer ? `${RET[l.retailer]} only` : 'Any store'} · ${l.items.length} item${l.items.length === 1 ? '' : 's'}</span></div></label>`).join('')}</div>
-    <p class="small muted">You'll be told when it goes on special. Change this later from the ♡.</p>
-    <div class="err" id="e"></div><button class="btn block" id="ok">Add to list</button>`, (s, close) => {
-    s.querySelectorAll('[data-l]').forEach((o) => o.addEventListener('click', () => { s.querySelectorAll('[data-l]').forEach((x) => x.classList.remove('on')); o.classList.add('on'); }));
+  sheet(`<h3>Add “${esc(p.name)}”</h3>
+    ${lists.length > 1 ? `<p class="small muted" style="margin:-4px 0 6px">To which list?</p><div class="chips wrap list-pick">${lists.map((l, i) => `<label class="chip ${i === 0 ? 'on' : ''}"><input type="radio" name="list" value="${l.id}" ${i === 0 ? 'checked' : ''} hidden>${esc(l.name)}</label>`).join('')}</div>`
+      : `<input type="hidden" name="list" value="${lists[0].id}">`}
+    ${alertOptions('any', null, p.price)}
+    <div class="err" id="e"></div><button class="btn block" id="ok">Add to ${lists.length > 1 ? 'list' : esc(lists[0].name)}</button>`, (s, close) => {
+    bindOpts(s);
+    s.querySelectorAll('.list-pick label').forEach((o) => o.addEventListener('click', () => { s.querySelectorAll('.list-pick label').forEach((x) => x.classList.toggle('on', x === o)); }));
     $('#ok', s).onclick = async () => {
       try {
-        const listId = s.querySelector('input[name=list]:checked').value;
-        await api(`/api/lists/${listId}/items`, { method: 'POST', body: { product_id: p.id, alert_mode: 'any' } });
+        const listId = (s.querySelector('input[name=list]:checked') || s.querySelector('input[name=list]')).value;
+        await api(`/api/lists/${listId}/items`, { method: 'POST', body: { product_id: p.id, ...readOpts(s) } });
         close(); toast(`Added to ${lists.find((l) => l.id === listId).name}`); await done?.(); maybeAskPush();
       } catch (e) { $('#e', s).textContent = e.message; }
     };
@@ -705,7 +719,7 @@ function addToListSheet(p, lists, done) {
 function editItemSheet(item, p, done) {
   const mode = item.alert_mode || item.alertMode;
   const target = item.target_cents ?? item.target;
-  sheet(`<h3>${esc(p.name)}</h3><p class="small muted" style="margin-top:-6px">On ${esc(item.list_name || 'your list')}. When should we tell you?</p>
+  sheet(`<h3>${esc(p.name)}</h3><p class="small muted" style="margin-top:-6px">On ${esc(item.list_name || 'your list')}.</p>
     ${alertOptions(mode, target, p.price)}
     <div class="err" id="e"></div>
     <div id="acts" class="row"><button class="btn danger" id="rm">Remove from list</button><button class="btn" id="ok" style="flex:1">Save</button></div>`, (s, close) => {
@@ -723,46 +737,133 @@ function editItemSheet(item, p, done) {
 }
 
 // ----- My List -----
-const MODE_LABEL = { any: 'Any special', half: '½ price only', target: 'Below target', off: 'No alerts' };
+const MODE_LABEL = { any: 'Alerts', half: 'Alerts: ½ price', target: 'Alerts: below target', off: 'No alerts' };
+const LIST_STORES = 'fw.listStores';
+const listStores = () => { try { return JSON.parse(localStorage.getItem(LIST_STORES) || '{}'); } catch { return {}; } };
+function setListStores(id, arr) { const m = listStores(); if (arr.length) m[id] = arr; else delete m[id]; try { localStorage.setItem(LIST_STORES, JSON.stringify(m)); } catch {} }
+
+/** Store buttons for a list: "All stores" or any mix of single stores (never both). */
+function storeButtons(listId, stores, sel) {
+  if (stores.length < 2) return '';
+  return `<div class="toggles list-stores" data-for="${listId}" role="group" aria-label="Stores">
+    <button type="button" class="toggle all" data-ls="" aria-pressed="${!sel.length}"><span class="tick" aria-hidden="true">✓</span>All stores</button>
+    ${stores.map((r) => `<button type="button" class="toggle ${r}" data-ls="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}</div>`;
+}
+
+function itemRow(i, sel) {
+  state.products.set(i.product.id, i.product);
+  const offers = sel.length ? i.offers.filter((o) => sel.includes(o.retailer)) : i.offers;
+  const best = offers[0];
+  if (!best) return '';
+  return `<div class="r item">
+    <a href="#/p/${encodeURIComponent(best.id)}" class="li-thumb" tabindex="-1" aria-hidden="true">${thumb(i.product.image ? i.product : best)}</a>
+    <a href="#/p/${encodeURIComponent(best.id)}" class="n" style="text-decoration:none"><div>${esc(i.product.name)}</div>
+      <div class="small"><span class="ret ${best.retailer}">${RET[best.retailer]}</span> ${best.special ? (best.promoType === 'half_price' ? '<span class="badge b-half">½ PRICE</span>' : '<span class="badge b-promo">Special</span>') : ''} <span class="muted">· ${MODE_LABEL[i.alertMode]}${i.alertMode === 'target' && i.target ? ` ${money(i.target)}` : ''}</span></div></a>
+    <div style="text-align:right"><div class="num" style="font-weight:800">${money(best.effective)}</div>${best.was ? `<div class="small muted num" style="text-decoration:line-through">${money(best.was)}</div>` : ''}</div>
+    ${heart(i.product)}
+  </div>`;
+}
+
+function listBody(l) {
+  const stores = STORES.filter((r) => l.items.some((i) => i.offers.some((o) => o.retailer === r)));
+  const sel = (listStores()[l.id] || []).filter((r) => stores.includes(r));
+  const rows = l.items.map((i) => itemRow(i, sel)).filter(Boolean);
+  return storeButtons(l.id, stores, sel) + (l.items.length
+    ? (rows.length ? `<div class="list-rows">${rows.join('')}</div>` : `<div class="empty" style="padding:14px">Nothing on this list at ${sel.map((r) => RET[r]).join(' or ')}.</div>`)
+    : '<div class="empty" style="padding:14px">Empty. Tap ♡ on any product to add it here.</div>');
+}
 
 views.lists = async () => {
   loading(2);
   try {
     const { lists } = await api('/api/lists');
-    app.innerHTML = `<h1>My List</h1><p class="lead small">Tap a list to open it. Prices shown are the cheapest matching offer${lists.some((l) => l.retailer) ? ' (or the chosen store)' : ''}.</p>
+    app.innerHTML = `<div class="title-row"><h1>My List</h1><span class="spacer"></span>
+        ${lists.length > 1 ? '<button class="round-btn" id="reorder" aria-label="Change the order of lists"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3l4 4H8v7H6V7H3zm10 18l-4-4h3v-7h2v7h3z"/></svg></button>' : ''}
+        <button class="round-btn primary" id="newlist" aria-label="New list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button></div>
+      <p class="lead small">Prices are the cheapest matching offer at the stores you pick. ${HEART_KEY}</p>
       ${lists.map((l, idx) => {
         const open = state.listOpen[l.id] ?? idx === 0;
         const onSpecial = l.items.filter((i) => i.best.special).length;
         return `<details class="card listcard" data-list="${l.id}" ${open ? 'open' : ''}>
-        <summary><span class="chev">›</span><div class="t"><b>${esc(l.name)}</b><span class="small muted">${l.retailer ? `${RET[l.retailer]} only` : 'Any store'} · ${l.items.length} item${l.items.length === 1 ? '' : 's'}${onSpecial ? ` · <span class="hot">${onSpecial} on special</span>` : ''}</span></div><button class="btn small light" data-edit="${l.id}">Edit</button></summary>
-        ${l.items.length ? `<div class="list-rows">${l.items.map((i) => { state.products.set(i.product.id, i.product); return `<div class="r">
-          <a href="#/p/${encodeURIComponent(i.best.id)}" class="n" style="text-decoration:none"><div>${esc(i.product.name)}</div>
-            <div class="small"><span class="ret ${i.best.retailer}">${RET[i.best.retailer]}</span> ${i.best.special ? (i.best.promoType === 'half_price' ? '<span class="badge b-half">½ PRICE</span>' : '<span class="badge b-promo">Special</span>') : ''} <span class="muted">· ${MODE_LABEL[i.alertMode]}${i.alertMode === 'target' && i.target ? ` ${money(i.target)}` : ''}</span></div></a>
-          <div style="text-align:right"><div class="num" style="font-weight:800">${money(i.best.effective)}</div>${i.best.was ? `<div class="small muted num" style="text-decoration:line-through">${money(i.best.was)}</div>` : ''}</div>
-          ${heart(i.product)}
-        </div>`; }).join('')}</div>` : '<div class="empty" style="padding:14px">Empty. Tap ♡ on any product to add it here.</div>'}
+        <summary><span class="chev">›</span><div class="t"><b>${esc(l.name)}</b><span class="small muted">${l.items.length} item${l.items.length === 1 ? '' : 's'}${onSpecial ? ` · <span class="hot">${onSpecial} on special</span>` : ''}</span></div><button class="btn small light" data-edit="${l.id}">Edit</button></summary>
+        <div class="list-body">${listBody(l)}</div>
       </details>`; }).join('')}
-      <button class="btn ghost block" id="newlist">+ New list</button>
       <div id="pushbox" style="margin-top:14px"></div>`;
     app.querySelectorAll('details[data-list]').forEach((d) => d.addEventListener('toggle', () => { state.listOpen[d.dataset.list] = d.open; }));
     app.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); listSheet(lists.find((l) => l.id === b.dataset.edit), lists.length); }));
+    // Store buttons: "All stores" clears the others; any single store clears "All stores".
+    app.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ls]');
+      if (!b) return;
+      const box = b.closest('[data-for]'), id = box.dataset.for;
+      const cur = listStores()[id] || [];
+      const r = b.dataset.ls;
+      const next = !r ? [] : cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r];
+      setListStores(id, next);
+      const l = lists.find((x) => x.id === id);
+      box.closest('.list-body').innerHTML = listBody(l);
+    });
     $('#newlist').onclick = () => listSheet(null, lists.length);
+    if ($('#reorder')) $('#reorder').onclick = () => reorderSheet(lists);
     renderPushBox($('#pushbox'));
   } catch (e) { fail(e); }
 };
+const HEART_KEY = '<span class="hkey"><span class="hk alert sm">' + HEART + BELL + '</span> alerts on · <span class="hk quiet sm">' + HEART + '</span> no alerts</span>';
 
 function listSheet(l, count) {
   sheet(`<h3>${l ? 'Edit list' : 'New list'}</h3>
     <div class="field"><label>Name</label><input name="n" value="${esc(l?.name || '')}" placeholder="e.g. Weekly shop"></div><p></p>
-    <div class="field"><label>Store</label><select name="r"><option value="">Any store (cheapest match)</option>${STORES.map((r) => `<option value="${r}" ${l?.retailer === r ? 'selected' : ''}>${RET[r]} only</option>`).join('')}</select></div><p></p>
-    <div class="row">${l && count > 1 ? '<button class="btn danger" id="del">Delete list</button>' : ''}<button class="btn" id="ok" style="flex:1">Save</button></div>`, (s, close) => {
+    <div class="row">${l && count > 1 ? '<button class="btn danger" id="del">Remove list</button>' : ''}<button class="btn" id="ok" style="flex:1">Save</button></div>`, (s, close) => {
     $('#ok', s).onclick = async () => {
-      const body = { name: $('[name=n]', s).value, retailer: $('[name=r]', s).value || null };
+      const body = { name: $('[name=n]', s).value };
       if (l) await api(`/api/lists/${l.id}`, { method: 'PATCH', body }); else await api('/api/lists', { method: 'POST', body });
       close(); views.lists();
     };
     const del = $('#del', s);
-    if (del) del.onclick = async () => { if (confirm('Delete this list and everything on it?')) { await api(`/api/lists/${l.id}`, { method: 'DELETE' }); close(); await loadSaved(); views.lists(); } };
+    if (del) del.onclick = async () => { if (confirm('Remove this list and everything on it?')) { await api(`/api/lists/${l.id}`, { method: 'DELETE' }); close(); await loadSaved(); views.lists(); } };
+  });
+}
+
+/** Change the order of lists: drag by ≡, or use the arrows. */
+function reorderSheet(lists) {
+  let order = lists.map((l) => ({ id: l.id, name: l.name }));
+  sheet(`<h3>Order of lists</h3><p class="small muted" style="margin-top:-4px">Drag ≡ or use the arrows.</p><div class="card list-rows reorder" id="ro"></div><button class="btn block" id="ok">Done</button>`, (s, close) => {
+    const box = $('#ro', s);
+    const draw = () => {
+      box.innerHTML = order.map((l, i) => `<div class="r ro-row" data-i="${i}"><span class="grip" aria-hidden="true">≡</span><span class="n"><b>${esc(l.name)}</b></span>
+        <button class="linkbtn" data-up="${i}" ${i ? '' : 'disabled'} aria-label="Move up">↑</button><button class="linkbtn" data-down="${i}" ${i < order.length - 1 ? '' : 'disabled'} aria-label="Move down">↓</button></div>`).join('');
+    };
+    const move = (from, to) => { if (to < 0 || to >= order.length || from === to) return; const [x] = order.splice(from, 1); order.splice(to, 0, x); draw(); };
+    draw();
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.up) move(+b.dataset.up, +b.dataset.up - 1);
+      if (b.dataset.down) move(+b.dataset.down, +b.dataset.down + 1);
+    });
+    // Drag by the grip (touch and mouse).
+    let drag = null;
+    box.addEventListener('pointerdown', (e) => {
+      const g = e.target.closest('.grip');
+      if (!g) return;
+      e.preventDefault();
+      const row = g.closest('.ro-row');
+      drag = { from: +row.dataset.i, row, y0: e.clientY, h: row.offsetHeight };
+      row.classList.add('dragging');
+      g.setPointerCapture(e.pointerId);
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dy = e.clientY - drag.y0;
+      drag.row.style.transform = `translateY(${dy}px)`;
+      drag.to = Math.max(0, Math.min(order.length - 1, drag.from + Math.round(dy / drag.h)));
+    });
+    const end = () => { if (!drag) return; const { from, to = from } = drag; drag = null; move(from, to); if (from === to) draw(); };
+    box.addEventListener('pointerup', end);
+    box.addEventListener('pointercancel', end);
+    $('#ok', s).onclick = async () => {
+      try { await api('/api/lists/order', { method: 'PUT', body: { ids: order.map((l) => l.id) } }); close(); views.lists(); } catch (err) { toast(err.message); }
+    };
   });
 }
 // ---------- push ----------
@@ -802,7 +903,7 @@ async function renderPushBox(el) {
   }
   const sub = await currentSub().catch(() => null);
   el.innerHTML = sub
-    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Sent around 8am on Wednesdays and Saturdays, at most once a day.</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
+    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Around 8am on Wednesdays and Saturdays: a summary of your list, plus a note for each ❤️ item on special (at most 5 a day).</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
     : `<div class="card row"><span>🔔 Get a heads-up when your items go on special.</span><span class="spacer"></span><button class="btn small ticket" id="pon">Turn on</button></div>`;
   const on = $('#pon', el), off = $('#poff', el);
   if (on) on.onclick = async () => { try { await enablePush(); toast('Alerts on'); renderPushBox(el); } catch (e) { toast(e.message); } };
@@ -813,7 +914,7 @@ async function maybeAskPush() {
   const sub = await currentSub().catch(() => null);
   if (sub) return;
   try { localStorage.setItem('fw_push_asked', '1'); } catch {}
-  sheet(`<h3>Want a heads-up?</h3><p>We'll send one notification when items on your list go on special (usually Wednesday or Saturday morning, never more than once a day).</p>
+  sheet(`<h3>Want a heads-up?</h3><p>On Wednesday and Saturday mornings we'll tell you how many items on your list are on special, and send a note of its own for each ❤️ item (at most 5 a day).</p>
     <div class="row"><button class="btn light" id="no">Not now</button><button class="btn ticket" id="yes" style="flex:1">Turn on alerts</button></div>`, (s, close) => {
     $('#no', s).onclick = close;
     $('#yes', s).onclick = async () => { close(); try { await enablePush(); toast('Alerts on'); } catch (e) { toast(e.message); } };
@@ -853,7 +954,7 @@ views.fuel = async (q) => {
   return fuelMod.page(q);
 };
 
-views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">One notification when items on your list go on special. Usually Wednesday or Saturday around 8am, never more than once a day.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
+views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">Around 8am on Wednesdays and Saturdays: one summary of how many items on your list are on special, plus a notification of its own for each ❤️ item that goes on special (💜 items only count in the summary). At most 5 a day. Friends\' requests and shared products arrive straight away.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
 
 views.install = () => {
   app.innerHTML = `<h1>Add to Home Screen</h1>
