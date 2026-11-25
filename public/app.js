@@ -1377,5 +1377,10 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   location.replace(a.getAttribute('href'));
 });
+// Keep the app at its own size: no pinch zoom (iPhone ignores user-scalable=no in Safari).
+['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// If iPhone did zoom in on a field, settle back once the field is left.
+document.addEventListener('focusout', () => { if (window.visualViewport && visualViewport.scale > 1) window.scrollTo(window.scrollX, window.scrollY); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 route();
