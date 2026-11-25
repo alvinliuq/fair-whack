@@ -753,10 +753,15 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .tile .foot .price small { margin-left: 0; }
 
 /* ---- Home sections: full-width bands, alternating clear / white ---- */
-.hsec { margin: 0 -14px; padding: 2px 14px 16px; }
+.hsec { display: block; margin: 0 -14px; padding: 2px 14px 16px; }
 .hsec[hidden] { display: none; }
 .hsec.alt { background: #fff; }
 .hsec > .sec-head:first-child, .hsec > div > .sec-head:first-child { margin-top: 16px; }
 .hsec + .hsec { border-top: 1px solid rgba(91, 43, 224, .06); }
 .hsec.alt .tile, .hsec.alt .store-tile .slogo { box-shadow: 0 1px 4px rgba(40, 20, 90, .10); border: 1px solid #F0ECF7; }
 .hsec.alt .rail-empty { background: var(--mist, #F6F3FF); }
+/* Greeting: its own white band, starting right under the top bar. Then the sections start clear. */
+.hsec.hero { display: block; background: #fff; margin-top: -14px; padding: 18px 14px 14px; border-bottom: 1px solid rgba(91, 43, 224, .08); }
+.hsec.hero h1 { margin: 0 0 2px; }
+.hsec.hero .lead { margin: 0; }
+.hsec.hero .notice { margin: 12px 0 0; }

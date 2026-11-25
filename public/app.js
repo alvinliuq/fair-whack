@@ -294,9 +294,9 @@ views.home = async () => {
   const newest = updRows.map((r) => r.updated).filter(Boolean).sort().pop();
   const upd = updRows.length > 3 ? `${ago(newest)} · ${updRows.length} stores` : updRows.map((r) => `${RET[r.retailer]} ${ago(r.updated)}`).join(' · ');
   app.innerHTML = `
-    <h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
-    <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
-    ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}
+    <section class="hsec hero"><h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
+      <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
+      ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}</section>
     <section class="hsec"><div class="sec-head"><h2>On special from your list</h2><span id="minepick"></span></div>
       <div id="mine"><div class="skeleton" style="height:120px"></div></div></section>
     <section class="hsec"><div id="sharedrail"></div></section>
@@ -307,7 +307,7 @@ views.home = async () => {
   // Sections alternate background (clear / white); empty ones are skipped so the stripes stay even.
   const stripe = () => {
     let i = 0;
-    app.querySelectorAll('.hsec').forEach((sec) => {
+    app.querySelectorAll('.hsec:not(.hero)').forEach((sec) => {
       const empty = !sec.textContent.trim() && !sec.querySelector('img, .skeleton');
       sec.hidden = empty;
       if (!empty) sec.classList.toggle('alt', i++ % 2 === 1);
