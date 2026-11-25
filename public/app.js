@@ -115,8 +115,8 @@ function tile(p) {
       <div class="price num">${money(p.effective)}${p.was ? `<small>${money(p.was)}</small>` : ''}</div>
       ${p.multibuy ? `<div class="unit">${esc(p.promoText)} · ${money(p.price)} for 1</div>` : ''}
       <div class="unit num">${esc(unitText(p))}${p.perUse ? ` · ${money(p.perUse)}/use` : ''}</div>
+      ${heart(p)}
     </div>
-    ${heart(p)}
   </a>`;
 }
 
@@ -806,12 +806,30 @@ const LIST_STORES = 'fw.listStores';
 const listStores = () => { try { return JSON.parse(localStorage.getItem(LIST_STORES) || '{}'); } catch { return {}; } };
 function setListStores(id, arr) { const m = listStores(); if (arr.length) m[id] = arr; else delete m[id]; try { localStorage.setItem(LIST_STORES, JSON.stringify(m)); } catch {} }
 
-/** Store buttons for a list: "All stores" or any mix of single stores (never both). */
-function storeButtons(listId, stores, sel) {
-  if (stores.length < 2) return '';
-  return `<div class="toggles list-stores" data-for="${listId}" role="group" aria-label="Stores">
-    <button type="button" class="toggle all" data-ls="" aria-pressed="${!sel.length}"><span class="tick" aria-hidden="true">✓</span>All stores</button>
-    ${stores.map((r) => `<button type="button" class="toggle ${r}" data-ls="${r}" aria-pressed="${sel.includes(r)}"><span class="tick" aria-hidden="true">✓</span>${RET[r]}</button>`).join('')}</div>`;
+/** Store filter for a list: a small button next to Edit ("All stores" or the stores picked). */
+function storeLabel(sel) { return !sel.length ? 'All stores' : sel.length === 1 ? RET[sel[0]] : `${sel.length} stores`; }
+function storeSheet(l, stores, onDone) {
+  let sel = (listStores()[l.id] || []).filter((r) => stores.includes(r));
+  sheet(`<h3>Stores for “${esc(l.name)}”</h3><p class="small muted" style="margin-top:-4px">Show prices from all stores, or only the ones you pick.</p>
+    <div class="card list-rows store-pick" id="sp"></div><button class="btn block" id="ok">Done</button>`, (sh, close) => {
+    const box = $('#sp', sh);
+    const draw = () => {
+      box.innerHTML = [['', 'All stores'], ...stores.map((r) => [r, RET[r]])].map(([r, name]) => {
+        const on = r ? sel.includes(r) : !sel.length;
+        return `<button type="button" class="r sp-row" data-r="${r}" aria-pressed="${on}">${r ? `<span class="dot ret ${r}"></span>` : '<span class="dot all"></span>'}<span class="n"><b>${esc(name)}</b></span><span class="sp-tick" aria-hidden="true">${on ? '✓' : ''}</span></button>`;
+      }).join('');
+    };
+    draw();
+    box.onclick = (e) => {
+      const b = e.target.closest('[data-r]');
+      if (!b) return;
+      const r = b.dataset.r;
+      sel = !r ? [] : sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r];
+      if (sel.length === stores.length) sel = [];
+      draw();
+    };
+    $('#ok', sh).onclick = () => { setListStores(l.id, sel); close(); onDone(); };
+  });
 }
 
 function itemRow(i, sel) {
@@ -829,13 +847,14 @@ function itemRow(i, sel) {
   </div>`;
 }
 
+const listStoresOf = (l) => STORES.filter((r) => l.items.some((i) => i.offers.some((o) => o.retailer === r)));
 function listBody(l) {
-  const stores = STORES.filter((r) => l.items.some((i) => i.offers.some((o) => o.retailer === r)));
+  const stores = listStoresOf(l);
   const sel = (listStores()[l.id] || []).filter((r) => stores.includes(r));
   const rows = l.items.map((i) => itemRow(i, sel)).filter(Boolean);
-  return storeButtons(l.id, stores, sel) + (l.items.length
+  return l.items.length
     ? (rows.length ? `<div class="list-rows">${rows.join('')}</div>` : `<div class="empty" style="padding:14px">Nothing on this list at ${sel.map((r) => RET[r]).join(' or ')}.</div>`)
-    : '<div class="empty" style="padding:14px">Empty. Tap ♡ on any product to add it here.</div>');
+    : '<div class="empty" style="padding:14px">Empty. Tap ♡ on any product to add it here.</div>';
 }
 
 views.lists = async () => {
@@ -843,14 +862,14 @@ views.lists = async () => {
   try {
     const { lists } = await api('/api/lists');
     app.innerHTML = `<div class="title-row"><h1>My List</h1><span class="spacer"></span>
-        ${lists.length > 1 ? '<button class="round-btn" id="reorder" aria-label="Change the order of lists"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3l4 4H8v7H6V7H3zm10 18l-4-4h3v-7h2v7h3z"/></svg></button>' : ''}
+        ${lists.length > 1 ? '<button class="round-btn" id="reorder" aria-label="Change the order of lists"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>' : ''}
         <button class="round-btn primary" id="newlist" aria-label="New list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button></div>
       <p class="lead small">Prices are the cheapest matching offer at the stores you pick. ${HEART_KEY}</p>
       ${lists.map((l, idx) => {
         const open = state.listOpen[l.id] ?? idx === 0;
         const onSpecial = l.items.filter((i) => i.best.special).length;
         return `<details class="card listcard" data-list="${l.id}" ${open ? 'open' : ''}>
-        <summary><span class="chev">›</span><div class="t"><b>${esc(l.name)}</b><span class="small muted">${l.items.length} item${l.items.length === 1 ? '' : 's'}${onSpecial ? ` · <span class="hot">${onSpecial} on special</span>` : ''}</span></div><button class="btn small light" data-edit="${l.id}">Edit</button></summary>
+        <summary><span class="chev">›</span><div class="t"><b>${esc(l.name)}</b><span class="small muted">${l.items.length} item${l.items.length === 1 ? '' : 's'}${onSpecial ? ` · <span class="hot">${onSpecial} on special</span>` : ''}</span></div>${listStoresOf(l).length > 1 ? `<button class="btn small light store-btn" data-stores="${l.id}"><span>${esc(storeLabel((listStores()[l.id] || []).filter((r) => listStoresOf(l).includes(r))))}</span><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>` : ''}<button class="btn small light" data-edit="${l.id}">Edit</button></summary>
         <div class="list-body">${listBody(l)}</div>
       </details>`; }).join('')}
       <div id="pushbox" style="margin-top:14px"></div>`;
@@ -863,18 +882,18 @@ views.lists = async () => {
       e.preventDefault(); e.stopPropagation();
       location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
     }, true);
-    // Store buttons: "All stores" clears the others; any single store clears "All stores".
-    app.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-ls]');
-      if (!b) return;
-      const box = b.closest('[data-for]'), id = box.dataset.for;
-      const cur = listStores()[id] || [];
-      const r = b.dataset.ls;
-      const next = !r ? [] : cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r];
-      setListStores(id, next);
-      const l = lists.find((x) => x.id === id);
-      box.closest('.list-body').innerHTML = listBody(l);
-    });
+    // Store filter: opens a picker; "All stores" or any mix of single stores.
+    app.querySelectorAll('[data-stores]').forEach((b) => (b.onclick = (e) => {
+      e.preventDefault();
+      const l = lists.find((x) => x.id === b.dataset.stores);
+      const stores = listStoresOf(l);
+      storeSheet(l, stores, () => {
+        const card = b.closest('details');
+        card.querySelector('.list-body').innerHTML = listBody(l);
+        b.querySelector('span').textContent = storeLabel((listStores()[l.id] || []).filter((r) => stores.includes(r)));
+        card.open = true;
+      });
+    }));
     $('#newlist').onclick = () => listSheet(null, lists.length);
     if ($('#reorder')) $('#reorder').onclick = () => reorderSheet(lists);
     renderPushBox($('#pushbox'));
@@ -896,30 +915,23 @@ function listSheet(l, count) {
   });
 }
 
-/** Change the order of lists: drag by ≡, or use the arrows. */
+/** Change the order of lists: drag by ≡. */
 function reorderSheet(lists) {
   let order = lists.map((l) => ({ id: l.id, name: l.name }));
-  sheet(`<h3>Order of lists</h3><p class="small muted" style="margin-top:-4px">Drag ≡ or use the arrows.</p><div class="card list-rows reorder" id="ro"></div><button class="btn block" id="ok">Done</button>`, (s, close) => {
+  sheet(`<h3>Order of lists</h3><p class="small muted" style="margin-top:-4px">Hold ≡ and drag to move a list.</p><div class="card list-rows reorder" id="ro"></div><button class="btn block" id="ok">Done</button>`, (s, close) => {
     const box = $('#ro', s);
     const draw = () => {
-      box.innerHTML = order.map((l, i) => `<div class="r ro-row" data-i="${i}"><span class="grip" aria-hidden="true">≡</span><span class="n"><b>${esc(l.name)}</b></span>
-        <button class="linkbtn" data-up="${i}" ${i ? '' : 'disabled'} aria-label="Move up">↑</button><button class="linkbtn" data-down="${i}" ${i < order.length - 1 ? '' : 'disabled'} aria-label="Move down">↓</button></div>`).join('');
+      box.innerHTML = order.map((l, i) => `<div class="r ro-row" data-i="${i}"><span class="grip" aria-hidden="true">≡</span><span class="n"><b>${esc(l.name)}</b></span></div>`).join('');
     };
     const move = (from, to) => { if (to < 0 || to >= order.length || from === to) return; const [x] = order.splice(from, 1); order.splice(to, 0, x); draw(); };
     draw();
-    box.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      if (b.dataset.up) move(+b.dataset.up, +b.dataset.up - 1);
-      if (b.dataset.down) move(+b.dataset.down, +b.dataset.down + 1);
-    });
     // Drag by the grip (touch and mouse).
     let drag = null;
     box.addEventListener('pointerdown', (e) => {
-      const g = e.target.closest('.grip');
-      if (!g) return;
+      const row = e.target.closest('.ro-row');
+      if (!row) return;
+      const g = row;
       e.preventDefault();
-      const row = g.closest('.ro-row');
       drag = { from: +row.dataset.i, row, y0: e.clientY, h: row.offsetHeight };
       row.classList.add('dragging');
       g.setPointerCapture(e.pointerId);
@@ -1154,6 +1166,8 @@ function downloadTesters(users) {
 }
 
 // ---------- router ----------
+const keptHome = { nodes: null, y: 0, lastY: 0, at: 0, leaving: false };
+addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scrollY; }, { passive: true });
 async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const q = new URLSearchParams(query || '');
@@ -1176,7 +1190,22 @@ async function route() {
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
   if (state.me && !state.needsProfile) soc().then((m) => m.refreshBadge()).catch(() => {});
+  // Home is kept as it was when you leave it (scroll position included) and shown again straight away
+  // when you come back within 10 minutes; only "On special from your list" quietly checks for changes.
+  const isHome = !parts.length || name === 'home';
+  if (keptHome.leaving) { keptHome.nodes = [...app.childNodes]; keptHome.y = keptHome.lastY; keptHome.at = Date.now(); }
+  keptHome.leaving = false;
+  if (isHome && keptHome.nodes && Date.now() - keptHome.at < 10 * 60000 && !q.toString()) {
+    app.replaceChildren(...keptHome.nodes);
+    keptHome.nodes = null; keptHome.leaving = true;
+    refreshHearts();
+    requestAnimationFrame(() => window.scrollTo(0, keptHome.y || 0));
+    api('/api/digest').then((d) => { if ($('#mine')) renderMine($('#mine'), d); }).catch(() => {});
+    return;
+  }
+  if (isHome) keptHome.nodes = null;
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
+  if (isHome) keptHome.leaving = true;
   try {
     if (name === 'login') return views.login();
     if (name === 'p') return await views.product(q, decodeURIComponent(parts.slice(1).join('/')));

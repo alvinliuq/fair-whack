@@ -728,3 +728,26 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .shared-tile > .tile { flex: 1; }
 .rail > .tile, .rail > .shared-tile, .rail.ranked .rank-wrap { align-self: stretch; }
 .rail .tile .name { min-height: 2.6em; }
+
+/* ---- Visual pass (26 Nov): product cards ---- */
+/* Price follows the name; any spare height goes below. The heart sits beside the price, clear of the corner. */
+.tile { padding-bottom: 12px; }
+.tile .name { -webkit-line-clamp: 2; min-height: 2.6em; }
+.tile .foot { margin-top: 2px; position: relative; padding-right: 50px; min-height: 44px; }
+.tile .foot .heart { right: 2px; bottom: auto; top: 50%; transform: translateY(-50%); }
+.tile .foot .heart:active svg:not(.bell) { transform: scale(.85); }
+/* My List */
+.store-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 130px; margin-right: 6px; }
+.store-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-btn svg { width: 10px; height: 6px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.store-pick .sp-row { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; color: var(--ink); }
+.store-pick .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c, var(--grape)); flex: none; padding: 0; }
+.store-pick .dot.all { background: var(--grape); }
+.store-pick .sp-tick { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff; flex: none; }
+.store-pick .sp-row[aria-pressed="true"] .sp-tick { background: var(--grape); border-color: var(--grape); }
+.reorder .ro-row { cursor: grab; user-select: none; }
+.reorder .ro-row .n { flex: 1; }
+.reorder .grip { font-size: 24px; }
+.rail > .tile, .rail .rank-wrap > .tile, .shared-tile > .tile { min-width: 0; }
+.tile .foot .price { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 5px; }
+.tile .foot .price small { margin-left: 0; }
