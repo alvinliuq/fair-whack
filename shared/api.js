@@ -645,6 +645,7 @@ export function serpResults(data) {
       link: [r.link, r.product_link].find((u) => typeof u === 'string' && /^https:\/\//.test(u)) || null,
       thumb: r.thumbnail || null,
       delivery: r.delivery ? String(r.delivery).slice(0, 60) : null,
+      used: !!(r.second_hand_condition || /\b(used|pre-?owned|refurbished|second[- ]hand)\b/i.test(`${r.title} ${(r.extensions || []).join(' ')}`)),
     });
     if (out.length >= 30) break;
   }

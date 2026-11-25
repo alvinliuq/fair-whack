@@ -428,20 +428,20 @@ async function webPrices(term, el) {
   el.innerHTML = '<div class="sec-head"><h2>Elsewhere online</h2></div><div class="skeleton" style="height:90px"></div>';
   let d;
   try { d = await api(`/api/search/web?q=${encodeURIComponent(term)}`); } catch { el.innerHTML = ''; return; }
-  const rows = [...(d.results || [])].sort((a, b) => a.priceCents - b.priceCents);
+  const rows = d.results || []; // Google's order (most relevant first): cheapest-first put spare parts and used items on top
   if (!rows.length) {
     const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s lookups. More tomorrow!' }[d.unavailable];
     el.innerHTML = why ? `<div class="sec-head"><h2>Elsewhere online</h2></div><p class="small muted">${why}</p>` : '';
     return;
   }
   const row = (r) => `<a class="offer" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
-      <span class="l"><span class="ret">${esc(r.store || 'Online shop')}</span><span class="small">${esc(r.title)}</span>${r.delivery ? `<span class="note">${esc(r.delivery)}</span>` : ''}</span>
+      <span class="l"><span class="ret">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span><span class="small">${esc(r.title)}</span>${r.delivery ? `<span class="note">${esc(r.delivery)}</span>` : ''}</span>
       <span class="p">${money(r.priceCents)}</span>${r.wasCents && r.wasCents > r.priceCents ? `<span class="u">was ${money(r.wasCents)}</span>` : ''}</a>`;
   const show = 8;
   el.innerHTML = `<div class="sec-head"><h2>Elsewhere online</h2><span class="small muted">Google Shopping</span></div>
     <div class="group web">${rows.slice(0, show).map(row).join('')}
       ${rows.length > show ? `<button class="offer more linkbtn" id="web-more">Show ${rows.length - show} more</button>` : ''}</div>
-    <p class="small muted">Lowest price first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Shown as listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
+    <p class="small muted">Most relevant first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Shown as listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
   const more = $('#web-more', el);
   if (more) more.onclick = () => { more.outerHTML = rows.slice(show).map(row).join(''); };
 }
