@@ -166,7 +166,7 @@ views.login = () => {
     <div class="field"><label for="code">Invite or design code</label><input id="code" name="code" autocomplete="off" autocapitalize="off" required></div>
     <div class="err" id="err"></div>
     <button class="btn block">Sign in</button>
-    <p class="small muted">Use the same name on every device to keep your lists. Prices are collected weekly and may differ in store.</p>
+    <p class="small muted">Use the same name on every device to keep your lists. Specials are collected twice a week and prices may differ in store.</p>
   </form>`;
   $('#f').onsubmit = async (e) => {
     e.preventDefault();
@@ -762,7 +762,7 @@ async function renderPushBox(el) {
   }
   const sub = await currentSub().catch(() => null);
   el.innerHTML = sub
-    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Sent around 8am Wednesdays, at most once a day.</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
+    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Sent around 8am on Wednesdays and Saturdays, at most once a day.</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
     : `<div class="card row"><span>🔔 Get a heads-up when your items go on special.</span><span class="spacer"></span><button class="btn small ticket" id="pon">Turn on</button></div>`;
   const on = $('#pon', el), off = $('#poff', el);
   if (on) on.onclick = async () => { try { await enablePush(); toast('Alerts on'); renderPushBox(el); } catch (e) { toast(e.message); } };
@@ -773,7 +773,7 @@ async function maybeAskPush() {
   const sub = await currentSub().catch(() => null);
   if (sub) return;
   try { localStorage.setItem('fw_push_asked', '1'); } catch {}
-  sheet(`<h3>Want a heads-up?</h3><p>We'll send one notification when items on your list go on special (usually Wednesday morning, never more than once a day).</p>
+  sheet(`<h3>Want a heads-up?</h3><p>We'll send one notification when items on your list go on special (usually Wednesday or Saturday morning, never more than once a day).</p>
     <div class="row"><button class="btn light" id="no">Not now</button><button class="btn ticket" id="yes" style="flex:1">Turn on alerts</button></div>`, (s, close) => {
     $('#no', s).onclick = close;
     $('#yes', s).onclick = async () => { close(); try { await enablePush(); toast('Alerts on'); } catch (e) { toast(e.message); } };
@@ -798,7 +798,7 @@ views.fuel = async (q) => {
   return fuelMod.page(q);
 };
 
-views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">One notification when items on your list go on special. Usually Wednesday around 8am, never more than once a day.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
+views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">One notification when items on your list go on special. Usually Wednesday or Saturday around 8am, never more than once a day.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
 
 views.install = () => {
   app.innerHTML = `<h1>Add to Home Screen</h1>
@@ -814,7 +814,7 @@ views.install = () => {
 views.about = () => {
   app.innerHTML = `<h1>About the prices</h1><div class="card stack small">
     <p><b>Stores:</b> during the beta Fair Whack covers <b>Woolworths</b> and <b>Coles</b> (Victorian prices).</p>
-    <p><b>How often:</b> specials are collected every Wednesday morning. About 10,000 products per store are refreshed every four weeks, and anything on someone's list is refreshed weekly.</p>
+    <p><b>How often:</b> specials are collected early on Wednesday (every store) and Saturday (stores other than the supermarkets, whose specials change on Wednesdays). Each store's full range is refreshed every four weeks, and anything on someone's list is refreshed every Wednesday.</p>
     <p><b>Browse</b> uses each store's own aisles, so it looks like their website. <b>“All stores”</b> uses a combined set of categories.</p>
     <p><b>“New”</b> means we saw the product for the first time this week (this month once the beta has run for a month).</p>
     <p><b>Unit prices</b> are worked out by us (per 100g, per litre or per item) so different sizes compare fairly. <b>Per use</b> uses the count printed on the pack, e.g. “40 washes”.</p>

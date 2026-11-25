@@ -63,3 +63,13 @@ test('pipeline: catalogue stops at the soft limit, specials still run; everythin
   assert.equal(last('specials').status, 'skipped');
   assert.match(last('specials').message, /monthly hard stop/);
 });
+
+test('saturday run skips the supermarkets', () => {
+  const file = fresh();
+  const out = execFileSync(process.execPath, ['--experimental-sqlite', '--no-warnings', 'pipeline/run.js', 'saturday'],
+    { env: { ...process.env, LOCAL_DB: file, APIFY_FIXTURE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'fw-fx-')) }, encoding: 'utf8' });
+  const db = new DatabaseSync(file);
+  const ran = db.prepare("SELECT DISTINCT retailer FROM pipeline_runs WHERE mode = 'specials'").all().map((r) => r.retailer);
+  for (const r of ['woolworths', 'coles', 'aldi']) assert.ok(!ran.includes(r), `${r} is not refreshed on Saturday`);
+  assert.match(out, /mode=saturday/);
+});

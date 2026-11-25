@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Fair Whack data pipeline entry point.
-//   node pipeline/run.js weekly      specials (both retailers) + wishlist refresh + matching + flags
+//   node pipeline/run.js weekly      Wednesday: specials (every retailer) + wishlist refresh + matching + flags
+//   node pipeline/run.js saturday    Saturday: specials of every retailer except the supermarkets + matching
 //   node pipeline/run.js catalogue   monthly aisle crawl (skips unless 27+ days since last ok run; --force to override)
 //   node pipeline/run.js alerts      send merged wishlist pushes
 //   node pipeline/run.js match       re-run matching and the automatic review of possible matches
@@ -15,7 +16,7 @@ import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
 import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
-import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD } from './config.js';
+import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD, SUPERMARKETS } from './config.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from '../shared/budget.js';
 
 const args = process.argv.slice(2);
@@ -24,7 +25,10 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   const [k, v] = a.slice(2).split('=');
   return [k, v ?? true];
 }));
-const RETAILERS = opt.retailer ? [opt.retailer] : ['woolworths', 'coles'];
+const ALL_RETAILERS = Object.keys(SPECIALS);
+const RETAILERS = opt.retailer ? [opt.retailer] : ALL_RETAILERS;
+// Saturday's run skips the supermarkets (their specials change on Wednesdays).
+const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
 
 const log = (...m) => console.log(new Date().toISOString().slice(11, 19), ...m);
 
@@ -97,8 +101,9 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
   }
 }
 
-async function specials(db) {
-  for (const r of RETAILERS) {
+async function specials(db, retailers = RETAILERS) {
+  if (!retailers.length) log('specials: no retailers for this run');
+  for (const r of retailers) {
     const groups = SPECIALS[r];
     const total = groups.reduce((s, g) => s + g.max, 0);
     await scrapeJob(db, 'specials', r, groups.map((g) => ({
@@ -218,6 +223,7 @@ async function accountChecks() {
 const db = await makeDb();
 log(`mode=${mode} retailers=${RETAILERS.join(',')}`);
 if (mode === 'weekly') { await specials(db); await wishlist(db); await match(db); }
+else if (mode === 'saturday') { await specials(db, SATURDAY_RETAILERS); if (SATURDAY_RETAILERS.length) await match(db); }
 else if (mode === 'specials') { await specials(db); await match(db); }
 else if (mode === 'wishlist') await wishlist(db);
 else if (mode === 'catalogue') { await catalogue(db); await match(db); }

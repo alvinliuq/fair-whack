@@ -2,15 +2,17 @@ name: Pipeline
 
 on:
   schedule:
-    - cron: '30 15 * * 2'   # Wed 02:30 Melbourne (AEDT): weekly specials + wishlist + matching
+    - cron: '30 15 * * 2'   # Wed 02:30 Melbourne (AEDT): specials (every retailer) + wishlist + matching
     - cron: '0 21 * * 2'    # Wed 08:00 Melbourne (AEDT): alerts
+    - cron: '30 15 * * 5'   # Sat 02:30 Melbourne (AEDT): specials (every retailer except the supermarkets)
+    - cron: '0 21 * * 5'    # Sat 08:00 Melbourne (AEDT): alerts
     - cron: '0 16 * * 0'    # Mon 03:00 Melbourne: catalogue (runs only every 4 weeks)
   workflow_dispatch:
     inputs:
       mode:
         description: 'What to run'
         type: choice
-        options: [weekly, alerts, catalogue, first, match, review, status]
+        options: [weekly, saturday, alerts, catalogue, first, match, review, status]
         default: status
       force:
         description: 'Catalogue: ignore the 4-week wait'
@@ -54,6 +56,8 @@ jobs:
             case "${{ github.event.schedule }}" in
               '30 15 * * 2') mode=weekly ;;
               '0 21 * * 2')  mode=alerts ;;
+              '30 15 * * 5') mode=saturday ;;
+              '0 21 * * 5')  mode=alerts ;;
               '0 16 * * 0')  mode=catalogue ;;
               *) mode=status ;;
             esac

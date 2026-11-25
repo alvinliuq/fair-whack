@@ -11,7 +11,11 @@ export const POSTCODE = {
   coles: process.env.COLES_POSTCODE || '3165',
 };
 
-// Weekly specials. Half-price pages first so they are never cut off by the cap.
+// Specials run twice a week (stage 6). Wednesday: every retailer (supermarket specials change on Wednesdays),
+// then the wishlist refresh. Saturday: every retailer except these supermarkets.
+export const SUPERMARKETS = ['woolworths', 'coles', 'aldi'];
+
+// Specials pages. Half-price pages first so they are never cut off by the cap.
 // Per-retailer total stays at about 2,500 items.
 export const SPECIALS = {
   woolworths: [
