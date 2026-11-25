@@ -12,6 +12,13 @@ export const RETAILER_INFO = {
   bigw:             { name: 'BIG W',             kind: 'general' },
   officeworks:      { name: 'Officeworks',       kind: 'general', fallbackCategory: 'Office & School' },
   chemistwarehouse: { name: 'Chemist Warehouse', kind: 'general', fallbackCategory: 'Health & Beauty' },
+  // Second batch (Zyte)
+  target:           { name: 'Target',            kind: 'general', fallbackCategory: 'Home & Hardware' },
+  thegoodguys:      { name: 'The Good Guys',     kind: 'general', fallbackCategory: 'Electronics' },
+  petbarn:          { name: 'Petbarn',           kind: 'general', fallbackCategory: 'Pet' },
+  peto:             { name: 'PetO',              kind: 'general', fallbackCategory: 'Pet' },
+  decathlon:        { name: 'Decathlon',         kind: 'general', fallbackCategory: 'Sports & Outdoors' },
+  ebgames:          { name: 'EB Games',          kind: 'general', fallbackCategory: 'Electronics' },
 };
 
 export const RETAILER_IDS = Object.keys(RETAILER_INFO);

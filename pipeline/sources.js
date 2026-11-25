@@ -8,6 +8,7 @@
 // they are charged separately and the app does not use them.
 
 import { adaptSerp, serpQueryFromUrl } from './serp.js';
+import { adaptZyte } from './zyte-source.js';
 
 const NO_EXTRAS = { fetchReviews: false, incrementalMode: false };
 
@@ -50,6 +51,39 @@ const KMART_RANGE = [
   ['kmart pet bed', 'Pet'], ['kmart party supplies', 'Home > Party'], ['kmart christmas decorations', 'Home > Christmas'],
 ];
 const KMART_SPECIALS = ['kmart clearance', 'kmart sale', 'kmart price drop', 'kmart homewares sale', 'kmart toys sale'];
+
+// Second batch (Zyte): listing pages per store, each with the category its products are filed under.
+// Checked 25 Nov: plain HTML works for Target, The Good Guys, Petbarn; Decathlon and EB Games need a browser.
+const enc = encodeURIComponent;
+const ZY = {
+  target: ['towel', 'bedding', 'quilt cover', 'pillow', 'kids clothing', 'womens dress', 'mens shirt', 'pyjamas', 'shoes', 'toys', 'lego', 'kitchen',
+    'storage', 'cushion', 'lamp', 'home decor', 'baby', 'swimwear', 'bags', 'school uniform'].map((q) => [`https://www.target.com.au/search?text=${enc(q)}`, null]),
+  thegoodguys: [['televisions', 'Electronics > TVs'], ['laptops', 'Electronics > Computers'], ['fridges', 'Electronics > Appliances'], ['washing-machines', 'Electronics > Appliances'],
+    ['dryers', 'Electronics > Appliances'], ['dishwashers', 'Electronics > Appliances'], ['vacuum-cleaners', 'Electronics > Appliances'], ['coffee-machines', 'Electronics > Appliances'],
+    ['microwaves', 'Electronics > Appliances'], ['air-fryers', 'Electronics > Appliances'], ['headphones', 'Electronics > Audio'], ['soundbars', 'Electronics > Audio'],
+    ['mobile-phones', 'Electronics > Phones'], ['air-conditioners', 'Electronics > Appliances'], ['heaters', 'Electronics > Appliances'], ['fans', 'Electronics > Appliances'],
+    ['ovens', 'Electronics > Appliances'], ['cooktops', 'Electronics > Appliances']].map(([c, cat]) => [`https://www.thegoodguys.com.au/${c}`, cat]),
+  petbarn: [['dogs/dog-food', 'Pet > Dog'], ['dogs/dog-treats', 'Pet > Dog'], ['dogs/dog-toys', 'Pet > Dog'], ['dogs/dog-beds', 'Pet > Dog'], ['dogs/dog-health-care', 'Pet > Dog'],
+    ['dogs/flea-tick-worming', 'Pet > Dog'], ['dogs/dog-grooming', 'Pet > Dog'], ['dogs/dog-collars-leads', 'Pet > Dog'], ['cats/cat-food', 'Pet > Cat'], ['cats/cat-treats', 'Pet > Cat'],
+    ['cats/cat-litter', 'Pet > Cat'], ['cats/cat-toys', 'Pet > Cat'], ['cats/flea-tick-worming', 'Pet > Cat'], ['cats/cat-scratchers', 'Pet > Cat'], ['fish', 'Pet > Fish'],
+    ['birds', 'Pet > Bird'], ['small-animals', 'Pet > Small animals']].map(([c, cat]) => [`https://www.petbarn.com.au/${c}`, cat]),
+  peto: [['https://www.peto.com.au/', 'Pet'], ['https://www.peto.com.au/collections/dog-food', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat-food', 'Pet > Cat'],
+    ['https://www.peto.com.au/collections/dog', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat', 'Pet > Cat'], ['https://www.peto.com.au/collections/sale', 'Pet']],
+  decathlon: [['tent', 'Sports > Camping'], ['sleeping bag', 'Sports > Camping'], ['hiking shoes', 'Sports > Hiking'], ['backpack', 'Sports > Hiking'], ['running shoes', 'Sports > Running'],
+    ['bike', 'Sports > Cycling'], ['swimming', 'Sports > Swimming'], ['yoga', 'Sports > Fitness'], ['dumbbells', 'Sports > Fitness'], ['football', 'Sports > Team sports'],
+    ['jacket', 'Clothing > Outdoor'], ['kids', 'Sports > Kids'], ['tennis', 'Sports > Racket'], ['fishing', 'Sports > Fishing']]
+    .map(([q, cat]) => [`https://www.decathlon.com.au/search?q=${enc(q)}`, cat]),
+  ebgames: [['nintendo switch', 'Electronics > Gaming'], ['playstation 5', 'Electronics > Gaming'], ['xbox', 'Electronics > Gaming'], ['pokemon', 'Toys > Collectibles'],
+    ['funko pop', 'Toys > Collectibles'], ['controller', 'Electronics > Gaming'], ['gaming headset', 'Electronics > Gaming'], ['lego', 'Toys'], ['gaming chair', 'Electronics > Gaming'],
+    ['trading cards', 'Toys > Collectibles']].map(([q, cat]) => [`https://www.ebgames.com.au/search?q=${enc(q)}`, cat]),
+};
+const zyteSource = (r, extractFrom, maxPages, specialsPages = 6) => ({
+  runner: 'zyte',
+  // Specials: page 1 of the first listings (prices refresh; was-prices mark specials).
+  specials: [{ input: { pages: ZY[r].slice(0, specialsPages), extractFrom, maxPages: 1 }, max: 1 }],
+  catalogue: [{ input: { pages: ZY[r], extractFrom, maxPages }, max: 1 }],
+  refresh: (urls) => [{ input: { products: urls.slice(0, 60), extractFrom }, max: 1 }],
+});
 
 // ---------- adapters ----------
 
@@ -182,6 +216,13 @@ export const SOURCES = {
     catalogue: searches('chemistwarehouse', 4000, NO_EXTRAS),
     refresh: urlRefresh('productUrls', NO_EXTRAS),
   },
+  target: { ...zyteSource('target', 'httpResponseBody', 3), host: 'www.target.com.au' },
+  thegoodguys: { ...zyteSource('thegoodguys', 'httpResponseBody', 3), host: 'www.thegoodguys.com.au' },
+  petbarn: { ...zyteSource('petbarn', 'httpResponseBody', 3), host: 'www.petbarn.com.au' },
+  // PetO: listing pages carry prices, product pages do not, so list items refresh from listings instead.
+  peto: { ...zyteSource('peto', 'httpResponseBody', 3), host: 'www.peto.com.au', refresh: () => [] },
+  decathlon: { ...zyteSource('decathlon', 'browserHtml', 2, 4), host: 'www.decathlon.com.au' },
+  ebgames: { ...zyteSource('ebgames', 'browserHtml', 2, 4), host: 'www.ebgames.com.au' },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
     host: 'www.jbhifi.com.au',
@@ -199,7 +240,7 @@ export const ACTIVE_SOURCES = Object.fromEntries(Object.entries(SOURCES).filter(
 export function adaptItem(retailer, item) {
   const s = SOURCES[retailer];
   if (!s) return item; // Woolworths and Coles actors already use that shape
-  const out = s.runner === 'serp' ? adaptSerp(item, s.host) : (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
+  const out = s.runner === 'serp' ? adaptSerp(item, s.host) : s.runner === 'zyte' ? adaptZyte(item) : (s.adapt || ((x) => adaptGeneric(x, s.host)))(item);
   if (out._membersOnly) return { ...out, error: 'members-only price' };
   // A listing that links to another website (e.g. a partner's deal) is not this store's product.
   const site = s.host.replace(/^www\./, '');

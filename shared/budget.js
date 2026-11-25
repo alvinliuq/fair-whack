@@ -34,6 +34,8 @@ export const SERPAPI = {
 // Zyte does not return a price per request, so each request is recorded at a cautious estimate.
 // These are above Zyte's published per-request rates for browser rendering and automatic extraction.
 export const ZYTE_EST_USD = { http: 0.002, browser: 0.012, extraction: 0.02 };
+// Zyte's own spending limit is US$70 a month (set in Zyte's Billing page). The pipeline stops Zyte runs here.
+export const ZYTE_MONTHLY_STOP_USD = 65;
 
 const TZ = 'Australia/Melbourne';
 

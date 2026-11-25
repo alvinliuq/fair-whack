@@ -2,7 +2,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 // Store names and the stores shown: filled from /api/meta (stores that have products). These are the fallbacks.
-const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco', jbhifi: 'JB Hi-Fi', bunnings: 'Bunnings', kmart: 'Kmart', bigw: 'BIG W', officeworks: 'Officeworks', chemistwarehouse: 'Chemist Warehouse' };
+const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', costco: 'Costco', jbhifi: 'JB Hi-Fi', bunnings: 'Bunnings', kmart: 'Kmart', bigw: 'BIG W', officeworks: 'Officeworks', chemistwarehouse: 'Chemist Warehouse', target: 'Target', thegoodguys: 'The Good Guys', petbarn: 'Petbarn', peto: 'PetO', decathlon: 'Decathlon', ebgames: 'EB Games' };
 const STORES = ['woolworths', 'coles'];
 function applyStores(meta) {
   if (!meta || !Array.isArray(meta.stores) || !meta.stores.length) return;
@@ -167,7 +167,7 @@ views.login = () => {
     ${MARK}
     <h1>Fair Whack</h1>
     <p class="tagline">Same trolley. Less whack.</p>
-    <p class="lead">Keep one shopping list across Woolworths, Coles, ALDI, Kmart, JB Hi-Fi and more, compare prices, and get told when the things you buy go on special. Internal beta.</p>
+    <p class="lead">Keep one shopping list across Woolworths, Coles, ALDI, Kmart, JB Hi-Fi, Petbarn and more, compare prices, and get told when the things you buy go on special. Internal beta.</p>
     <div class="field"><label for="name">Your name</label><input id="name" name="name" autocomplete="name" placeholder="e.g. Sam Nguyen" required></div>
     <div class="field"><label for="code">Invite or design code</label><input id="code" name="code" autocomplete="off" autocapitalize="off" required></div>
     <div class="err" id="err"></div>
@@ -820,7 +820,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=9'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
+  if (!profMod) { profMod = await import('/profile.js?v=10'); profMod.init({ api, esc, toast, app, state, logout, HOME_STORES }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();

@@ -70,3 +70,22 @@ test('Chemist Warehouse: prescriptionType "None" is an ordinary product; site ro
   assert.equal(x.category, 'Personal Care > Bath & Shower');
   assert.equal(x.productId, '2622193');
 });
+
+test('second batch (Zyte): listing items become products; Decathlon and EB Games use a browser', async () => {
+  const { ACTIVE_SOURCES } = await import('../pipeline/sources.js');
+  for (const r of ['target', 'thegoodguys', 'petbarn', 'peto', 'decathlon', 'ebgames']) {
+    assert.equal(ACTIVE_SOURCES[r].runner, 'zyte', r);
+    assert.ok(ACTIVE_RETAILERS.includes(r), `${r} shown in the app`);
+  }
+  assert.equal(ACTIVE_SOURCES.decathlon.catalogue[0].input.extractFrom, 'browserHtml');
+  assert.equal(ACTIVE_SOURCES.target.catalogue[0].input.extractFrom, 'httpResponseBody');
+  assert.deepEqual(ACTIVE_SOURCES.peto.refresh(['https://www.peto.com.au/products/x']), []);
+  const { records } = prepare('thegoodguys', [{ name: 'Samsung 75" QN80H Neo QLED', price: '1845.0', regularPrice: '2495.0', url: 'https://www.thegoodguys.com.au/samsung-75-qn80h', productId: 'QA75QN80H', gtin: [{ type: 'ean13', value: '8806097936787' }], _category: 'Electronics > TVs' }], '2026-11-25T00:00:00Z');
+  const r = records[0];
+  assert.equal(r.product.id, 'thegoodguys:QA75QN80H');
+  assert.equal(r.product.gtin, '8806097936787');
+  assert.equal(r.product.category, 'Electronics');
+  assert.equal(r.snapshot.price_cents, 184500);
+  assert.equal(r.snapshot.was_cents, 249500);
+  assert.equal(r.snapshot.is_special, 1);
+});

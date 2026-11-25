@@ -65,6 +65,10 @@ export const RUN_CAPS_USD = {
   ...Object.fromEntries(['aldi', 'costco', 'bunnings', 'kmart', 'bigw', 'officeworks', 'chemistwarehouse', 'jbhifi'].flatMap((r) => [
     [`specials:${r}`, 2], [`catalogue:${r}`, r === 'jbhifi' ? 4 : 8], [`wishlist:${r}`, 1], [`probe:${r}`, 0.3],
   ])),
+  // Second batch (Zyte, estimated cost per run; Zyte's own monthly limit is US$70).
+  ...Object.fromEntries(['target', 'thegoodguys', 'petbarn', 'peto', 'decathlon', 'ebgames'].flatMap((r) => [
+    [`specials:${r}`, 1], [`catalogue:${r}`, 5], [`wishlist:${r}`, 2],
+  ])),
 };
 
 // The monthly budget (soft and hard limits, what counts) is in shared/budget.js,

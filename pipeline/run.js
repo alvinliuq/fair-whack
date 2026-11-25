@@ -18,12 +18,13 @@ import { prepare, writeRecords, updateFlags } from './ingest.js';
 import { ACTIVE_SOURCES as SOURCES, adaptItem } from './sources.js';
 import { ZYTE_TARGETS, ZYTE_MAX_USD, checkStore, verdict } from './zyte.js';
 import { runSerp, serpRoom } from './serp.js';
+import { runZyte, zyteMonthUsd } from './zyte-source.js';
 import { runMatching, planMatching, linkChanges } from './match.js';
 import { sendAlerts } from './alerts.js';
 import { runReview } from './review.js';
 import { loadIndexProducts, syncWordIndex, indexIsCurrent, clearApiCache } from './search-index.js';
 import { ACTORS, POSTCODE, SPECIALS, AISLES, LIMITS, RUN_CAPS_USD, SUPERMARKETS } from './config.js';
-import { BUDGET, SERPAPI, APIFY_ACCOUNT, monthSpend, budgetLevel } from '../shared/budget.js';
+import { BUDGET, SERPAPI, APIFY_ACCOUNT, ZYTE_MONTHLY_STOP_USD, monthSpend, monthStartIso, budgetLevel } from '../shared/budget.js';
 
 const args = process.argv.slice(2);
 const mode = args.find((a) => !a.startsWith('--')) || 'weekly';
@@ -61,6 +62,19 @@ async function apifyRoom(db) {
   const r = await db.all("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM pipeline_runs WHERE started_at >= ? AND COALESCE(provider, 'apify') = 'apify'", [apifyAcct.since]);
   const used = apifyAcct.used + Number(r[0]?.s || 0);
   return { used, max: apifyAcct.max, room: apifyAcct.max - used };
+}
+
+/** Budget check for Zyte runs: our monthly limits, then Zyte's own (stop at ZYTE_MONTHLY_STOP_USD). */
+async function zyteBudget(db, key, { extra }) {
+  if (!process.env.ZYTE_API_KEY && !process.env.APIFY_FIXTURE_DIR) return { skip: 'ZYTE_API_KEY not set' };
+  const spent = await spentUsd(db);
+  const level = budgetLevel(spent);
+  if (level === 'hard') return { skip: `monthly hard stop: $${spent.toFixed(2)} of $${BUDGET.hardUsd} this month` };
+  if (extra && level === 'soft') return { skip: `catalogue paused: $${spent.toFixed(2)} this month (soft limit $${BUDGET.softUsd})` };
+  const z = await zyteMonthUsd(db, monthStartIso());
+  if (z >= ZYTE_MONTHLY_STOP_USD) return { skip: `Zyte: $${z.toFixed(2)} this month (stops at $${ZYTE_MONTHLY_STOP_USD}; Zyte's limit is $70)` };
+  const cap = Math.min(RUN_CAPS_USD[key] ?? 1, ZYTE_MONTHLY_STOP_USD - z, BUDGET.hardUsd - spent);
+  return { cap: Math.max(0.05, Math.round(cap * 100) / 100), spent };
 }
 
 /** Budget check for Google Shopping runs: the monthly hard stop and the searches left for the pipeline. */
@@ -110,9 +124,10 @@ function baseInput(retailer) {
 async function scrapeJob(db, kind, retailer, runs, { extra }) {
   const key = `${kind}:${retailer}`;
   const serp = SOURCES[retailer]?.runner === 'serp';
+  const zy = SOURCES[retailer]?.runner === 'zyte';
   // Google Shopping runs cost nothing extra (flat plan fee): only the hard stop and the plan's searches apply.
-  const budget = serp ? await serpBudget(db) : await capFor(db, key, { extra });
-  const { id, startedAt } = await startRun(db, kind, retailer, serp ? 'serpapi' : null);
+  const budget = serp ? await serpBudget(db) : zy ? await zyteBudget(db, key, { extra }) : await capFor(db, key, { extra });
+  const { id, startedAt } = await startRun(db, kind, retailer, serp ? 'serpapi' : zy ? 'zyte' : null);
   if (budget.skip) { log(key, 'skipped:', budget.skip); await endRun(db, id, 'skipped', 0, 0, budget.skip); return []; }
   let cost = 0, raw = [];
   try {
@@ -124,7 +139,9 @@ async function scrapeJob(db, kind, retailer, runs, { extra }) {
       log(key, `run ${i + 1}/${runs.length} cap $${share}`);
       const actor = SOURCES[retailer]?.actor || ACTORS[retailer];
       const input = SOURCES[retailer] ? r.input : { ...baseInput(retailer), ...r.input };
-      const res = serp ? await runSerp(db, input, { label: `${key}_${i}` }) : await runActor(actor, input, { maxChargeUsd: share, label: `${key}_${i}` });
+      const res = serp ? await runSerp(db, input, { label: `${key}_${i}` })
+        : zy ? await runZyte(input, { label: `${key}_${i}`, budgetUsd: share, log: (...m) => log(...m) })
+        : await runActor(actor, input, { maxChargeUsd: share, label: `${key}_${i}` });
       cost += res.costUsd; remaining -= res.costUsd;
       raw.push(...res.items);
       log(key, `run ${i + 1}: ${res.items.length} items, $${res.costUsd.toFixed(3)}${res.searches != null ? `, ${res.searches} Google searches` : ''}, ${res.status}`);
