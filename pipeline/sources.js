@@ -227,13 +227,10 @@ export const SOURCES = {
   // PetO: listing pages carry prices, product pages do not, so list items refresh from listings instead.
   peto: { ...zyteSource('peto', 'httpResponseBody', 3), host: 'www.peto.com.au', refresh: () => [] },
   // Decathlon: Zyte reads its listing cards badly (badge text as the name, no price), so each product's own page is read.
-  decathlon: (() => {
-    const z = zyteSource('decathlon', 'browserHtml', 2, 3);
-    // Listing pages (browser) give the product links; each product page is then read from plain HTML (cheaper).
-    for (const r of [...z.specials, ...z.catalogue]) Object.assign(r.input, { navigation: true, productExtractFrom: 'httpResponseBody' });
-    z.refresh = (urls) => [{ input: { products: urls.slice(0, 60), extractFrom: 'httpResponseBody' }, max: 1 }];
-    return { ...z, host: 'www.decathlon.com.au' };
-  })(),
+  // Decathlon (checked 25 Nov): Zyte reads most listing cards badly (a badge such as "BLACK FRIDAY" as the name,
+  // no price, often no link) and its product pages have no price without a browser, so only about 30 products
+  // come through. Kept as is (cheap); a better source is a later decision.
+  decathlon: (() => { const z = zyteSource('decathlon', 'browserHtml', 2, 4); for (const r of [...z.specials, ...z.catalogue]) r.input.productPagesForUnpriced = true; return { ...z, host: 'www.decathlon.com.au' }; })(),
   ebgames: { ...zyteSource('ebgames', 'browserHtml', 2, 4), host: 'www.ebgames.com.au' },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
