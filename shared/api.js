@@ -1065,8 +1065,24 @@ route('GET', '/api/items/:id/same', async ({ env, user, params }) => {
   const hidden = await hiddenPairs(env, user.id);
   const rows = p.canonical_product_id
     ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id = ? AND ${ACT}`).bind(p.canonical_product_id).all()).results : [p];
-  const offers = rows.map(pub).filter((o) => o.id === p.id || !hidden.has(`${p.id}|${o.id}`)).sort(sortOffers);
-  return json({ item: { id: it.id, listId: it.list_id, listName: it.list_name, alertMode: it.alert_mode, target: it.target_cents }, product: pub(p), offers });
+  const all = rows.map(pub);
+  const offers = all.filter((o) => o.id === p.id || !hidden.has(`${p.id}|${o.id}`)).sort(sortOffers);
+  // Products this tester said are different but are still matched (Admin hasn't split them): can be put back.
+  const hiddenOffers = all.filter((o) => o.id !== p.id && hidden.has(`${p.id}|${o.id}`)).sort(sortOffers);
+  return json({ item: { id: it.id, listId: it.list_id, listName: it.list_name, alertMode: it.alert_mode, target: it.target_cents }, product: pub(p), offers, hidden: hiddenOffers });
+});
+/** Undo "Not the same": show it again, and withdraw the report if Admin hasn't decided yet. */
+route('DELETE', '/api/items/:id/not-same/:other', async ({ env, user, params }) => {
+  const it = await ownItemWithList(env, user, params.id);
+  const other = params.other;
+  const [a, b] = [it.product_id, other].sort();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM match_hidden WHERE user_id = ? AND ((product_id = ? AND other_id = ?) OR (product_id = ? AND other_id = ?))').bind(user.id, it.product_id, other, other, it.product_id),
+    // A report made from this page created the row with score 0: remove it. An existing match goes back to approved.
+    env.DB.prepare(`DELETE FROM match_candidate WHERE product_a = ? AND product_b = ? AND status = 'reported' AND reported_by = ? AND score = 0`).bind(a, b, user.id),
+    env.DB.prepare(`UPDATE match_candidate SET status = 'approved', reported_by = NULL, reported_other = NULL WHERE product_a = ? AND product_b = ? AND status = 'reported' AND reported_by = ?`).bind(a, b, user.id),
+  ]);
+  return json({ ok: true });
 });
 /** "Not the same product": hidden for this user now; Admin decides for everyone. */
 route('POST', '/api/items/:id/not-same', async ({ env, user, params, request }) => {

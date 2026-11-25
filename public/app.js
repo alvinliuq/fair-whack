@@ -1014,21 +1014,48 @@ views.same = async (q, itemId) => {
   const p = d.product;
   state.products.set(p.id, p);
   const cheapest = d.offers[0];
+  const others = d.offers.filter((o) => o.id !== p.id);
+  const row = (o, hidden) => `<div class="offer same-row ${!hidden && o.id === cheapest.id && d.offers.length > 1 ? 'best' : ''} ${hidden ? 'hidden-row' : ''}">
+      <a class="same-main" href="#/p/${encodeURIComponent(o.id)}">${thumb(o)}<span class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span>${hidden ? '' : badges(o)}${!hidden && o.id === cheapest.id && d.offers.length > 1 ? '<span class="tag-best">Cheapest</span>' : ''}
+        <span class="small">${esc(o.name)}${o.size && !o.name.toLowerCase().includes(String(o.size).toLowerCase()) ? ` · ${esc(o.size)}` : ''}</span>${o.id === p.id ? '<span class="small muted">On your list</span>' : ''}</span></a>
+      <span class="p num">${money(o.effective)}${o.was ? `<small class="muted">was ${money(o.was)}</small>` : ''}<small class="muted">${esc(unitText(o))}</small></span>
+      <span class="acts">${hidden ? `<button class="btn small light" data-putback="${esc(o.id)}">Put back</button>` : heart(o)}</span>
+    </div>`;
   app.innerHTML = `<a class="back" href="#/lists">‹ My List</a>
     <div class="hero">${thumb(p)}<div><h1>${esc(p.name)}</h1><div class="small muted">${esc(p.size || '')}${p.brand ? ` · ${esc(p.brand)}` : ''} · on ${esc(d.item.listName)}</div></div></div>
-    <p class="small muted">Same product at ${d.offers.length} store${d.offers.length === 1 ? '' : 's'}, cheapest first. Tap ♡ to add a store's one to a list; tap “Not the same” if we've matched the wrong product.</p>
-    <div class="group same-list">${d.offers.map((o) => `<div class="offer same-row ${o.id === cheapest.id ? 'best' : ''}">
-        <a class="same-main" href="#/p/${encodeURIComponent(o.id)}">${thumb(o)}<span class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span>${badges(o)}${o.id === cheapest.id && d.offers.length > 1 ? '<span class="tag-best">Cheapest</span>' : ''}
-          <span class="small">${esc(o.name)}${o.size && !o.name.toLowerCase().includes(String(o.size).toLowerCase()) ? ` · ${esc(o.size)}` : ''}</span>${o.id === p.id ? '<span class="small muted">On your list</span>' : ''}</span></a>
-        <span class="p num">${money(o.effective)}${o.was ? `<small class="muted">was ${money(o.was)}</small>` : ''}<small class="muted">${esc(unitText(o))}</small></span>
-        <span class="acts">${heart(o)}${o.id === p.id ? '' : `<button class="linkbtn small" data-notsame="${esc(o.id)}">Not the same</button>`}</span>
-      </div>`).join('')}</div>
-    ${d.offers.length === 1 ? '<div class="empty">No other store has this product right now.</div>' : ''}`;
-  app.querySelectorAll('[data-notsame]').forEach((b) => (b.onclick = async () => {
-    const o = d.offers.find((x) => x.id === b.dataset.notsame);
-    if (!confirm(`Not the same product?\n\n${o.name} (${RET[o.retailer]}) will no longer show with this item for you, and we'll check the match.`)) return;
-    try { await api(`/api/items/${encodeURIComponent(itemId)}/not-same`, { method: 'POST', body: { product_id: o.id } }); toast('Thanks, it won\'t show with this item again'); views.same(q, itemId); } catch (e) { toast(e.message); }
-  }));
+    <p class="small muted">Same product at ${d.offers.length} store${d.offers.length === 1 ? '' : 's'}, cheapest first. Tap ♡ to add a store's one to a list.</p>
+    <div class="group same-list">${d.offers.map((o) => row(o, false)).join('')}</div>
+    ${d.offers.length === 1 ? '<div class="empty">No other store has this product right now.</div>' : ''}
+    ${others.length ? `<button class="btn light block report-btn" id="report"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4h9l1 2h5v10h-7l-1-2H7v7z"/></svg>Wrong match? Report a product</button>` : ''}
+    ${d.hidden.length ? `<h3 class="hidden-h">Hidden from this comparison</h3><p class="small muted" style="margin-top:-6px">You said these aren't the same product. Put one back if that was a mistake.</p>
+      <div class="group same-list">${d.hidden.map((o) => row(o, true)).join('')}</div>` : ''}`;
+  const putBack = async (id, quiet) => {
+    await api(`/api/items/${encodeURIComponent(itemId)}/not-same/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!quiet) toast('Put back in the comparison');
+    views.same(q, itemId);
+  };
+  app.querySelectorAll('[data-putback]').forEach((b) => (b.onclick = () => putBack(b.dataset.putback).catch((e) => toast(e.message))));
+  const rep = $('#report');
+  if (rep) rep.onclick = () => sheet(`<h3>Which one isn't the same?</h3>
+      <p class="small muted" style="margin-top:-4px">It will be hidden from this comparison for you, and we'll check the match. You can put it back any time.</p>
+      <div class="card list-rows store-pick" id="rp">${others.map((o) => `<label class="r sp-row"><input type="radio" name="o" value="${esc(o.id)}"><span class="dot ret ${o.retailer}"></span><span class="n"><b>${RET[o.retailer]}</b><span class="small muted" style="display:block">${esc(o.name)}</span></span></label>`).join('')}</div>
+      <div class="row" style="gap:8px"><button class="btn light" id="cancel" style="flex:1">Cancel</button><button class="btn danger" id="ok" style="flex:1" disabled>Not the same</button></div>`, (sh, close) => {
+    const ok = $('#ok', sh);
+    if (others.length === 1) { $('input', sh).checked = true; ok.disabled = false; }
+    sh.addEventListener('change', () => { ok.disabled = !$('input:checked', sh); });
+    $('#cancel', sh).onclick = close;
+    ok.onclick = async () => {
+      const id = $('input:checked', sh)?.value;
+      if (!id) return;
+      ok.disabled = true;
+      try {
+        await api(`/api/items/${encodeURIComponent(itemId)}/not-same`, { method: 'POST', body: { product_id: id } });
+        close();
+        await views.same(q, itemId);
+        toast('Hidden from this comparison', { label: 'Undo', run: () => putBack(id, true).then(() => toast('Put back')).catch((e) => toast(e.message)) });
+      } catch (e) { ok.disabled = false; toast(e.message); }
+    };
+  });
 };
 
 // ---------- push ----------

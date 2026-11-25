@@ -785,3 +785,16 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .grp-top .grp-icon { font-size: 36px; margin: 0; }
 .grp-x { border: 0; background: rgba(255, 255, 255, .85); width: 36px; height: 36px; border-radius: 50%; font-size: 16px; cursor: pointer; color: var(--ink-2); align-self: flex-start; }
 .grp-stores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 8px; margin-top: 22px; justify-items: center; }
+
+/* Compare page: prices and hearts in fixed columns so every row lines up */
+.same-list .same-row { grid-template-columns: minmax(0, 1fr) 76px 48px; }
+.same-row .p { width: 76px; text-align: right; }
+.same-row .acts { width: 48px; justify-content: center; }
+.same-row.hidden-row { grid-template-columns: minmax(0, 1fr) 76px auto; opacity: .85; }
+.same-row.hidden-row .acts { width: auto; }
+.btn.report-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; color: var(--warn); border: 1.5px solid #F3C9C9; background: #fff; }
+.report-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.hidden-h { margin: 22px 0 8px; font-size: 16px; }
+.store-pick label.sp-row { cursor: pointer; }
+.store-pick input[type=radio] { width: 20px; height: 20px; accent-color: var(--grape); flex: none; margin: 0; }
+.btn.danger[disabled] { opacity: .45; }

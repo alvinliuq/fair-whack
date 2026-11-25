@@ -31,6 +31,16 @@ test('not the same: hidden for me, reported to Admin, split by Admin', async () 
   await ann(`/api/items/${item.id}/not-same`, { product_id: 'aldi:1' });
   assert.equal((await ann('/api/lists')).lists[0].items[0].offers.length, 2, 'hidden for Ann');
   assert.equal((await bob('/api/lists')).lists[0].items[0].offers.length, 3, 'Bob still sees it');
+  const hiddenNow = await ann(`/api/items/${item.id}/same`);
+  assert.deepEqual(hiddenNow.hidden.map((o) => o.id), ['aldi:1'], 'listed under "Hidden", can be put back');
+
+  // Undo: back in the comparison, report withdrawn.
+  const del = await handle(new Request(`http://x/api/items/${item.id}/not-same/aldi:1`, { method: 'DELETE', headers: { Cookie: (await handle(new Request('http://x/api/login', { method: 'POST', body: JSON.stringify({ name: 'Ann', code: 'beta' }) }), env)).headers.get('Set-Cookie').split(';')[0] } }), env);
+  assert.equal(del.status, 200);
+  assert.equal((await ann('/api/lists')).lists[0].items[0].offers.length, 3, 'put back');
+  assert.equal((await admin('/api/admin/matches')).matches.filter((x) => x.status === 'reported').length, 0, 'report withdrawn');
+
+  await ann(`/api/items/${item.id}/not-same`, { product_id: 'aldi:1' });
 
   const m = (await admin('/api/admin/matches')).matches;
   assert.equal(m[0].status, 'reported');
