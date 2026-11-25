@@ -20,7 +20,14 @@ const ALDI_DEPTS = ['fruits-vegetables', 'meat-seafood', 'deli-chilled-meats', '
 const Q = {
   bunnings: ['cordless drill', 'garden hose', 'paint', 'storage', 'light globe', 'bbq', 'outdoor furniture', 'cleaning', 'pots plants', 'tool set', 'extension lead', 'smoke alarm', 'door handle', 'heater', 'fan'],
   kmart: ['towel', 'bedding', 'storage', 'kitchen', 'toys', 'lamp', 'cushion', 'kids clothing', 'womens', 'mens', 'shoes', 'phone accessories', 'home decor', 'baby', 'outdoor', 'appliances', 'party', 'fitness'],
-  costco: ['coffee', 'chocolate', 'nuts', 'olive oil', 'laundry', 'toilet paper', 'vitamins', 'tv', 'laptop', 'tyres', 'mattress', 'water', 'snacks', 'baby', 'pet food', 'cleaning'],
+  // 25 Nov: 16 searches gave only 715 products (each search stops after a few pages), so many narrower ones.
+  costco: ['coffee', 'chocolate', 'nuts', 'olive oil', 'laundry', 'toilet paper', 'vitamins', 'tv', 'laptop', 'tyres', 'mattress', 'water', 'snacks', 'baby', 'pet food', 'cleaning',
+    'cheese', 'meat', 'seafood', 'frozen', 'bakery', 'breakfast cereal', 'rice', 'pasta', 'sauce', 'tea', 'juice', 'soft drink', 'wine', 'paper towel', 'dishwasher', 'shampoo',
+    'skin care', 'toothpaste', 'nappies', 'protein', 'headphones', 'tablet', 'phone', 'camera', 'appliances', 'vacuum', 'cookware', 'furniture', 'outdoor', 'bbq', 'toys', 'clothing', 'gift card', 'luggage'],
+  // 25 Nov: an empty browse stops at 1,000 products, so the catalogue is these searches instead.
+  chemistwarehouse: ['vitamins', 'fish oil', 'probiotic', 'protein powder', 'pain relief', 'cold and flu', 'allergy', 'first aid', 'skin care', 'moisturiser', 'sunscreen', 'face wash',
+    'makeup', 'fragrance', 'perfume', 'hair care', 'shampoo', 'hair colour', 'oral care', 'toothpaste', 'electric toothbrush', 'deodorant', 'body wash', 'shaving', 'baby formula',
+    'baby care', 'nappies', 'womens health', 'mens health', 'weight management', 'sports nutrition', 'eye care', 'sleep', 'magnesium', 'collagen', 'pet health', 'household'],
   officeworks: ['paper', 'pens', 'printer ink', 'laptop', 'monitor', 'desk', 'office chair', 'school', 'notebook', 'headphones', 'storage', 'art', 'calculator', 'keyboard', 'mouse'],
   bigw: ['toys', 'lego', 'bedding', 'towel', 'kitchen', 'tv', 'headphones', 'books', 'video games', 'clothing', 'shoes', 'baby', 'pet', 'vitamins', 'cleaning', 'outdoor'],
   jbhifi: ['tv', 'laptop', 'headphones', 'speaker', 'iphone', 'samsung', 'ipad', 'nintendo switch', 'playstation', 'xbox', 'camera', 'smart watch', 'monitor', 'vacuum', 'coffee machine', 'air fryer', 'keyboard', 'soundbar'],
@@ -129,7 +136,7 @@ export const SOURCES = {
     actor: 'abotapi~costco-au-scraper',
     host: 'www.costco.com.au',
     specials: [{ input: { mode: 'search', queries: [], specialsCategory: 'hot_buys', maxItems: 400, fetchDetails: false, ...NO_EXTRAS }, max: 400 }],
-    catalogue: searches('costco', 2500, { fetchDetails: false, ...NO_EXTRAS }),
+    catalogue: searches('costco', 3500, { fetchDetails: false, ...NO_EXTRAS }),
     refresh: urlRefresh('urls', { fetchDetails: false, ...NO_EXTRAS }),
   },
   bunnings: {
@@ -172,8 +179,7 @@ export const SOURCES = {
     host: 'www.chemistwarehouse.com.au',
     adapt: adaptChemist,
     specials: [{ input: { mode: 'search', queries: [], specialsCategory: 'promotions', maxItems: 500, ...NO_EXTRAS }, max: 500 }],
-    // Empty search browses the whole catalogue.
-    catalogue: [{ input: { mode: 'search', queries: [], maxItems: 3000, ...NO_EXTRAS }, max: 3000 }],
+    catalogue: searches('chemistwarehouse', 4000, NO_EXTRAS),
     refresh: urlRefresh('productUrls', NO_EXTRAS),
   },
   jbhifi: {
