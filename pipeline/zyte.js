@@ -11,6 +11,7 @@ export const ZYTE_TARGETS = {
   peto: { name: 'PetO', urls: ['https://www.peto.com.au/search?q=dog+food', 'https://www.peto.com.au/'] },
   ebgames: { name: 'EB Games', urls: ['https://www.ebgames.com.au/search?q=nintendo', 'https://www.ebgames.com.au/'] },
   target: { name: 'Target', urls: ['https://www.target.com.au/search?text=towel', 'https://www.target.com.au/'] },
+  kmart: { name: 'Kmart', urls: ['https://www.kmart.com.au/category/home/bathroom/towels/', 'https://www.kmart.com.au/search/?searchTerm=towel'] },
   thegoodguys: { name: 'The Good Guys', urls: ['https://www.thegoodguys.com.au/televisions', 'https://www.thegoodguys.com.au/search?q=tv'] },
 };
 
