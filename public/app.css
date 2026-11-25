@@ -625,26 +625,27 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 .slogo.has-img img { object-fit: cover; background: transparent; }
 
 /* ---------- stage 7 My List: ❤️ alerts / 💜 no alerts, store buttons, order ---------- */
-:root { --heart-alert: #E5384F; --heart-quiet: #6E3BF2; }
+:root { --heart-alert: #6E3BF2; --heart-quiet: #6E3BF2; }
 .heart .bell { display: none; }
 .heart.on.quiet svg:not(.bell) { fill: var(--heart-quiet); stroke: var(--heart-quiet); }
 .heart.on.alert svg:not(.bell) { fill: var(--heart-alert); stroke: var(--heart-alert); }
-.heart.on.alert .bell { display: block; position: absolute; right: -2px; top: -2px; width: 15px; height: 15px; padding: 1.5px; border-radius: 50%; background: #fff; fill: var(--heart-alert); stroke: none; box-shadow: 0 0 0 1px rgba(229, 56, 79, .25); }
+.heart.on.alert .bell { display: block; position: absolute; right: -4px; top: -4px; width: 18px; height: 18px; padding: 3px; border-radius: 50%; background: var(--heart-alert); fill: #fff; stroke: none; box-shadow: 0 0 0 2px #fff; }
 .list-rows .r .hk { flex: none; position: relative; width: 30px; height: 30px; display: grid; place-items: center; }
+.hk { position: relative; display: inline-grid; place-items: center; flex: none; }
 .hk svg { width: 24px; height: 24px; stroke-width: 2; }
 .hk.alert svg:not(.bell) { fill: var(--heart-alert); stroke: var(--heart-alert); }
 .hk.quiet svg { fill: var(--heart-quiet); stroke: var(--heart-quiet); }
-.hk .bell { position: absolute; right: -1px; top: -1px; width: 13px; height: 13px; padding: 1px; border-radius: 50%; background: #fff; fill: var(--heart-alert); }
-.hk.sm { width: 18px; height: 18px; display: inline-grid; vertical-align: -4px; }
+.hk .bell { position: absolute; right: -3px; top: -3px; width: 15px; height: 15px; padding: 2.5px; border-radius: 50%; background: var(--heart-alert); fill: #fff; stroke: none; box-shadow: 0 0 0 1.5px #fff; }
+.hk.sm { width: 18px; height: 18px; display: inline-grid; vertical-align: -4px; margin-right: 5px; }
 .hk.sm svg { width: 15px; height: 15px; }
-.hk.sm .bell { width: 9px; height: 9px; right: -3px; top: -3px; }
+.hk.sm .bell { width: 11px; height: 11px; padding: 1.5px; right: -4px; top: -4px; }
 .hkey { white-space: nowrap; }
 .alert-kinds .opt { align-items: center; }
 .alert-kinds .opt > div { flex: 1; min-width: 0; }
 .subopts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .subopts .sub { border: 1.5px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 13px; font-weight: 600; background: #fff; cursor: pointer; }
 .subopts .sub input { display: none; }
-.subopts .sub.on { border-color: var(--heart-alert); color: var(--heart-alert); background: #FFF1F3; }
+.subopts .sub.on { border-color: var(--heart-alert); color: var(--heart-alert); background: #F3EEFF; }
 .alert-kinds .opt[data-kind=off] .subopts { display: none; }
 .alert-kinds .opt:not(.on) .subopts .sub.on { border-color: var(--line); color: inherit; background: #fff; }
 .list-pick { margin-bottom: 10px; }

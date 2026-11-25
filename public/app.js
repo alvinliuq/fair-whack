@@ -69,7 +69,7 @@ function badges(p, { stale = true } = {}) {
 // ---------- hearts ----------
 const HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6s-7.4-4.5-9.3-9.1C1.3 8.1 3.4 4.8 6.8 4.8c2 0 3.4 1.1 4.2 2.4h2c.8-1.3 2.2-2.4 4.2-2.4 3.4 0 5.5 3.3 4.1 6.7-1.9 4.6-9.3 9.1-9.3 9.1z"/></svg>';
 const BELL = '<svg class="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.4-2h-4.8a2.5 2.5 0 0 0 2.4 2zm7-6V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>';
-// ❤️ (red, with a bell) = on a list with alerts; 💜 (purple) = on a list, no alerts of its own; outline = not saved.
+// 💜 with a bell = on a list with alerts; 💜 alone = on a list, no alerts of its own; outline = not saved.
 const heartState = (id) => { const s = state.saved.get(id); return !s ? '' : s.alert_mode === 'off' ? 'quiet' : 'alert'; };
 const heartLabel = (st) => (st === 'alert' ? 'On your list, alerts on — settings' : st === 'quiet' ? 'On your list, no alerts — settings' : 'Add to my list');
 function heart(p) {
@@ -999,7 +999,7 @@ async function renderPushBox(el) {
   }
   const sub = await currentSub().catch(() => null);
   el.innerHTML = sub
-    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Around 8am on Wednesdays and Saturdays: a summary of your list, plus a note for each ❤️ item on special (at most 5 a day).</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
+    ? `<div class="notice info row"><span>🔔 Special alerts are on for this device. Around 8am on Wednesdays and Saturdays: a summary of your list, plus a note for each 💜🔔 item on special (at most 5 a day).</span><span class="spacer"></span><button class="btn small light" id="poff">Turn off</button></div>`
     : `<div class="card row"><span>🔔 Get a heads-up when your items go on special.</span><span class="spacer"></span><button class="btn small ticket" id="pon">Turn on</button></div>`;
   const on = $('#pon', el), off = $('#poff', el);
   if (on) on.onclick = async () => { try { await enablePush(); toast('Alerts on'); renderPushBox(el); } catch (e) { toast(e.message); } };
@@ -1010,7 +1010,7 @@ async function maybeAskPush() {
   const sub = await currentSub().catch(() => null);
   if (sub) return;
   try { localStorage.setItem('fw_push_asked', '1'); } catch {}
-  sheet(`<h3>Want a heads-up?</h3><p>On Wednesday and Saturday mornings we'll tell you how many items on your list are on special, and send a note of its own for each ❤️ item (at most 5 a day).</p>
+  sheet(`<h3>Want a heads-up?</h3><p>On Wednesday and Saturday mornings we'll tell you how many items on your list are on special, and send a note of its own for each 💜🔔 item (the ones with a bell) (at most 5 a day).</p>
     <div class="row"><button class="btn light" id="no">Not now</button><button class="btn ticket" id="yes" style="flex:1">Turn on alerts</button></div>`, (s, close) => {
     $('#no', s).onclick = close;
     $('#yes', s).onclick = async () => { close(); try { await enablePush(); toast('Alerts on'); } catch (e) { toast(e.message); } };
@@ -1050,7 +1050,7 @@ views.fuel = async (q) => {
   return fuelMod.page(q);
 };
 
-views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">Around 8am on Wednesdays and Saturdays: one summary of how many items on your list are on special, plus a notification of its own for each ❤️ item that goes on special (💜 items only count in the summary). At most 5 a day. Friends\' requests and shared products arrive straight away.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
+views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">Around 8am on Wednesdays and Saturdays: one summary of how many items on your list are on special, plus a notification of its own for each 💜🔔 item (with a bell) that goes on special (💜 items without a bell only count in the summary). At most 5 a day. Friends\' requests and shared products arrive straight away.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
 
 views.install = () => {
   app.innerHTML = `<h1>Add to Home Screen</h1>
