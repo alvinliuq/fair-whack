@@ -52,6 +52,8 @@ async function api(path, opts = {}) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith('/api/login')) { state.me = null; location.hash = '#/login'; throw new Error('Please sign in'); }
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  // Something changed (list, alert, settings, shares…): Home updates the next time it's shown.
+  if ((opts.method || 'GET') !== 'GET' && !path.startsWith('/api/login')) keptHome.dirty = true;
   return data;
 }
 
@@ -342,7 +344,7 @@ views.home = async () => {
     });
   };
   stripe();
-  api('/api/digest').then((d) => renderMine($('#mine'), d)).catch((e) => fail(e, $('#mine')));
+  api('/api/digest').then((d) => { keptHome.digest = JSON.stringify(d); renderMine($('#mine'), d); }).catch((e) => fail(e, $('#mine')));
   soc().then((m) => m.homeRail($('#sharedrail'))).catch(() => {}).finally(stripe);
   api('/api/bargains/stores').then((d) => bargainTiles($('#bargains'), d.stores.filter((s) => STORES.includes(s.id)))).catch((e) => fail(e, $('#bargains')));
   api('/api/top20').then((d) => topTwenty($('#top20'), d)).catch(() => {}).finally(stripe);
@@ -1314,7 +1316,13 @@ function downloadTesters(users) {
 }
 
 // ---------- router ----------
-const keptHome = { nodes: null, y: 0, lastY: 0, at: 0, leaving: false };
+const keptHome = { nodes: null, y: 0, lastY: 0, at: 0, leaving: false, dirty: false, digest: '' };
+/** Re-draw part of Home without losing how far each swipe row was scrolled. */
+async function keepRails(draw) {
+  const pos = [...app.querySelectorAll('.rail, .store-grid')].map((r) => [r.closest('[id]')?.id, r.scrollLeft]);
+  await draw();
+  for (const [id, x] of pos) { const r = id && document.getElementById(id)?.querySelector('.rail, .store-grid'); if (r) r.scrollLeft = x; }
+}
 addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scrollY; }, { passive: true });
 async function route() {
   const [path, query] = (location.hash.slice(1) || '/').split('?');
@@ -1341,14 +1349,25 @@ async function route() {
   // Home is kept as it was when you leave it (scroll position included) and shown again straight away
   // when you come back within 10 minutes; only "On special from your list" quietly checks for changes.
   const isHome = !parts.length || name === 'home';
-  if (keptHome.leaving) { keptHome.nodes = [...app.childNodes]; keptHome.y = keptHome.lastY; keptHome.at = Date.now(); }
+  if (keptHome.leaving) {
+    keptHome.nodes = [...app.childNodes]; keptHome.y = keptHome.lastY; keptHome.at = Date.now();
+    // Swipe rows lose their position when taken off the page: note it now, put it back on return.
+    keptHome.rails = [...app.querySelectorAll('.rail, .store-grid')].map((r) => [r, r.scrollLeft]);
+  }
   keptHome.leaving = false;
-  if (isHome && keptHome.nodes && Date.now() - keptHome.at < 10 * 60000 && !q.toString()) {
+  // Home stays exactly as you left it (scroll positions included) until you close the app.
+  // Only after a change (list, alerts, settings, shares) does it quietly update the parts that changed.
+  if (isHome && keptHome.nodes && !q.toString()) {
     app.replaceChildren(...keptHome.nodes);
     keptHome.nodes = null; keptHome.leaving = true;
     refreshHearts();
-    requestAnimationFrame(() => window.scrollTo(0, keptHome.y || 0));
-    api('/api/digest').then((d) => { if ($('#mine')) renderMine($('#mine'), d); }).catch(() => {});
+    for (const [r, x] of keptHome.rails || []) r.scrollLeft = x;
+    requestAnimationFrame(() => { window.scrollTo(0, keptHome.y || 0); for (const [r, x] of keptHome.rails || []) r.scrollLeft = x; });
+    if (keptHome.dirty) {
+      keptHome.dirty = false;
+      api('/api/digest').then((d) => { if ($('#mine') && JSON.stringify(d) !== keptHome.digest) { keptHome.digest = JSON.stringify(d); keepRails(() => renderMine($('#mine'), d)); } }).catch(() => {});
+      soc().then((m) => keepRails(() => m.homeRail($('#sharedrail')))).catch(() => {});
+    }
     return;
   }
   if (isHome) keptHome.nodes = null;
