@@ -467,10 +467,22 @@ route('GET', '/api/bargains/stores', async ({ env }) => json(await cached(env, '
 })));
 
 /** "Top 20 Choices By Aussie Families": most added to lists in the last week by people like you. */
+const TOP_VERSION = 2; // bump to drop cached Top 20 answers
 route('GET', '/api/top20', async ({ env, user }) => {
   const since = new Date(Date.now() - TOP.days * 86400000).toISOString();
-  return json(await cached(env, cacheKey('top20', user.id), async () => {
-    const adds = (await env.DB.prepare(`SELECT DISTINCT l.user_id, li.product_id FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.created_at >= ?`).bind(since).all()).results;
+  return json(await cached(env, cacheKey('top20', TOP_VERSION, user.id, new Date().toISOString().slice(0, 13)), async () => {
+    // Any product added to a list counts, on special or not. The same product added at different stores counts as one.
+    const rows = (await env.DB.prepare(`SELECT DISTINCT l.user_id, li.product_id, p.canonical_product_id AS canon FROM list_items li JOIN lists l ON l.id = li.list_id
+        JOIN retailer_product p ON p.id = li.product_id WHERE li.created_at >= ?`).bind(since).all()).results;
+    const adds = rows.map((r) => ({ user_id: r.user_id, product_id: r.canon || r.product_id }));
+    // Shown as the store version most people added.
+    const shownAs = new Map();
+    for (const r of rows) {
+      const k = r.canon || r.product_id;
+      if (!shownAs.has(k)) shownAs.set(k, new Map());
+      shownAs.get(k).set(r.product_id, (shownAs.get(k).get(r.product_id) || 0) + 1);
+    }
+    const pickId = (k) => [...(shownAs.get(k) || new Map([[k, 1]]))].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
     const people = [...new Set(adds.map((a) => a.user_id))];
     let similarUsers = [];
     if (people.length) {
@@ -483,6 +495,7 @@ route('GET', '/api/top20', async ({ env, user }) => {
     }
     const forFamilies = similarUsers.length >= TOP.minSimilarUsers;
     const ranked = rankTop(adds, forFamilies ? [...similarUsers, user.id] : null);
+    for (const r of ranked) r.id = pickId(r.id);
     const ids = ranked.map((r) => r.id);
     const prods = new Map((await selectIn(env, `SELECT ${COLS} FROM retailer_product WHERE id IN`, ids)).filter((p) => isActive(p.retailer) && p.cur_price_cents != null).map((p) => [p.id, p]));
     const items = [];
