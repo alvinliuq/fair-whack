@@ -117,14 +117,15 @@ export const SOURCES = {
     actor: 'abotapi~kmart-au-scraper',
     host: 'www.kmart.com.au',
     specials: [
-      { input: { mode: 'search', searchTerms: [], specialsCategory: 'catalogue', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
+      { input: { mode: 'search', searchTerms: [], specialsCategory: 'hot-deals', maxItems: 300, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 300 },
       { input: { mode: 'search', searchTerms: [], specialsCategory: 'clearance', maxItems: 200, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 200 },
     ],
     catalogue: [{ input: { mode: 'search', searchTerms: Q.kmart, maxItems: 3000, fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }, max: 3000 }],
     refresh: urlRefresh('urls', { fetchReviews: false, maxReviews: 0, includeClickAndCollect: false }),
     probeAlternatives: [
-      { mode: 'search', searchTerms: ['towel'], fetchReviews: false, maxReviews: 0 },
-      { mode: 'search', searchTerms: ['towel'] },
+      { mode: 'url', urls: ['https://www.kmart.com.au/search/?searchTerm=towel'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false },
+      { mode: 'search', searchTerms: ['towel'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false, proxy: { useApifyProxy: true, apifyProxyCountry: 'AU' } },
+      { mode: 'url', urls: ['https://www.kmart.com.au/category/home/bathroom/towels/'], fetchReviews: false, maxReviews: 0, includeClickAndCollect: false },
     ],
   },
   bigw: {
