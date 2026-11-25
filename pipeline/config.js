@@ -67,7 +67,7 @@ export const RUN_CAPS_USD = {
   ])),
   // Second batch (Zyte, estimated cost per run; Zyte's own monthly limit is US$70).
   ...Object.fromEntries(['target', 'thegoodguys', 'petbarn', 'peto', 'decathlon', 'ebgames'].flatMap((r) => [
-    [`specials:${r}`, 1], [`catalogue:${r}`, 5], [`wishlist:${r}`, 2],
+    [`specials:${r}`, r === 'decathlon' ? 3 : 1], [`catalogue:${r}`, r === 'decathlon' ? 9 : 5], [`wishlist:${r}`, 2],
   ])),
 };
 

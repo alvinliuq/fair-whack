@@ -56,6 +56,7 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
     ? input.products.map((url) => ({ url, product: true }))
     : input.pages.map(([url, category]) => ({ url, base: url, category, page: 1, seen: null }));
   let pattern = null; // index into PAGE_PATTERNS once one works
+  const queued = new Set();
   const work = async () => {
     while (jobs.length && !stopped) {
       const j = jobs.shift();
@@ -66,7 +67,7 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
       const { status, data } = await zyte(body);
       if (status === 200) cost += est;
       if (j.product) {
-        if (status === 200 && data.product) items.push({ ...data.product, _url: j.url });
+        if (status === 200 && data.product) items.push({ ...data.product, _url: j.url, _category: j.category });
         else log(`${label}: product ${j.url} -> ${status}`);
         continue;
       }
@@ -74,7 +75,12 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
       const urls = new Set(list.map((p) => p.url || p.name));
       const fresh = j.seen ? list.filter((p) => !j.seen.has(p.url || p.name)) : list;
       log(`${label}: ${j.url} -> ${status}${status === 200 ? `, ${list.length} products${j.seen ? `, ${fresh.length} new` : ''}` : ` ${String(data.detail || data.title || '').slice(0, 100)}`}`);
-      for (const p of fresh) items.push({ ...p, _category: j.category });
+      for (const p of fresh) {
+        // Listings whose cards Zyte reads badly (a badge as the name, no price): read the product's own page instead.
+        if (input.productPagesForUnpriced && p.url && (p.price == null || /^[A-Z\s!%-]+$/.test(p.name || ''))) {
+          if (!queued.has(p.url)) { queued.add(p.url); jobs.push({ url: p.url, product: true, category: j.category }); }
+        } else items.push({ ...p, _category: j.category });
+      }
       if (status !== 200 || !list.length || j.page >= (input.maxPages || 1)) continue;
       const seen = new Set([...(j.seen || []), ...urls]);
       if (j.seen && !fresh.length) {

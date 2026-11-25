@@ -226,7 +226,8 @@ export const SOURCES = {
   petbarn: { ...zyteSource('petbarn', 'httpResponseBody', 3), host: 'www.petbarn.com.au' },
   // PetO: listing pages carry prices, product pages do not, so list items refresh from listings instead.
   peto: { ...zyteSource('peto', 'httpResponseBody', 3), host: 'www.peto.com.au', refresh: () => [] },
-  decathlon: { ...zyteSource('decathlon', 'browserHtml', 2, 4), host: 'www.decathlon.com.au' },
+  // Decathlon: Zyte reads its listing cards badly (badge text as the name, no price), so each product's own page is read.
+  decathlon: (() => { const z = zyteSource('decathlon', 'browserHtml', 2, 4); for (const r of [...z.specials, ...z.catalogue]) r.input.productPagesForUnpriced = true; return { ...z, host: 'www.decathlon.com.au' }; })(),
   ebgames: { ...zyteSource('ebgames', 'browserHtml', 2, 4), host: 'www.ebgames.com.au' },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
