@@ -253,7 +253,8 @@ export const SOURCES = {
   harveynorman: { ...zyteSource('harveynorman', 'httpResponseBody', 2), host: 'www.harveynorman.com.au', minPrice: 5 },
   // PETstock loads its product grid in the browser (20 a page, ?page=2 works); Pet Circle's category pages are plain HTML.
   petstock: { ...zyteSource('petstock', 'browserHtml', 3, 3), host: 'www.petstock.com.au' },
-  petcircle: { ...zyteSource('petcircle', 'httpResponseBody', 3, 3), host: 'www.petcircle.com.au' },
+  // Pet Circle product pages (list refresh) only show a price in a browser.
+  petcircle: { ...zyteSource('petcircle', 'httpResponseBody', 3, 3), host: 'www.petcircle.com.au', refresh: (urls) => [{ input: { products: urls.slice(0, 60), extractFrom: 'browserHtml' }, max: 1 }] },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
     host: 'www.jbhifi.com.au',
