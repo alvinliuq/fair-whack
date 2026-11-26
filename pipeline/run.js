@@ -345,12 +345,12 @@ async function serpCheck(db) {
   for (const r of [...out].sort((a, b) => a.priceCents - b.priceCents).slice(0, 5)) log(`  $${(r.priceCents / 100).toFixed(2)}  ${r.store}  ${r.title.slice(0, 70)}${r.link ? '' : '  (no link)'}`);
 }
 
-/** One-off: re-read pack sizes with the current rules (e.g. "250mg" is a dose, not the pack weight). */
+/** One-off: re-read pack sizes with the current rules ("250mg" is a dose, "60 x 30cm" a size, neither a pack). */
 async function resize(db) {
   let last = '', checked = 0, changed = 0;
   for (;;) {
     const rows = await db.all(`SELECT id, name, size_text, size_value, size_unit, pack_count, cur_price_cents FROM retailer_product
-      WHERE id > ? AND (lower(name) LIKE '%mg%' OR lower(COALESCE(size_text, '')) LIKE '%mg%' OR lower(name) LIKE '%soft gel%' OR lower(name) LIKE '%gumm%' OR lower(name) LIKE '%chewable%' OR lower(name) LIKE '%lozenge%' OR lower(name) LIKE '%vegecap%')
+      WHERE id > ? AND (lower(name) LIKE '%mg%' OR lower(COALESCE(size_text, '')) LIKE '%mg%' OR lower(name) LIKE '%soft gel%' OR lower(name) LIKE '%gumm%' OR lower(name) LIKE '%chewable%' OR lower(name) LIKE '%lozenge%' OR lower(name) LIKE '%vegecap%' OR lower(name) LIKE '% x %' OR lower(name) LIKE '%×%')
       ORDER BY id LIMIT 2000`, [last]);
     if (!rows.length) break;
     last = rows[rows.length - 1].id; checked += rows.length;

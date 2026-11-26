@@ -53,7 +53,9 @@ function num(s) { return parseFloat(String(s).replace(',', '.')); }
 export function parseSize(sizeText, name = '') {
   const tryParse = (raw) => {
     if (!raw) return null;
-    const s = String(raw).toLowerCase().replace(/\s+/g, ' ').trim();
+    // Dimensions ("60 x 30cm", "650 x 400mm", "70 x 50 x 4cm") are not a count of items.
+    const s = String(raw).toLowerCase().replace(/\s+/g, ' ').trim()
+      .replace(/\d+(?:[.,]\d+)?\s*(?:mm|cm|m)?\s*[x×]\s*\d+(?:[.,]\d+)?(?:\s*(?:mm|cm|m)?\s*[x×]\s*\d+(?:[.,]\d+)?)?\s*(?:mm|cm|m)\b/g, ' ');
     if (/\bper\s*kg\b|\/\s*kg\b/.test(s)) return { pack_count: 1, size_value: 1000, size_unit: 'g', per_kg: true };
     let m = s.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|gm|gms|ml|mls|l|lt|ltr|litre|litres|cl)\b/);
     if (m) {
