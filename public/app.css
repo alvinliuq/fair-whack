@@ -931,3 +931,9 @@ body.sub-page .topbar .brand em { display: none; }
 .wc-price { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
 .wc-price small { margin-left: 0; }
 .wc-price .lp { order: 3; }
+/* Product page: ignore a Google Shopping result (greyed, not counted for Lowest). */
+.web-rail > .web-card { position: relative; }
+.wc-ignore { position: absolute; top: 6px; right: 6px; z-index: 1; border: 0; border-radius: 999px; padding: 3px 8px; font: 700 11px "DM Sans", sans-serif; background: rgba(255,255,255,.92); color: var(--ink-2); box-shadow: 0 1px 3px rgba(40,20,90,.15); cursor: pointer; }
+.web-card.ignored { background: var(--mist); box-shadow: none; }
+.web-card.ignored > :not(.wc-ignore) { opacity: .45; filter: grayscale(1); }
+.web-card.ignored .wc-ignore { background: var(--grape); color: #fff; }

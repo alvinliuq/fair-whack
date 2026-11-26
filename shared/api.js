@@ -9,7 +9,7 @@ import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-i
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
-import { webQuery, sameOnline } from './webmatch.js';
+import { webQuery, sameOnline, storeKey } from './webmatch.js';
 import { RETAILER_INFO } from './retailers.js';
 import { notify } from './push.js';
 import { registerBrandRoutes } from './brands-api.js';
@@ -821,7 +821,17 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
   const canon = p.canonical_product_id || `c:${p.id}`;
   const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map((r) => r.retailer);
   const d = await serpLookup(env, user, webQuery(pub(p)));
-  return json({ ...d, results: sameOnline(pub(p), d.results, have) });
+  const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((r) => r.store_key));
+  return json({ ...d, results: sameOnline(pub(p), d.results, have).map((r) => ({ ...r, ignored: ignored.has(r.storeKey) })) });
+});
+// Ignore (or bring back) one shop's Google Shopping result for one product, for this tester only.
+route('PUT', '/api/product/:id/web/ignore', async ({ env, params, user, request }) => {
+  const { store, on } = await body(request);
+  const k = storeKey(String(store || '').slice(0, 80));
+  if (!k) throw new HttpError(400, 'Which shop?');
+  if (on) await env.DB.prepare('INSERT OR IGNORE INTO user_web_ignore (user_id, product_id, store_key, created_at) VALUES (?, ?, ?, ?)').bind(user.id, params.id, k, nowIso()).run();
+  else await env.DB.prepare('DELETE FROM user_web_ignore WHERE user_id = ? AND product_id = ? AND store_key = ?').bind(user.id, params.id, k).run();
+  return json({ ok: true, ignored: !!on });
 });
 
 route('GET', '/api/search/barcode', async ({ env, url }) => {

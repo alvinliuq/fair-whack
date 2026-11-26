@@ -15,7 +15,7 @@ function numbers(ws) {
   ws.forEach((w, i) => { if (/^\d+(\.\d+)?$/.test(w)) out.add(w + (['g', 'kg', 'ml', 'l'].includes(ws[i + 1]) ? ws[i + 1] : '')); });
   return out;
 }
-const storeKey = (s) => normText(s).replace(/\b(pty|ltd|au|australia|online|com)\b/g, '').replace(/\s+/g, '');
+export const storeKey = (s) => normText(s).replace(/\b(pty|ltd|au|australia|online|com)\b/g, '').replace(/\s+/g, '');
 const OURS = Object.entries(RETAILER_INFO).map(([id, r]) => [id, storeKey(r.name)]);
 export const ourRetailer = (store) => { const k = storeKey(store || ''); return k ? (OURS.find(([, n]) => k === n || k.startsWith(n))?.[0] || null) : null; };
 
@@ -46,7 +46,7 @@ export function sameOnline(p, results, haveRetailers = []) {
     if ([...nums].some((n) => !tn.has(n))) continue;
     if (price && (r.priceCents < price * 0.4 || r.priceCents > price * 2.5)) continue;
     const k = storeKey(r.store || r.title);
-    if (!best.has(k) || r.priceCents < best.get(k).priceCents) best.set(k, { ...r, retailer: mine });
+    if (!best.has(k) || r.priceCents < best.get(k).priceCents) best.set(k, { ...r, retailer: mine, storeKey: k });
   }
   return [...best.values()].sort((a, b) => a.priceCents - b.priceCents).slice(0, 8);
 }

@@ -634,11 +634,12 @@ views.search = async (q) => {
 
 /** One Google Shopping card (Search page and product page). lp: room for a "Lowest" pill. */
 function webCard(r, lp = false) {
-  return `<a class="web-card" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+  return `<a class="web-card${r.ignored ? ' ignored' : ''}" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+      ${lp ? `<button class="wc-ignore" type="button" data-store="${esc(r.store || '')}" aria-pressed="${r.ignored ? 'true' : 'false'}" aria-label="${r.ignored ? 'Bring back' : 'Ignore'} ${esc(r.store || 'this shop')}">${r.ignored ? 'Undo' : 'Ignore'}</button>` : ''}
       <span class="wc-img">${r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<b>?</b>'}</span>
       <span class="wc-store">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span>
       <span class="wc-name">${esc(r.title)}</span>
-      <span class="wc-price num"${lp ? ` data-cents="${r.priceCents}"` : ''}>${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}${lp ? LP : ''}</span>
+      <span class="wc-price num"${lp && !r.ignored ? ` data-cents="${r.priceCents}"` : ''}>${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}${lp ? LP : ''}</span>
       ${r.delivery ? `<span class="wc-note">${esc(r.delivery)}</span>` : ''}
     </a>`;
 }
@@ -889,7 +890,19 @@ async function productWeb(p, el) {
   }
   el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
     <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, cheapest first, swipe for more">${rows.map((r) => webCard(r, true)).join('')}</div>
-    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
+    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page. Tap Ignore on a shop you don’t trust or a wrong match: it turns grey and isn’t counted for Lowest.</p>`;
+  const wire = () => el.querySelectorAll('.wc-ignore').forEach((b) => b.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    try {
+      await api(`/api/product/${encodeURIComponent(p.id)}/web/ignore`, { method: 'PUT', body: { store: b.dataset.store, on } });
+      const r = rows.find((x) => (x.store || '') === b.dataset.store);
+      if (r) r.ignored = on;
+      b.closest('.web-card').outerHTML = webCard(r, true);
+      wire(); markLowest();
+    } catch (err) { toast(err.message); }
+  });
+  wire();
   markLowest();
 }
 
