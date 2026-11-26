@@ -8,7 +8,7 @@ export function init(c) { ctx = c; }
 const $ = (s, el = document) => el.querySelector(s);
 const DISCLOSURE = 'Partner brands may pay Fair Whack a fee or commission. It never changes search results, store comparisons or Top 20.';
 // Brands not yet confirmed with Fair Whack are "Demo" campaigns for the internal beta only.
-const DEMO_NOTE = (b) => `Beta demo: ${b.name} is not a Fair Whack partner and has not reviewed or endorsed this page. Any extra Fair Whack discount shown is simulated for testing and is not available. Prices and offers are copied from ${b.host || 'the brand\'s website'} and may have changed: check there before buying.`;
+const DEMO_NOTE = (b) => `${b.name} is not a Fair Whack partner and has not reviewed or endorsed this page. Any extra Fair Whack discount shown is simulated for testing and is not available. Prices and offers are copied from ${b.host || 'the brand\'s website'} and may have changed: check there before buying.`;
 const tag = (c, inline = false) => c.confirmed
   ? `<span class="partner${inline ? ' inline' : ''}" title="${ctx.esc(DISCLOSURE)}">Partner</span>`
   : `<span class="partner demo${inline ? ' inline' : ''}" title="${ctx.esc(DEMO_NOTE(c.brand))}">Beta demo</span>`;
