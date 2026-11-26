@@ -1394,22 +1394,41 @@ const withoutMe = (h) => h.replace(/([?&])me=1(&|$)/, (m, a, b) => (b ? a : ''))
 const withMe = (h) => (/[?&]me=1\b/.test(h) ? h : `${h || '#/'}${h.includes('?') ? '&' : '?'}me=1`);
 function markMe(on) { history.replaceState(history.state, '', on ? withMe(location.hash) : withoutMe(location.hash)); }
 // The 5 tab pages (Home, Browse, Search, My List, More) are the top level: swiping back or forward there does
-// nothing. Each time a tab page is shown, a second copy of it is pushed onto the history ("guard"), so a back
-// swipe lands on the same page (and is answered by pushing the guard again) and never reaches older pages.
-// Pages inside a tab (a store, a product, a deal…) still swipe back to where they came from.
+// nothing. Every history entry gets a position number (idx). When a back or forward swipe would move away from a
+// tab page, the app goes straight back to it (history.go) without drawing the page in between. Pages inside a tab
+// (a store, a product, a deal…) still swipe back and forward normally.
 const TAB_ROOTS = ['home', 'browse', 'search', 'lists', 'more'];
 function isTabRoot(hash = location.hash) {
   const parts = withoutMe(hash || '#/').slice(1).split('?')[0].split('/').filter(Boolean);
   const name = parts[0] || 'home';
   return TAB_ROOTS.includes(name) && parts.length <= 1;
 }
-function guardTabRoot() {
-  if (!state.me || !isTabRoot() || history.state?.fwGuard) return;
-  history.pushState({ ...(history.state || {}), fwGuard: true }, '', location.href);
+const nav = { idx: null, root: false, returnTo: null, swallow: null };
+function stampEntry() {
+  if (history.state?.idx == null) {
+    let n = 0;
+    try { n = (Number(sessionStorage.getItem('fw.idx')) || 0) + 1; sessionStorage.setItem('fw.idx', String(n)); } catch { n = Date.now(); }
+    history.replaceState({ ...(history.state || {}), idx: n }, '', location.href);
+  }
+  nav.idx = history.state.idx;
+  nav.root = !!state.me && isTabRoot();
 }
-addEventListener('popstate', () => { if (isTabRoot()) setTimeout(guardTabRoot, 0); });
+// popstate comes before hashchange for the same move.
+addEventListener('popstate', () => {
+  const idx = history.state?.idx;
+  if (nav.returnTo != null) {
+    // Arrived back on the tab page after a blocked swipe: nothing to redraw.
+    if (idx === nav.returnTo) { nav.returnTo = null; nav.swallow = { hash: location.hash, at: Date.now() }; }
+    return;
+  }
+  if (nav.root && nav.idx != null && idx != null && idx !== nav.idx) {
+    nav.returnTo = nav.idx;
+    history.go(nav.idx - idx);
+  }
+});
 
 async function route() {
+  stampEntry();
   if (/[?&]me=1\b/.test(location.hash)) {
     history.replaceState(history.state, '', withoutMe(location.hash));
     if (state.me) setTimeout(() => soc().then((m) => m.meSheet()).catch(() => {}), 0);
@@ -1452,7 +1471,6 @@ async function route() {
     refreshHearts();
     for (const [r, x] of keptHome.rails || []) r.scrollLeft = x;
     requestAnimationFrame(() => { window.scrollTo(0, keptHome.y || 0); for (const [r, x] of keptHome.rails || []) r.scrollLeft = x; });
-    setTimeout(guardTabRoot, 0);
     if (keptHome.dirty) {
       keptHome.dirty = false;
       api('/api/digest').then((d) => { if ($('#mine') && JSON.stringify(d) !== keptHome.digest) { keptHome.digest = JSON.stringify(d); keepRails(() => renderMine($('#mine'), d)); } }).catch(() => {});
@@ -1462,11 +1480,10 @@ async function route() {
     return;
   }
   if (isHome) keptHome.nodes = null;
-  if (!isHome && restorePage(location.hash)) { shownHash = location.hash.split('?')[0]; setTimeout(guardTabRoot, 0); return; }
+  if (!isHome && restorePage(location.hash)) { shownHash = location.hash.split('?')[0]; return; }
   shownHash = location.hash.split('?')[0];
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
   if (isHome) keptHome.leaving = true;
-  setTimeout(guardTabRoot, 0);
   try {
     if (name === 'login') return views.login(q);
     if (name === 'p') return await views.product(q, decodeURIComponent(parts.slice(1).join('/')));
@@ -1489,7 +1506,11 @@ document.addEventListener('click', (e) => {
   e.preventDefault(); e.stopPropagation();
   location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
 }, true);
-addEventListener('hashchange', (e) => { leftHash = withoutMe(new URL(e.oldURL).hash || '#/'); route(); });
+addEventListener('hashchange', (e) => {
+  if (nav.returnTo != null) return; // a blocked swipe on a tab page: on its way back, draw nothing
+  if (nav.swallow) { const sw = nav.swallow; nav.swallow = null; if (sw.hash === location.hash && Date.now() - sw.at < 2000) { stampEntry(); return; } }
+  leftHash = withoutMe(new URL(e.oldURL).hash || '#/'); route();
+});
 // Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
 // so the back swipe goes to the page above (More), not the previous tab.
 document.addEventListener('click', (e) => {
