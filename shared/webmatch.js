@@ -45,8 +45,17 @@ export function webQuery(p) {
   return `${name}${size}`.trim();
 }
 
-/** Is a Google title the same product? null = no; else { sizeUnknown }. */
-export function matchRow(p, title) {
+/** A shorter search for when the first one finds too few: no colour/style in brackets, no pack size. */
+export function webQueryLoose(p) {
+  return String(p.name || '').replace(/\([^)]*\)/g, ' ')
+    .replace(/\b\d+(\.\d+)?\s*(capsules?|caps|tablets?|tabs|softgels?|pack|pk|g|kg|ml|l|grams?|litres?)\b/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** Is a Google title the same product? null = no; else { sizeUnknown }.
+ *  relax (used only when the strict rules find fewer than 5): a title may leave out our variant words, up to 70%
+ *  of the naming words may differ (at least 2). Brand, pack size, multipacks and the title's own variant words still apply. */
+export function matchRow(p, title, relax = false) {
   const full = `${p.name} ${p.size || ''}`;
   const want = words(full);
   const nums = numbers(want);
@@ -61,7 +70,7 @@ export function matchRow(p, title) {
   // Variant words must agree both ways ("Advanced", "Kids", "Digital", "Ultimate", "Album").
   const vWant = new Set(want.map(vNorm).filter((w) => VARIANT.has(w)));
   const vHave = new Set(t.map(vNorm).filter((w) => VARIANT.has(w)));
-  if ([...vWant].some((w) => !vHave.has(w)) || [...vHave].some((w) => !vWant.has(w) && !ONE_WAY.has(w))) return null;
+  if ((!relax && [...vWant].some((w) => !vHave.has(w))) || [...vHave].some((w) => !vWant.has(w) && !ONE_WAY.has(w))) return null;
   if (MULTI.test(title) && !MULTI.test(full)) return null;
   // The words that name the product, brand left out (it was checked above). Count the differences both ways:
   // product words missing from the title + other naming words in the title. Allowed: 40% of the product's words, at least 1.
@@ -71,7 +80,7 @@ export function matchRow(p, title) {
   const nameAll = new Set(words(full)), nameJoin = words(full).join('');
   const extra = naming(t).filter((w) => !nameAll.has(w) && !(w.length >= 4 && nameJoin.includes(w)) && !(b && w.length >= 3 && b.includes(w)));
   const missing = key.filter((w) => !has(w));
-  if (missing.length + extra.length > Math.max(1, Math.floor(key.length * 0.4))) return null;
+  if (missing.length + extra.length > (relax ? Math.max(2, Math.floor(key.length * 0.7)) : Math.max(1, Math.floor(key.length * 0.4)))) return null;
   // Pack size: the same numbers; a different number is another size; no number at all is unknown.
   const tn = numbers(t);
   if ([...nums].every((n) => tn.has(n))) return { sizeUnknown: false };
@@ -79,21 +88,30 @@ export function matchRow(p, title) {
   return { sizeUnknown: true };
 }
 
-export function sameOnline(p, results, haveRetailers = []) {
+/** The minimum the page aims for: below it, close matches are added (marked match: 'close', not counted for Lowest). */
+export const WEB_MIN = 5;
+
+export function sameOnline(p, results, haveRetailers = [], { min = WEB_MIN } = {}) {
   const price = p.effective || p.price || 0;
-  const best = new Map();
-  for (const r of results || []) {
-    if (r.used || !r.priceCents) continue;
-    const mine = ourRetailer(r.store);
-    if (mine && haveRetailers.includes(mine)) continue;
-    if (price && (r.priceCents < price * 0.4 || r.priceCents > price * 2.5)) continue;
-    const m = matchRow(p, r.title);
-    if (!m) continue;
-    const k = storeKey(r.store || r.title);
-    const row = { ...r, retailer: mine, storeKey: k, sizeUnknown: m.sizeUnknown };
-    const prev = best.get(k);
-    // Per shop: a row with a known size beats one without; then the cheaper.
-    if (!prev || (prev.sizeUnknown && !row.sizeUnknown) || (prev.sizeUnknown === row.sizeUnknown && row.priceCents < prev.priceCents)) best.set(k, row);
-  }
+  const pass = (relax, best) => {
+    for (const r of results || []) {
+      if (r.used || !r.priceCents) continue;
+      const mine = ourRetailer(r.store);
+      if (mine && haveRetailers.includes(mine)) continue;
+      const [lo, hi] = relax ? [0.3, 3.5] : [0.4, 2.5];
+      if (price && (r.priceCents < price * lo || r.priceCents > price * hi)) continue;
+      const k = storeKey(r.store || r.title);
+      if (relax && best.has(k)) continue; // this shop already has a same-product row
+      const m = matchRow(p, r.title, relax);
+      if (!m) continue;
+      const row = { ...r, retailer: mine, storeKey: k, sizeUnknown: m.sizeUnknown, match: relax ? 'close' : 'same' };
+      const prev = best.get(k);
+      // Per shop: a row with a known size beats one without; then the cheaper.
+      if (!prev || (prev.sizeUnknown && !row.sizeUnknown) || (prev.sizeUnknown === row.sizeUnknown && row.priceCents < prev.priceCents)) best.set(k, row);
+    }
+    return best;
+  };
+  const best = pass(false, new Map());
+  if (best.size < min) pass(true, best);
   return [...best.values()].sort((a, b) => a.priceCents - b.priceCents).slice(0, 8);
 }

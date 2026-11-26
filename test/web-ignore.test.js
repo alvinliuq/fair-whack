@@ -23,15 +23,16 @@ test('product web prices: filtered, and ignore is per tester', async (t) => {
   const ann = await login('Ann'), bob = await login('Bob');
   const call = async (cookie, p, method = 'GET', body) => (await handle(new Request(`http://x${p}`, { method, headers: { Cookie: cookie }, body: body ? JSON.stringify(body) : undefined }), env)).json();
   let d = await call(ann, '/api/product/coles%3A1/web');
-  assert.deepEqual(d.results.map((r) => [r.store, r.ignored]), [['eBay - kings', false], ['Priceline', false]]);
+  assert.deepEqual(d.results.map((r) => [r.store, r.match, r.ignored]), [['eBay', 'close', false], ['eBay - kings', 'same', false], ['Priceline', 'same', false]]);
+  const same = (x) => x.results.filter((r) => r.match === 'same');
   await call(ann, '/api/product/coles%3A1/web/ignore', 'PUT', { store: 'eBay - kings', on: true });
   d = await call(ann, '/api/product/coles%3A1/web');
-  assert.deepEqual(d.results.map((r) => r.ignored), [true, false]);
-  assert.deepEqual((await call(bob, '/api/product/coles%3A1/web')).results.map((r) => r.ignored), [false, false]);
+  assert.deepEqual(same(d).map((r) => r.ignored), [true, false]);
+  assert.deepEqual(same(await call(bob, '/api/product/coles%3A1/web')).map((r) => r.ignored), [false, false]);
   // Home: lowest anywhere, from saved Google results, less what this tester ignored (Ann ignores eBay - kings at $35.90).
   const low = async (cookie) => (await call(cookie, '/api/lowest?ids=coles%3A1')).lowest['coles:1'];
   assert.equal(await low(ann), true);
   assert.equal(await low(bob), false);
   await call(ann, '/api/product/coles%3A1/web/ignore', 'PUT', { store: 'eBay - kings', on: false });
-  assert.deepEqual((await call(ann, '/api/product/coles%3A1/web')).results.map((r) => r.ignored), [false, false]);
+  assert.deepEqual(same(await call(ann, '/api/product/coles%3A1/web')).map((r) => r.ignored), [false, false]);
 });

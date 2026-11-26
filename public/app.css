@@ -951,3 +951,4 @@ body.sub-page .topbar .brand em { display: none; }
 .acc-actions .btn { min-width: 110px; }
 .tile .foot .price.has-lp { align-items: center; }
 .tile .foot .price.has-lp small { flex-basis: 100%; }
+.wc-note.wc-close { color: #7A4B00; font-weight: 700; }

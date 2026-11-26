@@ -9,7 +9,7 @@ import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-i
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
-import { webQuery, sameOnline, storeKey } from './webmatch.js';
+import { webQuery, webQueryLoose, sameOnline, storeKey, WEB_MIN } from './webmatch.js';
 import { RETAILER_INFO } from './retailers.js';
 import { notify } from './push.js';
 import { registerBrandRoutes } from './brands-api.js';
@@ -814,46 +814,57 @@ async function serpLookup(env, user, raw) {
     .bind(q, out.fetchedAt, JSON.stringify({ results: out.results })).run();
   return { ...out, cached: false };
 }
-// Product page: the same product at other online shops (Google Shopping), filtered to real matches.
+/** The same product at other online shops. Looks up the product's name; when that gives fewer than WEB_MIN
+ *  rows, also a shorter search (no colour, no pack size), and sameOnline adds close matches if still short. */
+async function productWeb(env, user, r) {
+  const p = pub(r);
+  const canon = r.canonical_product_id || `c:${r.id}`;
+  const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(r.id, canon).all()).results.map((x) => x.retailer);
+  const d = await serpLookup(env, user, webQuery(p));
+  let rows = d.results || [];
+  let results = sameOnline(p, rows, have, { min: 0 });
+  const loose = webQueryLoose(p);
+  if (results.length < WEB_MIN && serpKey(loose) !== serpKey(webQuery(p)) && serpKey(loose).length >= 2) {
+    const d2 = await serpLookup(env, user, loose);
+    const seen = new Set(rows.map((x) => `${x.store}|${x.title}|${x.priceCents}`));
+    rows = [...rows, ...(d2.results || []).filter((x) => !seen.has(`${x.store}|${x.title}|${x.priceCents}`))];
+  }
+  results = sameOnline(p, rows, have);
+  const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((x) => x.store_key));
+  return { ...d, p, have, results: results.map((x) => ({ ...x, ignored: ignored.has(x.storeKey) })) };
+}
+// Product page: the same product at other online shops (Google Shopping).
 route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
-  const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
-  if (!p) throw new HttpError(404, 'Product not found');
-  const canon = p.canonical_product_id || `c:${p.id}`;
-  const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map((r) => r.retailer);
-  const d = await serpLookup(env, user, webQuery(pub(p)));
-  const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((r) => r.store_key));
-  return json({ ...d, results: sameOnline(pub(p), d.results, have).map((r) => ({ ...r, ignored: ignored.has(r.storeKey) })) });
+  const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
+  if (!r) throw new HttpError(404, 'Product not found');
+  const { p, have, ...d } = await productWeb(env, user, r);
+  return json(d);
 });
-// Home "Deals on your list": which of these products is the lowest price anywhere we know of: our stores, plus
-// Google Shopping results already looked up for it (saved results only, so Home spends no lookups), less any
-// this tester ignored. The same comparison as the product page's "Lowest" pill.
+// Home "Deals on your list": which of these products is the lowest price anywhere: our stores plus the product's
+// Google Shopping results (looked up now if not saved in the last 24 hours, the same as opening the product page),
+// less what this tester ignored and less close matches. The same comparison as the product page's "Lowest" pill.
 route('GET', '/api/lowest', async ({ env, user, url }) => {
   const ids = [...new Set((url.searchParams.get('ids') || '').split(',').filter(Boolean))].slice(0, 40);
   if (!ids.length) return json({ lowest: {} });
   const qs = (n) => Array(n).fill('?').join(',');
-  // A few queries for all of them (one per product took ~1s each).
   const mine = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id IN (${qs(ids.length)})`).bind(...ids).all()).results;
   const canonOf = (r) => r.canonical_product_id || `c:${r.id}`;
   const canons = [...new Set(mine.map(canonOf))];
-  const twins = canons.length ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${qs(canons.length)}) AND ${ACT} AND cur_price_cents IS NOT NULL`).bind(...canons).all()).results.map(pub) : [];
-  const keys = [...new Set(mine.map((r) => serpKey(webQuery(pub(r)))))];
-  const saved = new Map((await env.DB.prepare(`SELECT q, data FROM serp_cache WHERE q IN (${qs(keys.length)})`).bind(...keys).all().catch(() => ({ results: [] }))).results.map((x) => [x.q, x.data]));
-  const ign = (await env.DB.prepare(`SELECT product_id, store_key FROM user_web_ignore WHERE user_id = ? AND product_id IN (${qs(ids.length)})`).bind(user.id, ...ids).all()).results;
+  const twins = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${qs(canons.length)}) AND ${ACT} AND cur_price_cents IS NOT NULL`).bind(...canons).all()).results.map(pub);
   const out = {};
-  for (const r of mine) {
-    const p = pub(r);
-    if (p.effective == null) continue;
-    const offers = twins.filter((o) => o.canonical === canonOf(r));
-    if (!offers.some((o) => o.id === p.id)) offers.push(p);
-    const have = [...new Set(offers.map((o) => o.retailer))];
-    const others = offers.filter((o) => o.id !== p.id && o.effective != null).map((o) => o.effective);
-    const data = saved.get(serpKey(webQuery(p)));
-    if (data) {
-      const ignored = new Set(ign.filter((x) => x.product_id === p.id).map((x) => x.store_key));
-      sameOnline(p, JSON.parse(data).results || [], have).filter((x) => !ignored.has(x.storeKey)).forEach((x) => others.push(x.priceCents));
+  // Google lookups 4 at a time.
+  const queue = [...mine];
+  const work = async () => {
+    for (let r; (r = queue.shift());) {
+      const p = pub(r);
+      if (p.effective == null) continue;
+      const others = twins.filter((o) => o.canonical === canonOf(r) && o.id !== p.id && o.effective != null).map((o) => o.effective);
+      const w = await productWeb(env, user, r).catch(() => ({ results: [] }));
+      w.results.filter((x) => !x.ignored && x.match === 'same').forEach((x) => others.push(x.priceCents));
+      out[p.id] = others.length > 0 && p.effective <= Math.min(...others);
     }
-    out[p.id] = others.length > 0 && p.effective <= Math.min(...others);
-  }
+  };
+  await Promise.all([work(), work(), work(), work()]);
   return json({ lowest: out });
 });
 // Ignore (or bring back) one shop's Google Shopping result for one product, for this tester only.

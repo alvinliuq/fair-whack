@@ -1,7 +1,9 @@
 // Product page: Google Shopping rows kept only when they are the same product.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sameOnline, webQuery, ourRetailer } from '../shared/webmatch.js';
+import { sameOnline as online, webQuery, webQueryLoose, ourRetailer } from '../shared/webmatch.js';
+// The strict rules alone (no close matches added).
+const sameOnline = (p, rows, have = []) => online(p, rows, have, { min: 0 });
 
 const p = { name: 'Life Space Broad Spectrum Probiotic Advanced 90 Capsules', brand: 'Life Space', size: '90 pack', effective: 3700 };
 const r = (title, store, priceCents, extra = {}) => ({ title, store, priceCents, ...extra });
@@ -63,4 +65,18 @@ test('a store name without Disc/Digital/Slim matches either; PS5 = PlayStation 5
   ], ['jbhifi']);
   assert.deepEqual(out.map((x) => x.store), ['u-buy.com.au']);
   assert.equal(sameOnline({ name: 'PlayStation 5 Slim Digital Console', effective: 70000 }, [{ store: 'X', title: 'PlayStation 5 Slim Disc Console', priceCents: 80000 }]).length, 0);
+});
+
+test('fewer than 5 same-product rows: close matches are added, marked, sizes and brand still checked', () => {
+  const p = { name: 'Life-Space Broad Spectrum Probiotic Advanced 90 Capsules', brand: 'Life-Space', effective: 4799 };
+  const out = online(p, [
+    { store: 'A', title: 'Life Space Broad Spectrum Probiotic Advanced 90 Capsules', priceCents: 4500 },
+    { store: 'B', title: 'Life Space Broad Spectrum Probiotic 90 Capsules', priceCents: 3195 },
+    { store: 'C', title: 'Life Space Broad Spectrum Probiotic 60 Capsules', priceCents: 2999 },
+    { store: 'D', title: 'Swisse Probiotic 90 Capsules', priceCents: 3000 },
+    { store: 'E', title: 'Life Space Probiotic for Kids 90 Capsules', priceCents: 3000 },
+  ]);
+  assert.deepEqual(out.map((x) => `${x.store}:${x.match}`), ['B:close', 'A:same']);
+  assert.equal(webQueryLoose({ name: 'Garmin VivoActive 5 Smart Watch (Blue/Blue Metallic)' }), 'Garmin VivoActive 5 Smart Watch');
+  assert.equal(webQueryLoose({ name: 'Melrose FutureLab Bone Matrix 120 Capsules' }), 'Melrose FutureLab Bone Matrix');
 });
