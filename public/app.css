@@ -898,3 +898,6 @@ td.bcol { min-width: 150px; }
 #cf .row > .field { min-width: 140px; }
 #cf input:not([type=checkbox]), #cf select, #cf textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
 #cf .row > input[data-find] { width: auto; min-width: 0; }
+.partner.demo { background: #FFF1D6; color: #7A4B00; }
+.partner.demo:not(.inline) { background: rgba(122, 75, 0, .85); color: #fff; }
+.demo-note { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; background: #FFF6E5; border: 1px solid #F3D9A6; border-radius: 12px; padding: 10px 12px; }

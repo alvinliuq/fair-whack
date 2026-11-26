@@ -19,7 +19,7 @@ export function registerBrandRoutes(d) {
   /** Live campaigns with their brand and tags, in priority order. */
   async function liveCampaigns(env) {
     const now = nowIso();
-    const rows = (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color
+    const rows = (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color, b.confirmed AS brand_confirmed
         FROM campaigns c JOIN brands b ON b.id = c.brand_id
         WHERE c.status = 'live' AND b.status = 'approved' AND c.starts_at <= ? AND c.ends_at > ?
         ORDER BY c.priority DESC, c.starts_at DESC`).bind(now, now).all()).results;
@@ -67,6 +67,8 @@ export function registerBrandRoutes(d) {
     return {
       id: c.id, kind: c.kind, kindLabel: KINDS[c.kind] || KINDS.brand, title: c.title, offer: c.offer, image: c.image_url, endsAt: c.ends_at, startsAt: c.starts_at,
       brand: { id: c.brand_id, name: c.brand_name, logo: c.brand_logo, color: c.brand_color, website: c.brand_website, host: hostOf(c.brand_website) },
+      // Not confirmed with the brand yet = a Demo for the internal beta (never shown as Partner, never shared publicly).
+      confirmed: !!c.brand_confirmed,
       reason: s.reasons[0].text, reasons: s.reasons.map((r) => r.text), score: s.score,
     };
   }
@@ -88,7 +90,7 @@ export function registerBrandRoutes(d) {
         .bind(x.c.id, user.id, melDay(), nowIso()))).catch(() => {});
     }
     // Campaigns that went live on their start date get their alerts sent the first time anyone opens Home.
-    const due = live.filter((c) => !c.notified_at);
+    const due = live.filter((c) => !c.notified_at && c.brand_confirmed);
     for (const c of due) await sendAlerts(env, c).catch((e) => console.error('brand alerts', e));
     return json({ title: 'Your Brand, Your Deal', mode: BRAND_ZONE.mode, campaigns: shown.map((x) => cardOut(x.c, x)), total: live.length });
   });
@@ -128,7 +130,7 @@ export function registerBrandRoutes(d) {
 
   // ----- campaign page -----
   route('GET', '/api/brands/c/:id', async ({ env, user, params }) => {
-    const c = (await withTags(env, (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color, b.status AS brand_status
+    const c = (await withTags(env, (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color, b.status AS brand_status, b.confirmed AS brand_confirmed
         FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?`).bind(params.id).all()).results))[0];
     if (!c || (!user.is_admin && (!isLive(c) || c.brand_status !== 'approved'))) throw new HttpError(404, 'This deal has ended');
     const { me, scored } = await scoreAll(env, user, [c]);
@@ -169,8 +171,9 @@ export function registerBrandRoutes(d) {
   /** Share with friends in the app (a notification each), or get a link to share elsewhere. */
   route('POST', '/api/brands/c/:id/share', async ({ env, user, params, request }) => {
     const b = await body(request);
-    const c = await env.DB.prepare('SELECT c.id, c.offer, b.name AS brand_name FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?').bind(params.id).first();
+    const c = await env.DB.prepare('SELECT c.id, c.offer, b.name AS brand_name, b.confirmed AS brand_confirmed FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?').bind(params.id).first();
     if (!c) throw new HttpError(404, 'Deal not found');
+    if (!c.brand_confirmed && !(Array.isArray(b.to) && b.to.length)) throw new HttpError(400, 'Demo deals can only be shared with friends in Fair Whack');
     const me = await ensureSocial(env, user);
     const to = [...new Set((Array.isArray(b.to) ? b.to : []).map(String))].slice(0, 30);
     let sent = 0;
@@ -178,20 +181,21 @@ export function registerBrandRoutes(d) {
       const ok = new Set((await env.DB.prepare(`SELECT a, b FROM friendships WHERE status = 'accepted' AND (a = ? OR b = ?)`).bind(me.id, me.id).all()).results.map((r) => (r.a === me.id ? r.b : r.a)));
       const note = String(b.note || '').trim().slice(0, 200);
       for (const t of to.filter((x) => ok.has(x))) {
-        await notify(env, t, { kind: 'brand_share', title: `${me.name} shared a ${c.brand_name} deal`, body: note ? `“${note}” · ${c.offer}` : c.offer, url: `/#/brand/${c.id}` });
+        await notify(env, t, { kind: 'brand_share', title: `${me.name} shared a ${c.brand_name} ${c.brand_confirmed ? 'deal' : 'demo deal'}`, body: (note ? `“${note}” · ${c.offer}` : c.offer) + (c.brand_confirmed ? '' : ' (beta demo)'), url: `/#/brand/${c.id}` });
         sent++;
       }
       if (!sent) throw new HttpError(400, 'You can only share with friends');
     }
     await event(env, c.id, user.id, 'share', to.length ? 'friends' : 'link');
-    return json({ ok: true, sent, link: `/deal?c=${encodeURIComponent(c.id)}&r=${encodeURIComponent(me.friend_code)}` });
+    return json({ ok: true, sent, link: c.brand_confirmed ? `/deal?c=${encodeURIComponent(c.id)}&r=${encodeURIComponent(me.friend_code)}` : null });
   });
 
   // ----- public share page (no sign-in): /deal?c=<id>&r=<sharer's friend code> -----
   route('GET', '/api/public/deal/:id', async ({ env, params, url }) => {
-    const c = (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color, b.status AS brand_status
+    const c = (await env.DB.prepare(`SELECT c.*, b.name AS brand_name, b.website AS brand_website, b.logo_url AS brand_logo, b.color AS brand_color, b.status AS brand_status, b.confirmed AS brand_confirmed
         FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?`).bind(params.id).first());
-    if (!c || !isLive(c) || c.brand_status !== 'approved') return json({ ended: true });
+    // Demo campaigns (not confirmed with the brand) are for signed-in beta testers only.
+    if (!c || !isLive(c) || c.brand_status !== 'approved' || !c.brand_confirmed) return json({ ended: true });
     const ref = String(url.searchParams.get('r') || '').slice(0, 40);
     const from = ref ? await env.DB.prepare('SELECT name FROM users WHERE friend_code = ?').bind(ref).first() : null;
     await event(env, c.id, null, 'open', ref || null);
@@ -232,6 +236,10 @@ export function registerBrandRoutes(d) {
    * Everyone: at most 5 pushes a day overall (shared with special alerts), and never for a hidden brand.
    */
   async function sendAlerts(env, c) {
+    // No push alerts for Demo campaigns (brand not confirmed): a push can't carry the Demo label well.
+    // Checked before claiming, so alerts still go out once the brand is confirmed.
+    const confirmed = c.brand_confirmed ?? (await env.DB.prepare('SELECT confirmed FROM brands WHERE id = ?').bind(c.brand_id).first())?.confirmed;
+    if (!confirmed) return { sent: 0, demo: true };
     const claimed = await env.DB.prepare('UPDATE campaigns SET notified_at = ? WHERE id = ? AND notified_at IS NULL').bind(nowIso(), c.id).run();
     if (!claimed.meta?.changes) return { sent: 0 };
     if (!c.tags) [c] = await withTags(env, [c]);
@@ -276,7 +284,7 @@ export function registerBrandRoutes(d) {
   route('GET', '/api/admin/brands', async ({ env }) => {
     const brands = (await env.DB.prepare(`SELECT b.*, (SELECT COUNT(*) FROM user_brand_follow f WHERE f.brand_id = b.id) AS followers FROM brands b ORDER BY b.name`).all()).results
       .map((b) => ({ ...b, checks: parse(b.checks, {}) }));
-    const campaigns = (await env.DB.prepare(`SELECT c.id, c.brand_id, c.kind, c.title, c.offer, c.image_url, c.starts_at, c.ends_at, c.priority, c.status, c.notified_at, b.name AS brand_name
+    const campaigns = (await env.DB.prepare(`SELECT c.id, c.brand_id, c.kind, c.title, c.offer, c.image_url, c.starts_at, c.ends_at, c.priority, c.status, c.notified_at, b.name AS brand_name, b.confirmed AS brand_confirmed
         FROM campaigns c JOIN brands b ON b.id = c.brand_id ORDER BY (c.status = 'live') DESC, c.priority DESC, c.updated_at DESC`).all()).results;
     const ev = (await env.DB.prepare(`SELECT campaign_id, kind, COUNT(*) AS n, COUNT(DISTINCT user_id) AS people FROM campaign_events GROUP BY campaign_id, kind`).all()).results;
     const now = nowIso();
@@ -302,10 +310,12 @@ export function registerBrandRoutes(d) {
     const color = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : null;
     const logo = b.logo ? (String(b.logo).startsWith('/api/assets/') ? String(b.logo) : safeUrl(b.logo)) : null;
     const id = b.id || uid();
-    await env.DB.prepare(`INSERT INTO brands (id, name, website, logo_url, color, contact, status, checks, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const confirmed = b.confirmed ? 1 : 0;
+    await env.DB.prepare(`INSERT INTO brands (id, name, website, logo_url, color, contact, status, checks, notes, confirmed, confirmed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, website = excluded.website, logo_url = excluded.logo_url, color = excluded.color, contact = excluded.contact,
-        status = excluded.status, checks = excluded.checks, notes = excluded.notes, updated_at = excluded.updated_at`)
-      .bind(id, name, website, logo, color, str(b.contact, 200), status, JSON.stringify(checks), str(b.notes, 1000), nowIso(), nowIso()).run();
+        status = excluded.status, checks = excluded.checks, notes = excluded.notes, confirmed = excluded.confirmed,
+        confirmed_at = CASE WHEN excluded.confirmed = 1 THEN COALESCE(brands.confirmed_at, excluded.confirmed_at) ELSE NULL END, updated_at = excluded.updated_at`)
+      .bind(id, name, website, logo, color, str(b.contact, 200), status, JSON.stringify(checks), str(b.notes, 1000), confirmed, confirmed ? nowIso() : null, nowIso(), nowIso()).run();
     return json({ ok: true, id });
   }, ADMIN);
 
@@ -363,7 +373,7 @@ export function registerBrandRoutes(d) {
   route('POST', '/api/admin/campaigns/:id/status', async ({ env, params, request }) => {
     const status = String((await body(request)).status || '');
     if (!['live', 'paused', 'ended', 'draft'].includes(status)) throw new HttpError(400, 'Unknown status');
-    const c = await env.DB.prepare('SELECT c.*, b.status AS brand_status, b.name AS brand_name FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?').bind(params.id).first();
+    const c = await env.DB.prepare('SELECT c.*, b.status AS brand_status, b.name AS brand_name, b.confirmed AS brand_confirmed FROM campaigns c JOIN brands b ON b.id = c.brand_id WHERE c.id = ?').bind(params.id).first();
     if (!c) throw new HttpError(404, 'Campaign not found');
     if (status === 'live' && c.brand_status !== 'approved') throw new HttpError(400, 'Approve the brand first (Admin → Brands)');
     await env.DB.prepare('UPDATE campaigns SET status = ?, updated_at = ? WHERE id = ?').bind(status, nowIso(), c.id).run();

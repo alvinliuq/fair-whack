@@ -7,6 +7,11 @@ export function init(c) { ctx = c; }
 
 const $ = (s, el = document) => el.querySelector(s);
 const DISCLOSURE = 'Partner brands may pay Fair Whack a fee or commission. It never changes search results, store comparisons or Top 20.';
+// Brands not yet confirmed with Fair Whack are "Demo" campaigns for the internal beta only.
+const DEMO_NOTE = (b) => `Beta demo: ${b.name} is not a Fair Whack partner and has not reviewed or endorsed this page. Any extra Fair Whack discount shown is simulated for testing and is not available. Prices and offers are copied from ${b.host || 'the brand\'s website'} and may have changed: check there before buying.`;
+const tag = (c, inline = false) => c.confirmed
+  ? `<span class="partner${inline ? ' inline' : ''}" title="${ctx.esc(DISCLOSURE)}">Partner</span>`
+  : `<span class="partner demo${inline ? ' inline' : ''}" title="${ctx.esc(DEMO_NOTE(c.brand))}">Beta demo</span>`;
 
 const sday = (iso) => new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 const day = (iso) => new Date(iso).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -30,7 +35,7 @@ function card(c) {
   return `<a class="bcard" href="#/brand/${encodeURIComponent(c.id)}" data-cid="${esc(c.id)}">
     <span class="bimg" style="--bc:${esc(c.brand.color || '#EFEAFF')}">
       ${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="bimg-ph">${initial(c.brand.name)}</span>`}
-      <span class="partner" title="${esc(DISCLOSURE)}">Partner</span>
+      ${tag(c)}
       ${logoBadge(c.brand)}
     </span>
     <span class="btext">
@@ -47,7 +52,7 @@ export async function homeRail(el) {
   const d = await api('/api/brands/home').catch(() => null);
   if (!d || !d.campaigns.length) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="sec-head"><h2>${ctx.esc(d.title)}</h2>${d.total > d.campaigns.length ? '<a href="#/brands">See all ›</a>' : ''}</div>
-    <p class="sec-sub">Offers from partner brands · <a href="#/earn" class="muted-link">How this works</a></p>
+    <p class="sec-sub">${d.campaigns.some((c) => !c.confirmed) ? 'Beta demo: brands are not partners yet' : 'Offers from partner brands'} · <a href="#/earn" class="muted-link">How this works</a></p>
     <div class="rail brail" tabindex="0" aria-label="Partner brand deals, swipe for more">${d.campaigns.map(card).join('')}</div>`;
 }
 
@@ -76,13 +81,14 @@ export async function page(id) {
     <div class="bhead">
       <div class="row">${logoBadge(c.brand, 'big')}<span class="spacer"></span>
         <button class="btn small ${c.following ? 'light' : 'ghost'}" id="follow" aria-pressed="${c.following}">${c.following ? '✓ Following' : '+ Follow brand'}</button></div>
-      <div class="bhead-t"><span class="partner inline">Partner</span> <span class="small muted">${esc(c.kindLabel)} · ${esc(c.brand.name)}</span>
+      <div class="bhead-t">${tag(c, true)} <span class="small muted">${esc(c.kindLabel)} · ${esc(c.brand.name)}</span>
         <h1>${esc(c.title)}</h1>
         <p class="small muted">${day(c.startsAt)} – ${day(c.endsAt)} · <span class="${soon(c.endsAt) ? 'hot' : ''}">${endsText(c.endsAt)}</span></p></div>
     </div>
     ${c.image ? `<div class="bhero" style="--bc:${esc(c.brand.color || '#EFEAFF')}"><img src="${esc(c.image)}" alt="" referrerpolicy="no-referrer"></div>` : ''}
+    ${c.confirmed ? '' : `<div class="notice demo-note"><b>Beta demo</b> ${esc(DEMO_NOTE(c.brand))}</div>`}
     <div class="card why"><b>Why you're seeing this</b><ul>${c.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-      <p class="small muted">${esc(DISCLOSURE)} <a href="#/earn">Learn more</a></p></div>
+      <p class="small muted">${c.confirmed ? esc(DISCLOSURE) : 'Picked by the Fair Whack team to test this section. No brand pays Fair Whack during the beta.'} <a href="#/earn">Learn more</a></p></div>
     <h2>The offer</h2>
     <div class="card stack boffer-card"><b class="big">${esc(c.offer)}</b>
       ${c.details ? `<p>${esc(c.details).replace(/\n/g, '<br>')}</p>` : ''}
@@ -144,8 +150,9 @@ async function shareSheet(c) {
       <input name="note" maxlength="200" placeholder="Add a note (optional)" style="width:100%;margin:8px 0">
       <button class="btn" style="width:100%">Send to friends</button></form>`
       : '<div class="empty" style="margin:0 0 8px"><b>No friends yet</b><a href="#/friends">Add friends</a> to share deals with them.</div>'}
-    <button class="btn light" id="bshare-out" style="width:100%;margin-top:8px">Share a link…</button>
-    <p class="small muted" style="margin-top:8px">The link opens a page anyone can see, with an invitation to join Fair Whack.</p>`);
+    ${c.confirmed ? `<button class="btn light" id="bshare-out" style="width:100%;margin-top:8px">Share a link…</button>
+    <p class="small muted" style="margin-top:8px">The link opens a page anyone can see, with an invitation to join Fair Whack.</p>`
+    : '<p class="small muted" style="margin-top:8px">Beta demo deals can only be shared with friends inside Fair Whack, not as a public link.</p>'}`);
   const f = $('#bshare-f');
   if (f) f.onsubmit = async (e) => {
     e.preventDefault();
@@ -156,7 +163,7 @@ async function shareSheet(c) {
       $('#sheet').hidden = true; toast(r.sent === 1 ? 'Sent' : `Sent to ${r.sent} friends`);
     } catch (err) { toast(err.message); }
   };
-  $('#bshare-out').onclick = async () => {
+  if ($('#bshare-out')) $('#bshare-out').onclick = async () => {
     try {
       const r = await api(`/api/brands/c/${encodeURIComponent(c.id)}/share`, { method: 'POST', body: {} });
       const link = location.origin + r.link;
@@ -174,7 +181,7 @@ export function earnPage() {
     <p><b>What payment never changes:</b> search results, “same product in other stores”, store comparisons, Bargains and Top 20. On a partner's page we still show other stores' prices for the same product, even when another store is cheaper.</p>
     <p><b>Who can be a partner:</b> known brands and official stores only, with real offers (lower than their recent usual price, or an extra you can't get elsewhere), in categories our users shop for.</p>
     <p><b>You're in control:</b> follow brands you like, choose “Not interested” to hide a brand for 90 days, or turn off brand deal alerts in Settings → Alerts.</p>
-    <p class="small muted">During the beta no partner pays Fair Whack, and there is no cashback. The deals shown are picked by the Fair Whack team to test this section.</p></div>`;
+    <p class="small muted">During the beta no brand pays Fair Whack and there is no cashback. Deals marked <b>Beta demo</b> are picked by the Fair Whack team to test this section: those brands are not partners, have not reviewed the pages, and any extra Fair Whack discount shown on them is simulated and not available.</p></div>`;
 }
 
 // ---------- Settings → Alerts: brand deal alerts, followed and hidden brands ----------
@@ -208,14 +215,14 @@ export async function adminPage() {
     <p class="lead small">“Your Brand, Your Deal” on Home. Mode: <b>${d.zone.mode === 'fixed' ? `same ${d.zone.size} live campaigns for everyone` : 'matched to each person'}</b> · ${live.length} live${live.length > d.zone.size ? ` (only the first ${d.zone.size} by priority show)` : ''}.</p>
     <div class="row"><h2 style="flex:1">Campaigns</h2><a class="btn small" href="#/admincampaign/new">+ New campaign</a></div>
     <div class="card" style="overflow-x:auto"><table class="t"><tr><th>Campaign</th><th>Status</th><th>Dates</th><th title="People who saw it on Home">Seen</th><th>Clicks</th><th title="Clicks ÷ daily views">CTR</th><th title="Added to a list from the page">Listed</th><th>Follows</th><th>Shares</th><th title="Not interested">Hidden</th><th title="Share-page opens by people not signed in">Opens</th></tr>
-      ${d.campaigns.map((c) => `<tr><td class="bcol"><a href="#/admincampaign/${esc(c.id)}"><b>${esc(c.brand_name)}</b> · ${esc(c.title)}</a><div class="small muted">${esc(d.kinds[c.kind])} · priority ${c.priority}</div></td>
+      ${d.campaigns.map((c) => `<tr><td class="bcol"><a href="#/admincampaign/${esc(c.id)}"><b>${esc(c.brand_name)}</b> · ${esc(c.title)}</a><div class="small muted">${c.brand_confirmed ? 'Partner' : 'Beta demo'} · ${esc(d.kinds[c.kind])} · priority ${c.priority}</div></td>
         <td><span class="bstatus ${c.live ? 'live' : c.status}">${c.live ? 'Live' : c.status === 'live' ? 'Scheduled' : STATUS_LABEL[c.status]}</span></td>
         <td class="small nowrap">${sday(c.starts_at)} – ${sday(c.ends_at)}</td>
         <td class="num">${c.stats.views}</td><td class="num">${c.stats.clicks}</td><td class="num">${pct(c.stats.ctr)}</td><td class="num">${c.stats.wish}</td>
         <td class="num">${c.stats.follow}</td><td class="num">${c.stats.share}</td><td class="num ${c.stats.hideRate > 0.2 ? 'hot' : ''}">${c.stats.hide}${c.stats.views ? ` <span class="muted">(${pct(c.stats.hideRate)})</span>` : ''}</td><td class="num">${c.stats.opens}</td></tr>`).join('') || '<tr><td colspan="11" class="muted">No campaigns yet</td></tr>'}</table></div>
     <p class="small muted">“Hidden” is the share of people who saw it and chose Not interested: the main check that a deal suits its audience.</p>
     <div class="row"><h2 style="flex:1">Brands</h2><button class="btn small" id="newbrand">+ New brand</button></div>
-    <div class="card list-rows">${d.brands.map((b) => `<button class="r brow-admin" data-b="${esc(b.id)}">${logoBadge({ name: b.name, logo: b.logo_url, color: b.color }, 'small')}<span class="n"><b>${esc(b.name)}</b><span class="small muted">${esc((b.website || '').replace(/^https?:\/\/(www\.)?/, ''))} · ${b.followers} following</span></span><span class="bstatus ${b.status}">${esc(b.status)}</span></button>`).join('') || '<p class="small muted">No brands yet. Add a brand first, then its campaigns.</p>'}</div>`;
+    <div class="card list-rows">${d.brands.map((b) => `<button class="r brow-admin" data-b="${esc(b.id)}">${logoBadge({ name: b.name, logo: b.logo_url, color: b.color }, 'small')}<span class="n"><b>${esc(b.name)}</b><span class="small muted">${b.confirmed ? 'Partner' : 'Beta demo'} · ${esc((b.website || '').replace(/^https?:\/\/(www\.)?/, ''))} · ${b.followers} following</span></span><span class="bstatus ${b.status}">${esc(b.status)}</span></button>`).join('') || '<p class="small muted">No brands yet. Add a brand first, then its campaigns.</p>'}</div>`;
   $('#newbrand').onclick = () => brandSheet({}, d);
   app.querySelectorAll('[data-b]').forEach((x) => (x.onclick = () => brandSheet(d.brands.find((b) => b.id === x.dataset.b), d)));
 }
@@ -253,6 +260,7 @@ function brandSheet(b, d) {
     <div class="field"><label>Tab colour behind the logo</label><input name="color" type="color" value="${esc(b.color || '#FFFFFF')}"></div>
     <div class="field"><label>Contact</label><input name="contact" value="${esc(b.contact || '')}" placeholder="Name, email"></div>
     <fieldset class="field"><legend>Admission checks (all four to approve)</legend>${d.checks.map((k) => `<label class="row small"><input type="checkbox" name="ck_${k}" ${checks[k] ? 'checked' : ''}> ${CHECK_LABEL[k]}</label>`).join('')}</fieldset>
+    <label class="row small"><input type="checkbox" name="confirmed" ${b.confirmed ? 'checked' : ''}> <span><b>Arrangement confirmed with the brand</b> (shows as Partner, allows public share links and push alerts). Leave unticked for beta demos.</span></label>
     <div class="field"><label>Status</label><select name="status">${['pending', 'approved', 'paused'].map((s) => `<option ${b.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
     <div class="field"><label>Notes</label><textarea name="notes" rows="2">${esc(b.notes || '')}</textarea></div>
     <div class="err" id="berr"></div>
@@ -263,7 +271,7 @@ function brandSheet(b, d) {
       e.preventDefault();
       const v = Object.fromEntries(new FormData(f));
       try {
-        await api('/api/admin/brands', { method: 'POST', body: { id: b.id, ...v, checks: Object.fromEntries(d.checks.map((k) => [k, !!v[`ck_${k}`]])) } });
+        await api('/api/admin/brands', { method: 'POST', body: { id: b.id, ...v, confirmed: !!v.confirmed, checks: Object.fromEntries(d.checks.map((k) => [k, !!v[`ck_${k}`]])) } });
         close(); toast('Brand saved'); adminPage();
       } catch (err) { $('#berr', s).textContent = err.message; }
     };
@@ -379,7 +387,7 @@ export async function campaignEditor(id) {
     try {
       if (b.dataset.st === 'live') await save();
       const r = await api(`/api/admin/campaigns/${encodeURIComponent(c.id)}/status`, { method: 'POST', body: { status: b.dataset.st } });
-      toast(b.dataset.st === 'live' ? (r.alerts ? `Live · ${r.alerts.sent} brand alert${r.alerts.sent === 1 ? '' : 's'} sent` : 'Scheduled: goes live on its start date') : 'Saved');
+      toast(b.dataset.st === 'live' ? (r.alerts?.demo ? 'Live as a beta demo (no push alerts)' : r.alerts ? `Live · ${r.alerts.sent} brand alert${r.alerts.sent === 1 ? '' : 's'} sent` : 'Scheduled: goes live on its start date') : 'Saved');
       campaignEditor(c.id);
     } catch (err) { $('#cerr').textContent = err.message; }
   }));

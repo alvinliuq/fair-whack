@@ -133,3 +133,7 @@ Partner brand deals on Home, under "Most popular - Top 20 this week". Code: `sha
   Brand deal alerts: Settings → Alerts, on by default, at most one a week for deals scoring 70+, within the 5-a-day push cap.
 - **Links out:** `/api/go/<campaign>` counts the click, then redirects with `utm_source=fairwhack` (untick for affiliate links).
 - **Results:** the campaign table shows seen, clicks, CTR, added to list, follows, shares, Not interested (and its rate), share-page opens.
+- **Beta demo vs Partner:** a brand shows as **Partner** only when "Arrangement confirmed with the brand" is ticked
+  (Admin → Brand deals → brand). Until then its campaigns are **Beta demo**: labelled so on the card and page, with a note
+  that the brand is not a partner and any extra Fair Whack discount is simulated; no public share link (friends only); no push alerts.
+  Before public launch every campaign must be confirmed with the brand.

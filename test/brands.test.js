@@ -58,7 +58,7 @@ function setup() {
 }
 
 async function makeCampaign(admin, extra = {}) {
-  const brand = await admin.call('/api/admin/brands', { name: 'Kalenji', website: 'https://www.decathlon.com.au', status: 'approved', checks: { known: 1, official: 1, real_offer: 1, overlap: 1 } });
+  const brand = await admin.call('/api/admin/brands', { name: 'Kalenji', website: 'https://www.decathlon.com.au', status: 'approved', confirmed: extra.confirmed ?? true, checks: { known: 1, official: 1, real_offer: 1, overlap: 1 } });
   assert.equal(brand.status, 200, brand.error);
   const day = 86400000;
   const c = await admin.call('/api/admin/campaigns', {
@@ -158,4 +158,24 @@ test('Top 20 is called "Most popular - Top 20 this week" until enough similar fa
   const { person } = setup();
   const t = await person('Tess');
   assert.equal((await t.call('/api/top20')).title, 'Most popular - Top 20 this week');
+});
+
+test('beta demo brands (not confirmed): labelled demo, no public link, no push alerts until confirmed', async () => {
+  const { person, env } = setup();
+  const admin = await person('Boss', 'admin');
+  const fan = await person('Fan');
+  const { id, brandId } = await makeCampaign(admin, { confirmed: false });
+  await fan.call(`/api/brands/${brandId}/follow`, { on: true }, 'PUT');
+  const r = await admin.call(`/api/admin/campaigns/${id}/status`, { status: 'live' });
+  assert.equal(r.alerts.demo, true);
+  assert.equal(r.alerts.sent, 0);
+  assert.equal((await fan.call('/api/brands/home')).campaigns[0].confirmed, false);
+  assert.equal((await fan.call(`/api/brands/c/${id}/share`, {})).status, 400, 'no public link for a demo');
+  const pub = await (await handle(new Request(`http://x/api/public/deal/${id}`), env)).json();
+  assert.equal(pub.ended, true, 'public page refuses demos');
+  // Confirming the brand later: alerts go out once.
+  const b = (await admin.call('/api/admin/brands')).brands[0];
+  await admin.call('/api/admin/brands', { ...b, confirmed: true, checks: { known: 1, official: 1, real_offer: 1, overlap: 1 } });
+  assert.equal((await fan.call('/api/brands/home')).campaigns[0].confirmed, true);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'brand'").get().n, 1);
 });
