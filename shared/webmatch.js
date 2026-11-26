@@ -88,7 +88,7 @@ export function matchRow(p, title, relax = false) {
   return { sizeUnknown: true };
 }
 
-/** The minimum the page aims for: below it, close matches are added (marked match: 'close', not counted for Lowest). */
+/** The minimum the page aims for: below it, close matches are added (marked match: 'close'; they count for Lowest too, a tester can Ignore them). */
 export const WEB_MIN = 5;
 
 export function sameOnline(p, results, haveRetailers = [], { min = WEB_MIN } = {}) {

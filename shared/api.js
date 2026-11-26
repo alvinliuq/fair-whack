@@ -842,7 +842,7 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
 });
 // Home "Deals on your list": which of these products is the lowest price anywhere: our stores plus the product's
 // Google Shopping results (looked up now if not saved in the last 24 hours, the same as opening the product page),
-// less what this tester ignored and less close matches. The same comparison as the product page's "Lowest" pill.
+// less what this tester ignored. The same comparison as the product page's "Lowest" pill.
 route('GET', '/api/lowest', async ({ env, user, url }) => {
   const ids = [...new Set((url.searchParams.get('ids') || '').split(',').filter(Boolean))].slice(0, 40);
   if (!ids.length) return json({ lowest: {} });
@@ -860,7 +860,7 @@ route('GET', '/api/lowest', async ({ env, user, url }) => {
       if (p.effective == null) continue;
       const others = twins.filter((o) => o.canonical === canonOf(r) && o.id !== p.id && o.effective != null).map((o) => o.effective);
       const w = await productWeb(env, user, r).catch(() => ({ results: [] }));
-      w.results.filter((x) => !x.ignored && x.match === 'same').forEach((x) => others.push(x.priceCents));
+      w.results.filter((x) => !x.ignored).forEach((x) => others.push(x.priceCents));
       out[p.id] = others.length > 0 && p.effective <= Math.min(...others);
     }
   };
