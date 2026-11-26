@@ -153,7 +153,7 @@ async function confirmPerson(who, el) {
         invalidate();
         toast(res.status === 'friends' ? `You and ${r.person.name} are now friends` : `Request sent to ${r.person.name}`);
         $('#sheet').hidden = true;
-        if (location.hash.startsWith('#/friends')) friendsPage(); else location.hash = '#/friends';
+        if (location.hash.startsWith('#/friends')) friendsPage(); else window.fwGo('#/friends');
       } catch (e) { toast(e.message); }
     };
   } catch (e) { el.innerHTML = `<p class="small">${esc(e.message)}</p>`; }
@@ -194,7 +194,7 @@ async function scanFriend() {
       c.width = w; c.height = h; g.drawImage(v, 0, 0, w, h);
       const r = jsQR(g.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
       const m = r?.data && r.data.match(/#\/add\/([A-Za-z0-9_-]+)/);
-      if (m) { close(); location.hash = `#/add/${m[1]}`; return; }
+      if (m) { close(); window.fwGo(`#/add/${m[1]}`); return; }
     }
     requestAnimationFrame(tick);
   };

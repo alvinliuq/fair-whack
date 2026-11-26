@@ -451,9 +451,9 @@ function savedTab() {
     ${st.routes.length ? st.routes.map((r, i) => `<div class="card srow"><div><b>${esc(r.name)}</b><small>${r.points.map((p) => esc(p.label.split(',')[0])).join(' → ')}</small></div>
       <div class="row" style="gap:6px"><button class="btn small" data-route="${i}">Show prices</button><button class="btn small danger" data-delr="${i}" aria-label="Delete route">✕</button></div></div>`).join('')
       : '<p class="small muted">No saved routes yet. Plan one in Route and tap ★ Save route.</p>'}`;
-  fz.querySelectorAll('[data-near]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.near)]; st.center = { lat: p.lat, lng: p.lng, label: p.name }; location.replace('#/fuel?tab=near'); }));
-  fz.querySelectorAll('[data-from]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.from)]; st.points = [{ label: p.name, lat: p.lat, lng: p.lng }, { label: '' }]; location.replace('#/fuel?tab=route'); }));
-  fz.querySelectorAll('[data-route]').forEach((b) => (b.onclick = () => { st.points = st.routes[Number(b.dataset.route)].points.map((p) => ({ ...p })); st.autoGo = true; location.replace('#/fuel?tab=route'); }));
+  fz.querySelectorAll('[data-near]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.near)]; st.center = { lat: p.lat, lng: p.lng, label: p.name }; window.fwGo('#/fuel?tab=near', { replace: true }); }));
+  fz.querySelectorAll('[data-from]').forEach((b) => (b.onclick = () => { const p = st.places[Number(b.dataset.from)]; st.points = [{ label: p.name, lat: p.lat, lng: p.lng }, { label: '' }]; window.fwGo('#/fuel?tab=route', { replace: true }); }));
+  fz.querySelectorAll('[data-route]').forEach((b) => (b.onclick = () => { st.points = st.routes[Number(b.dataset.route)].points.map((p) => ({ ...p })); st.autoGo = true; window.fwGo('#/fuel?tab=route', { replace: true }); }));
   fz.querySelectorAll('[data-delr]').forEach((b) => (b.onclick = async () => {
     const routes = st.routes.filter((_, i) => i !== Number(b.dataset.delr));
     const cur = await ctx.api('/api/household');

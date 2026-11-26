@@ -53,7 +53,7 @@ async function api(path, opts = {}) {
   if (res.status === 401 && !path.startsWith('/api/login')) {
     state.me = null;
     if (!location.hash.startsWith('#/login')) { try { sessionStorage.setItem('fw.next', location.hash); } catch {} }
-    location.hash = '#/login'; throw new Error('Please sign in');
+    location.replace('#/login'); throw new Error('Please sign in');
   }
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
   // Something changed (list, alert, settings, shares…): Home updates the next time it's shown.
@@ -195,7 +195,7 @@ views.login = (q) => {
       let next = '#/';
       try { next = sessionStorage.getItem('fw.next') || '#/'; sessionStorage.removeItem('fw.next'); sessionStorage.removeItem('fw.ref'); } catch {}
       if (!/^#\/[\w/?=&%.-]*$/.test(next) || next.startsWith('#/login')) next = '#/';
-      if (location.hash === next) route(); else location.hash = next;
+      if (location.hash === next) route(); else fwGo(next);
     } catch (err) { $('#err').textContent = err.message; }
   };
 };
@@ -230,7 +230,7 @@ views.welcome = async () => {
       const r = await api('/api/me'); state.profile = r.profile; state.needsProfile = r.needsProfile; profMod?.invalidate();
       document.body.classList.remove('onboarding');
       toast('Saved');
-      location.hash = pr.done ? '#/profile' : '#/';
+      fwGo(pr.done ? '#/profile' : '#/');
     } catch (err) { $('#err').textContent = err.message; }
   };
 };
@@ -368,7 +368,7 @@ views.home = async () => {
 
 // ----- One store's specials (from a Bargains tile) -----
 views.deals = async (q, store) => {
-  if (!STORES.includes(store)) { location.hash = '#/'; return; }
+  if (!STORES.includes(store)) { fwGo('#/'); return; }
   const f = { cat: q.get('cat') || '', sort: q.get('sort') === 'popular' ? 'popular' : '' };
   const link = (patch) => `#/deals/${store}${qs({ ...f, ...patch })}`;
   app.innerHTML = `
@@ -568,7 +568,7 @@ function bindSearchBox() {
   const form = $('#sf'), input = form.q, list = $('#sugg');
   $('#sb-photo').onclick = photoSearch;
   $('#sb-scan').onclick = () => openScanner().catch((e) => toast(e.message));
-  const go = (v) => { v = v.trim(); if (!v) return; list.hidden = true; input.blur(); location.hash = `#/search?q=${encodeURIComponent(v)}`; };
+  const go = (v) => { v = v.trim(); if (!v) return; list.hidden = true; input.blur(); fwGo(`#/search?q=${encodeURIComponent(v)}`); };
   form.onsubmit = (e) => { e.preventDefault(); go(input.value); };
   let timer, seq = 0;
   input.addEventListener('input', () => {
@@ -697,7 +697,7 @@ async function runPhoto(file) {
     if (r.found) {
       close();
       state.via = { kind: 'photo', query: r.query, label: r.label, thumb: (await shrink(file, 120)).dataUrl };
-      location.hash = `#/search?q=${encodeURIComponent(r.query)}`;
+      fwGo(`#/search?q=${encodeURIComponent(r.query)}`);
       return;
     }
     close();
@@ -709,7 +709,7 @@ function notFoundSheet(msg, guess, retry, retryLabel, tip = 'Tip: get the brand 
     <form id="nf" class="stack"><div class="field"><label for="nfq">Search by name instead</label><input id="nfq" name="q" value="${esc(guess || '')}" placeholder="e.g. Tim Tam"></div>
     <div class="row"><button type="button" class="btn light" id="nf-retry">${esc(retryLabel)}</button><button class="btn" style="flex:1">Search</button></div></form>`, (s, close) => {
     $('#nf-retry', s).onclick = () => { close(); retry(); };
-    $('#nf', s).onsubmit = (e) => { e.preventDefault(); const v = $('#nfq', s).value.trim(); if (!v) return; close(); location.hash = `#/search?q=${encodeURIComponent(v)}`; };
+    $('#nf', s).onsubmit = (e) => { e.preventDefault(); const v = $('#nfq', s).value.trim(); if (!v) return; close(); fwGo(`#/search?q=${encodeURIComponent(v)}`); };
   });
 }
 
@@ -740,8 +740,8 @@ async function openScanner() {
     say(`<div class="spin" style="margin:0 auto 10px"></div>Found <b>${esc(code)}</b>. Looking it up…`);
     try {
       const r = await api(`/api/search/barcode?code=${encodeURIComponent(code)}`);
-      if (r.found && r.productId) { close(); location.hash = `#/p/${encodeURIComponent(r.productId)}`; return; }
-      if (r.found && r.query) { close(); state.via = { kind: 'barcode', code, query: r.query, label: r.label }; location.hash = `#/search?q=${encodeURIComponent(r.query)}`; return; }
+      if (r.found && r.productId) { close(); fwGo(`#/p/${encodeURIComponent(r.productId)}`); return; }
+      if (r.found && r.query) { close(); state.via = { kind: 'barcode', code, query: r.query, label: r.label }; fwGo(`#/search?q=${encodeURIComponent(r.query)}`); return; }
       close();
       notFoundSheet(`We don't have barcode <b>${esc(code)}</b> yet. Not every product's barcode is in our data during the beta.`, '', () => openScanner().catch((e) => toast(e.message)), 'Scan again', '');
     } catch (e) { close(); toast(e.message); }
@@ -1192,23 +1192,23 @@ async function maybeAskPush() {
 
 
 // ----- More, profile, Save More modules (FW2.0): public/profile.js, loaded on demand -----
-const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); location.hash = '#/login'; };
+const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); saveBack([]); location.replace('#/login'); };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=13'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
+  if (!profMod) { profMod = await import('/profile.js?v=14'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
 // Friends and sharing (Me button, top right on every page).
 let socMod;
 async function soc() {
-  if (!socMod) { socMod = await import('/social.js?v=3'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
+  if (!socMod) { socMod = await import('/social.js?v=4'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
   return socMod;
 }
 // FW2.2 "Your Brands, Your Deals" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.
 let brdMod;
 async function brd() {
-  if (!brdMod) { brdMod = await import('/brands.js?v=5'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
+  if (!brdMod) { brdMod = await import('/brands.js?v=6'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
   return brdMod;
 }
 views.brand = async (q, id) => (await brd()).page(id);
@@ -1232,7 +1232,7 @@ views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
 let fuelMod;
 views.fuel = async (q) => {
-  if (!fuelMod) { fuelMod = await import('/fuel.js?v=5'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
+  if (!fuelMod) { fuelMod = await import('/fuel.js?v=6'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
   return fuelMod.page(q);
 };
 
@@ -1393,42 +1393,63 @@ addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scroll
 const withoutMe = (h) => h.replace(/([?&])me=1(&|$)/, (m, a, b) => (b ? a : '')).replace(/[?&]$/, '') || '#/';
 const withMe = (h) => (/[?&]me=1\b/.test(h) ? h : `${h || '#/'}${h.includes('?') ? '&' : '?'}me=1`);
 function markMe(on) { history.replaceState(history.state, '', on ? withMe(location.hash) : withoutMe(location.hash)); }
-// The 5 tab pages (Home, Browse, Search, My List, More) are the top level: swiping back or forward there does
-// nothing. Every history entry gets a position number (idx). When a back or forward swipe would move away from a
-// tab page, the app goes straight back to it (history.go) without drawing the page in between. Pages inside a tab
-// (a store, a product, a deal…) still swipe back and forward normally.
+// The 5 tab pages (Home, Browse, Search, My List, More) are the top level. The app never adds entries to the
+// browser's history (every move replaces the current one), so on a tab page there is nothing to swipe back or
+// forward to: the phone's edge swipe simply does nothing. Pages inside a tab keep their own way back here
+// (fw.back in sessionStorage), used by the back arrow in the top bar and by a swipe from the left edge.
 const TAB_ROOTS = ['home', 'browse', 'search', 'lists', 'more'];
 function isTabRoot(hash = location.hash) {
   const parts = withoutMe(hash || '#/').slice(1).split('?')[0].split('/').filter(Boolean);
   const name = parts[0] || 'home';
   return TAB_ROOTS.includes(name) && parts.length <= 1;
 }
-const nav = { idx: null, root: false, returnTo: null, swallow: null };
-function stampEntry() {
-  if (history.state?.idx == null) {
-    let n = 0;
-    try { n = (Number(sessionStorage.getItem('fw.idx')) || 0) + 1; sessionStorage.setItem('fw.idx', String(n)); } catch { n = Date.now(); }
-    history.replaceState({ ...(history.state || {}), idx: n }, '', location.href);
-  }
-  nav.idx = history.state.idx;
-  nav.root = !!state.me && isTabRoot();
+const TAB_HOME = { home: '#/', browse: '#/browse', search: '#/search', lists: '#/lists', more: '#/more' };
+const backStack = () => { try { return JSON.parse(sessionStorage.getItem('fw.back')) || []; } catch { return []; } };
+const saveBack = (a) => { try { sessionStorage.setItem('fw.back', JSON.stringify(a.slice(-40))); } catch {} };
+/** Go to a page without adding to the browser's history. replace: true = this move is not a step to come back to. */
+function fwGo(to, { replace = false } = {}) {
+  to = String(to || '#/');
+  if (to.startsWith('/#')) to = to.slice(1);
+  const cur = location.hash || '#/';
+  if (isTabRoot(to)) saveBack([]);
+  else if (!replace && to !== cur) saveBack([...backStack(), cur]);
+  if (to === cur || (to === '#/' && cur === '')) { route(); return; }
+  location.replace(to);
 }
-// popstate comes before hashchange for the same move.
-addEventListener('popstate', () => {
-  const idx = history.state?.idx;
-  if (nav.returnTo != null) {
-    // Arrived back on the tab page after a blocked swipe: nothing to redraw.
-    if (idx === nav.returnTo) { nav.returnTo = null; nav.swallow = { hash: location.hash, at: Date.now() }; }
-    return;
-  }
-  if (nav.root && nav.idx != null && idx != null && idx !== nav.idx) {
-    nav.returnTo = nav.idx;
-    history.go(nav.idx - idx);
-  }
+/** One step back from a page inside a tab: where it came from, or else its tab page. */
+function fwBack() {
+  const a = backStack();
+  const prev = a.pop();
+  saveBack(a);
+  const tab = document.querySelector('#tabs a.on')?.dataset.tab || 'home';
+  location.replace(prev || TAB_HOME[tab] || '#/');
+}
+window.fwGo = fwGo; window.fwBack = fwBack;
+// Every link to an app page goes through fwGo (no history). data-replace links (tabs inside a page) don't add a step back.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="#/"], a[href="#"]');
+  if (!a || a.getAttribute('href') === '#' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+  e.preventDefault();
+  fwGo(a.getAttribute('href'), { replace: a.hasAttribute('data-replace') });
 });
+// Back arrow (top left) and a swipe from the left edge: only on pages inside a tab.
+function updateBackBtn() { document.body.classList.toggle('sub-page', !!state.me && !isTabRoot() && !/^#\/(login|welcome)/.test(location.hash)); }
+$('#back-btn')?.addEventListener('click', () => fwBack());
+let edge = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  edge = document.body.classList.contains('sub-page') && e.touches.length === 1 && t.clientX < 28 && $('#sheet').hidden ? { x: t.clientX, y: t.clientY } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!edge) return;
+  const t = e.changedTouches[0];
+  if (t.clientX - edge.x > 70 && Math.abs(t.clientY - edge.y) < 60) fwBack();
+  edge = null;
+}, { passive: true });
+// A notification tapped while the app is open: the service worker asks the page to go there (no new history entry).
+navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.fwGo) fwGo(e.data.fwGo); });
 
 async function route() {
-  stampEntry();
   if (/[?&]me=1\b/.test(location.hash)) {
     history.replaceState(history.state, '', withoutMe(location.hash));
     if (state.me) setTimeout(() => soc().then((m) => m.meSheet()).catch(() => {}), 0);
@@ -1447,9 +1468,10 @@ async function route() {
   if (state.me) document.body.classList.remove('anon');
   const name = parts[0] || 'home';
   // Profile is required during the beta.
-  if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { location.hash = '#/welcome'; return; }
+  if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { fwGo('#/welcome'); return; }
   document.body.classList.toggle('onboarding', name === 'welcome' && state.needsProfile);
   document.body.classList.toggle('on-search', name === 'search');
+  updateBackBtn();
   const tab = { home: 'home', digest: 'home', deals: 'home', brand: 'home', brands: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
@@ -1504,21 +1526,10 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('.listcard [data-same]');
   if (!t) return;
   e.preventDefault(); e.stopPropagation();
-  location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
+  fwGo(`#/same/${encodeURIComponent(t.dataset.same)}`);
 }, true);
-addEventListener('hashchange', (e) => {
-  if (nav.returnTo != null) return; // a blocked swipe on a tab page: on its way back, draw nothing
-  if (nav.swallow) { const sw = nav.swallow; nav.swallow = null; if (sw.hash === location.hash && Date.now() - sw.at < 2000) { stampEntry(); return; } }
-  leftHash = withoutMe(new URL(e.oldURL).hash || '#/'); route();
-});
-// Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
-// so the back swipe goes to the page above (More), not the previous tab.
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[data-replace]');
-  if (!a || e.metaKey || e.ctrlKey) return;
-  e.preventDefault();
-  location.replace(a.getAttribute('href'));
-});
+addEventListener('hashchange', (e) => { leftHash = withoutMe(new URL(e.oldURL).hash || '#/'); route(); });
+// Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) are data-replace links: fwGo with replace.
 // Keep the app at its own size: no pinch zoom (iPhone ignores user-scalable=no in Safari).
 ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });

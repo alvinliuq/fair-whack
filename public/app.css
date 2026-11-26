@@ -915,3 +915,6 @@ td.bcol { min-width: 150px; }
 .bcard-wrap { display: flex; flex-direction: column; gap: 8px; }
 .bcard-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 4px; border-bottom: 1px solid var(--line); }
 .bgrid .bcard { flex: none; }
+#back-btn { display: none; margin-right: 4px; }
+body.sub-page #back-btn { display: inline-grid; }
+body.sub-page .topbar .brand em { display: none; }

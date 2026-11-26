@@ -240,7 +240,7 @@ function setPath(a, path, value, s) {
 export async function editor(id) {
   const { app, esc, api, toast } = ctx;
   const s = sectionById(id);
-  if (!s) { location.hash = '#/profile'; return; }
+  if (!s) { window.fwGo('#/profile'); return; }
   const d = await load();
   const a = structuredClone(d.answers);
   let dirty = false;
@@ -305,13 +305,13 @@ export async function editor(id) {
         const r = await api(`/api/household/${id}`, { method: 'PUT', body: { answers: a } });
         cache = { ...d, answers: r.answers, household: r.household ?? d.household }; summaryP = null;
         if (id === 'about' && Array.isArray(a.stores) && a.stores.length) { try { ctx.setHomeStores(a.stores); } catch {} }
-        dirty = false; toast('Saved'); location.hash = '#/profile';
+        dirty = false; toast('Saved'); window.fwGo('#/profile');
       } catch (err) { btn.disabled = false; toast(err.message); }
     };
     document.getElementById('clear').onclick = async () => {
       if (!confirmClear()) return;
       const r = await api(`/api/household/${id}`, { method: 'DELETE' });
-      cache = { ...d, answers: r.answers }; summaryP = null; dirty = false; toast('Cleared'); location.hash = '#/profile';
+      cache = { ...d, answers: r.answers }; summaryP = null; dirty = false; toast('Cleared'); window.fwGo('#/profile');
     };
   };
   const confirmClear = () => window.confirm(`Clear everything in ${s.title}?${id === 'about' ? ' Your age, gender and favourite categories from sign-up stay.' : ''}`);

@@ -1,6 +1,6 @@
 // Fair Whack service worker: offline shell + push notifications.
-const CACHE = 'fw-shell-v67';
-const SHELL = ['/', '/index.html', '/app.css?v=45', '/app.js?v=56', '/profile.js?v=13', '/household.js?v=8', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=3', '/brands.js?v=5', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'fw-shell-v68';
+const SHELL = ['/', '/index.html', '/app.css?v=46', '/app.js?v=57', '/profile.js?v=14', '/household.js?v=8', '/fuel.js?v=6', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=4', '/brands.js?v=6', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -49,7 +49,8 @@ self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const target = e.notification.data && e.notification.data.url || '/#/';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
-    for (const c of cs) if ('focus' in c) { c.navigate(target).catch(() => {}); return c.focus(); }
+    // An open app is asked to go there itself (no new history entry: tab pages stay the top level).
+    for (const c of cs) if ('focus' in c) { c.postMessage({ fwGo: new URL(target, self.location.origin).hash || '#/' }); return c.focus(); }
     return self.clients.openWindow(target);
   }));
 });

@@ -145,7 +145,7 @@ export async function page(id) {
       await api(`/api/brands/${encodeURIComponent(c.brand.id)}/hide`, { method: 'PUT', body: { on, campaign: c.id } });
       if (on) {
         toast(`You won't see ${c.brand.name} deals for 90 days`, { label: 'Undo', run: () => api(`/api/brands/${encodeURIComponent(c.brand.id)}/hide`, { method: 'PUT', body: { on: false } }).then(() => toast('Shown again')) });
-        location.hash = '#/';
+        window.fwGo('#/');
       } else { toast('Shown again'); page(id); }
     } catch (e) { toast(e.message); }
   };
@@ -420,7 +420,7 @@ export async function campaignEditor(id) {
   };
   f.onsubmit = async (e) => {
     e.preventDefault();
-    try { const nid = await save(); toast('Saved'); if (!c.id) location.hash = `#/admincampaign/${nid}`; else campaignEditor(nid); } catch (err) { $('#cerr').textContent = err.message; }
+    try { const nid = await save(); toast('Saved'); if (!c.id) window.fwGo(`#/admincampaign/${nid}`); else campaignEditor(nid); } catch (err) { $('#cerr').textContent = err.message; }
   };
   f.querySelectorAll('[data-st]').forEach((b) => (b.onclick = async () => {
     try {
@@ -431,5 +431,5 @@ export async function campaignEditor(id) {
     } catch (err) { $('#cerr').textContent = err.message; }
   }));
   const del = $('#cdel');
-  if (del) del.onclick = async () => { if (!confirm('Delete this campaign? Its figures stay in the totals.')) return; await api(`/api/admin/campaigns/${encodeURIComponent(c.id)}`, { method: 'DELETE' }); location.hash = '#/adminbrands'; };
+  if (del) del.onclick = async () => { if (!confirm('Delete this campaign? Its figures stay in the totals.')) return; await api(`/api/admin/campaigns/${encodeURIComponent(c.id)}`, { method: 'DELETE' }); window.fwGo('#/adminbrands'); };
 }
