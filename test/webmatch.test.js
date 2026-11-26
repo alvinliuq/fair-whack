@@ -24,6 +24,19 @@ test('keeps the same product, drops other sizes, used, odd prices and our own st
   assert.equal(out[0].retailer, 'chemistwarehouse');
 });
 
+test('electronics: colour in brackets and category words are optional, the model number is not', () => {
+  const g = { name: 'Garmin VivoActive 5 Smart Watch (Blue/Blue Metallic)', brand: 'GARMIN', effective: 24800 };
+  const out = sameOnline(g, [
+    r('Garmin Vivoactive 5', 'RYDA', 24885),
+    r('Garmin Vivoactive 5 GPS Smartwatch - Blue/Blue Metallic, A', 'CeX', 21000, { used: true }),
+    r('Garmin Vivoactive 5 GPS Smartwatch', 'Harvey Store', 36224),
+    r('Garmin Vivoactive 6 GPS Smartwatch', 'Shop Six', 30000),
+    r('Garmin Fenix 5 Blue Smartwatch', 'Cash Converters', 14900),
+    r('Garmin vivoactive 5 Power Bundle', 'Amazon', 180000),
+  ], ['jbhifi']);
+  assert.deepEqual(out.map((x) => x.store), ['RYDA', 'Harvey Store']);
+});
+
 test('query and store names', () => {
   assert.equal(webQuery({ name: 'Bone Matrix', size: '120 Capsules' }), 'Bone Matrix 120 Capsules');
   assert.equal(webQuery({ name: 'Bone Matrix 120 Capsules', size: '120 capsules' }), 'Bone Matrix 120 Capsules');

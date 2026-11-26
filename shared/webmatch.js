@@ -5,6 +5,9 @@ import { normText } from './normalize.js';
 import { RETAILER_INFO } from './retailers.js';
 
 const STOP = new Set(['and', 'the', 'with', 'for', 'of', 'in', 'a', 'pack', 'x', 'new']);
+// Category words Google titles often leave out or write differently ("Smart Watch" / "Smartwatch"): not required.
+const GENERIC = new Set(['smart', 'watch', 'smartwatch', 'gps', 'fitness', 'tracker', 'wireless', 'bluetooth', 'headphones', 'earbuds',
+  'speaker', 'phone', 'mobile', 'tablet', 'laptop', 'notebook', 'tv', 'television', 'console', 'game', 'edition', 'version', 'device', 'unit']);
 // Words for the same unit, so "90 Capsules" matches "90 caps".
 const UNIT = { capsules: 'cap', capsule: 'cap', caps: 'cap', cap: 'cap', tablets: 'tab', tablet: 'tab', tabs: 'tab', tab: 'tab',
   softgels: 'cap', softgel: 'cap', grams: 'g', gram: 'g', litre: 'l', litres: 'l', liter: 'l', ml: 'ml', kg: 'kg', g: 'g', l: 'l', pk: 'pk' };
@@ -30,7 +33,9 @@ export function sameOnline(p, results, haveRetailers = []) {
   const want = words(`${p.name} ${p.size || ''}`);
   const nums = numbers(want);
   const brand = words(p.brand || '').filter((w) => !STOP.has(w));
-  const key = [...new Set(want.filter((w) => !STOP.has(w) && !/^\d/.test(w) && !['cap', 'tab', 'g', 'kg', 'ml', 'l', 'pk'].includes(w)))];
+  // Words in brackets are usually the colour or style ("(Blue/Blue Metallic)"): not required either.
+  const core = words(String(p.name || '').replace(/\([^)]*\)/g, ' '));
+  const key = [...new Set(core.filter((w) => !STOP.has(w) && !GENERIC.has(w) && !/^\d/.test(w) && !['cap', 'tab', 'g', 'kg', 'ml', 'l', 'pk'].includes(w)))];
   const price = p.effective || p.price || 0;
   const best = new Map();
   for (const r of results || []) {
@@ -40,8 +45,10 @@ export function sameOnline(p, results, haveRetailers = []) {
     const t = words(r.title);
     const ts = new Set(t);
     if (brand.length && !brand.every((w) => ts.has(w))) continue;
-    // Every word of the name: one missing word is often the variant ("Advanced", "Kids", "Plus").
-    if (!key.every((w) => ts.has(w))) continue;
+    // Every other word of the name: one missing word is often the variant ("Advanced", "Kids", "Plus").
+    // A word may also sit joined to the next one in the title ("vivoactive" in "vivoactive5").
+    const joined = t.join('');
+    if (!key.every((w) => ts.has(w) || (w.length >= 5 && joined.includes(w)))) continue;
     const tn = numbers(t);
     if ([...nums].some((n) => !tn.has(n))) continue;
     if (price && (r.priceCents < price * 0.4 || r.priceCents > price * 2.5)) continue;
