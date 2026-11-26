@@ -16,6 +16,8 @@ test('digest returns the lowest current price for list items on special elsewher
   ins.run('chemistwarehouse:1', 'chemistwarehouse', '1', 4799, 7399, 1, now);
   ins.run('coles:1', 'coles', '1', 3700, null, 0, old);
   ins.run('woolworths:1', 'woolworths', '1', 3700, null, 0, old);
+  // Older than 14 days: not used, even though cheaper.
+  ins.run('aldi:1', 'aldi', '1', 2000, null, 0, new Date(Date.now() - 20 * 86400000).toISOString());
   const res = await handle(new Request('http://x/api/login', { method: 'POST', body: JSON.stringify({ name: 'Al', code: 'beta' }) }), env);
   const cookie = res.headers.get('Set-Cookie').split(';')[0];
   const call = async (p, body) => (await handle(new Request(`http://x${p}`, { method: body ? 'POST' : 'GET', headers: { Cookie: cookie }, body: body ? JSON.stringify(body) : undefined }), env)).json();

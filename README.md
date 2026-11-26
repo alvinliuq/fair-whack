@@ -85,7 +85,7 @@ npm test
 ## FW1.2 (Grape & Lime)
 
 - **Look:** Grape & Lime identity from the design handoff (`public/icons/*` regenerated, Bricolage Grotesque + DM Sans from Google Fonts). Store names are neutral text; no store colours.
-- **Home:** "On special from your list" is a swipe rail with Woolworths / Coles toggles (both on by default, remembered per device). The second section is "Bargains you're missing" and hides items already on the tester's list.
+- **Home:** "Best deals on your list" (was "On special from your list"; FW2.2: in All stores it shows the cheapest store for each item on special, marked "Lowest" when that store has no special) is a swipe rail with Woolworths / Coles toggles (both on by default, remembered per device). The second section is "Bargains you're missing" and hides items already on the tester's list.
 - **Search by photo:** `POST /api/search/photo` sends a resized JPEG to Workers AI (`[ai]` binding in `wrangler.toml`, model `@cf/meta/llama-3.2-11b-vision-instruct`, licence accepted automatically on first use, LLaVA as fallback). Photos are not stored.
 - **Scan a barcode:** `public/barcode.js` decodes EAN-13 / UPC-A / EAN-8 from the camera (iPhone Safari has no BarcodeDetector). `GET /api/search/barcode` matches `retailer_product.gtin` in any leading-zero form, then falls back to an Open Food Facts name lookup.
 - **Restore FW1.1:** branch `release-fw1.1`.

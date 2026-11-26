@@ -63,7 +63,6 @@ async function api(path, opts = {}) {
 
 function badges(p, { stale = true } = {}) {
   const b = [];
-  if (p.lowestNotSpecial) b.push('<span class="badge b-low" title="Cheapest store right now, though not on special there">Lowest price</span>');
   if (p.promoType === 'half_price') b.push('<span class="badge b-half">½ PRICE</span>');
   else if (p.special) b.push(`<span class="badge b-promo">${esc(p.multibuy ? p.promoText || 'Multibuy' : p.promoText || 'Special')}</span>`);
   if (p.discountFlag === 'low12') b.push('<span class="badge b-low">12-wk low</span>');
@@ -123,7 +122,7 @@ function tile(p) {
     <span class="ret ${p.retailer}">${RET[p.retailer]}</span>
     <div class="name">${esc(p.name)}</div>
     <div class="foot">
-      <div class="price num">${money(p.effective)}${p.was ? `<small>${money(p.was)}</small>` : ''}</div>
+      <div class="price num${p.lowestNotSpecial ? ' has-lp' : ''}">${money(p.effective)}${p.was ? `<small>${money(p.was)}</small>` : ''}${p.lowestNotSpecial ? '<span class="lp" title="Cheapest store right now (not on special there)">Lowest</span>' : ''}</div>
       ${p.multibuy ? `<div class="unit">${esc(p.promoText)} · ${money(p.price)} for 1</div>` : ''}
       <div class="unit num">${esc(unitText(p))}${p.perUse ? ` · ${money(p.perUse)}/use` : ''}</div>
       ${heart(p)}
@@ -279,7 +278,7 @@ function renderMine(el, d) {
     pool = [...groups.values()].map((g) => {
       const offers = [...g.values()];
       const low = Math.min(...offers.map((o) => o.effective));
-      // A store without a special can still be the cheapest: then show that one (marked "Lowest price").
+      // A store without a special can still be the cheapest: then show that one (marked "Lowest" next to the price).
       const cheaper = offers.map((o) => d.lowest?.[o.itemId]).filter((x) => x && x.effective < low).sort((x, y) => x.effective - y.effective)[0];
       if (cheaper) return [{ ...cheaper, lowestNotSpecial: true, sortSaving: Math.max(...offers.map((o) => o.saving || 0)) }];
       return offers.filter((o) => o.effective === low).sort((x, y) => rank(x.retailer) - rank(y.retailer));
@@ -297,7 +296,7 @@ function renderMine(el, d) {
   let body;
   if (!inList.length) body = `<div class="rail-empty"><b>Nothing from this list is on special right now</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
   else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
-  el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${pool.length} on special${sel.length ? '' : ' · cheapest store for each'}</p>` : '') + body;
+  el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${sel.length ? `${pool.length} on special` : `${pool.length} item${pool.length === 1 ? '' : 's'} · cheapest store for each`}</p>` : '') + body;
   el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
     const r = b.dataset.store;
     let next = r ? (sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r]) : [];
@@ -345,7 +344,7 @@ views.home = async () => {
     <section class="hsec hero"><h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
       <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
       ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}</section>
-    <section class="hsec"><div class="sec-head"><h2>On special from your list</h2><span id="minepick"></span></div>
+    <section class="hsec"><div class="sec-head"><h2>Best deals on your list</h2><span id="minepick"></span></div>
       <div id="mine"><div class="skeleton" style="height:120px"></div></div></section>
     <section class="hsec"><div id="sharedrail"></div></section>
     <section class="hsec"><div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>

@@ -1048,8 +1048,8 @@ route('GET', '/api/digest', async ({ env, user }) => {
     }
   }
   // "Cheapest store for each" (Home, All stores): an item on special somewhere is shown at its lowest current price
-  // anywhere, special or not, using prices seen in the last 28 days.
-  const recent = new Date(Date.now() - 28 * 86400000).toISOString();
+  // anywhere, special or not, using prices seen in the last 14 days (older than 8 days shows "Checked … ago").
+  const recent = new Date(Date.now() - 14 * 86400000).toISOString();
   const lowest = {};
   for (const it of items) {
     if (!best.has(it.item_id)) continue;
