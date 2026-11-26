@@ -1252,7 +1252,7 @@ views.more = async () => (await prof()).more();
 // Friends and sharing (Me button, top right on every page).
 let socMod;
 async function soc() {
-  if (!socMod) { socMod = await import('/social.js?v=5'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
+  if (!socMod) { socMod = await import('/social.js?v=6'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
   return socMod;
 }
 // FW2.2 "Your Brands, Your Deals" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.

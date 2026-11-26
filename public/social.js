@@ -37,11 +37,11 @@ export async function meSheet() {
   const badge = (n) => (n ? `<span class="pill">${n}</span>` : '');
   sheet(`<div class="me-head"><span class="avatar big">${esc(initials(state.me.name))}</span><div><b>${esc(state.me.name)}</b>${s ? `<div class="small muted">User ID: ${esc(s.me.handle)}</div>` : ''}</div></div>
     <div class="card menu">
-      <a href="#/friends"><span class="ic">🧑‍🤝‍🧑</span><span>Friends ${badge(s?.incoming.length)}<span class="sub">Your QR code · add friends · requests</span></span></a>
-      <a href="#/shared"><span class="ic">🎁</span><span>Shared with you ${badge(s?.unseenShares)}<span class="sub">Products your friends sent</span></span></a>
-      <a href="#/following"><span class="ic">🏷️</span><span>Brands you follow<span class="sub">Their current deals · unfollow</span></span></a>
       <a href="#/account"><span class="ic">👤</span><span>My account<span class="sub">Name and User ID</span></span></a>
       <a href="#/profile"><span class="ic">📋</span><span>My profile<span class="sub">You and your family, fuel, bills</span></span></a>
+      <a href="#/friends"><span class="ic">🧑‍🤝‍🧑</span><span>My friends ${badge(s?.incoming.length)}<span class="sub">Your QR code · add friends · requests</span></span></a>
+      <a href="#/shared"><span class="ic">🎁</span><span>Shared with you ${badge(s?.unseenShares)}<span class="sub">Products your friends sent</span></span></a>
+      <a href="#/following"><span class="ic">🏷️</span><span>Brands you follow<span class="sub">Their current deals · unfollow</span></span></a>
       ${state.me.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
       <button id="me-out"><span class="ic">↩︎</span><span>Sign out</span></button>
     </div>`, null, () => ctx.markMe(false));
@@ -72,10 +72,10 @@ const invalidate = () => { cache = null; };
 // ---------- Friends ----------
 export async function friendsPage() {
   const { app, esc, api, toast } = ctx;
-  app.innerHTML = '<h1>Friends</h1><p class="muted">Loading…</p>';
+  app.innerHTML = '<h1>My friends</h1><p class="muted">Loading…</p>';
   const s = await socialData(true);
   const person = (p, actions) => `<div class="r friend"><span class="avatar">${esc(initials(p.name))}</span><span class="n"><b>${esc(p.name)}</b><span class="small muted">User ID: ${esc(p.handle || '')}</span></span>${actions}</div>`;
-  app.innerHTML = `<h1>Friends</h1>
+  app.innerHTML = `<h1>My friends</h1>
     <p class="lead">Share good finds with friends. Friends see only what you share with them, never your lists or profile.</p>
     <div class="card qr-card">
       <div id="qr" class="qr" aria-label="Your friend QR code"></div>
