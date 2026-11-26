@@ -34,9 +34,12 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
   return [k, v ?? true];
 }));
 const ALL_RETAILERS = [...Object.keys(SPECIALS), ...Object.keys(SOURCES)];
-if (opt.retailer && opt.retailer !== 'zyte' && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer]) && !(mode === 'serpcheck' && opt.retailer === 'kmart')) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
+// Several stores in one run: "woolworths,coles" (GitHub keeps only one run waiting, so a second waiting run cancels the first).
+const LIST = opt.retailer && opt.retailer.includes(',') ? opt.retailer.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean) : null;
+if (LIST) { const bad = LIST.filter((r) => !ALL_RETAILERS.includes(r)); if (bad.length) { console.error(`Unknown retailer ${bad.join(', ')}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); } }
+if (!LIST && opt.retailer && opt.retailer !== 'zyte' && !ALL_RETAILERS.includes(opt.retailer) && !(mode === 'zyte' && ZYTE_TARGETS[opt.retailer]) && !(mode === 'serpcheck' && opt.retailer === 'kmart')) { console.error(`Unknown retailer ${opt.retailer}. Known: ${ALL_RETAILERS.join(', ')}`); process.exit(2); }
 // --retailer=zyte: every store read through Zyte (second batch).
-const RETAILERS = opt.retailer === 'zyte' ? Object.keys(SOURCES).filter((r) => SOURCES[r].runner === 'zyte') : opt.retailer ? [opt.retailer] : ALL_RETAILERS;
+const RETAILERS = LIST ? LIST : opt.retailer === 'zyte' ? Object.keys(SOURCES).filter((r) => SOURCES[r].runner === 'zyte') : opt.retailer ? [opt.retailer] : ALL_RETAILERS;
 // Saturday's run skips the supermarkets (their specials change on Wednesdays).
 const SATURDAY_RETAILERS = RETAILERS.filter((r) => !SUPERMARKETS.includes(r));
 
