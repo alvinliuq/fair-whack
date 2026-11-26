@@ -81,6 +81,19 @@ const ZY = {
   ebgames: [['nintendo switch', 'Electronics > Gaming'], ['playstation 5', 'Electronics > Gaming'], ['xbox', 'Electronics > Gaming'], ['pokemon', 'Toys > Collectibles'],
     ['funko pop', 'Toys > Collectibles'], ['controller', 'Electronics > Gaming'], ['gaming headset', 'Electronics > Gaming'], ['lego', 'Toys'], ['gaming chair', 'Electronics > Gaming'],
     ['trading cards', 'Toys > Collectibles']].map(([q, cat]) => [`https://www.ebgames.com.au/search?q=${enc(q)}`, cat]),
+  // Third batch (checked 27 Nov): Harvey Norman's search pages work as plain HTML (its category pages don't);
+  // PETstock and Pet Circle search pages need a browser.
+  harveynorman: [['tv', 'Electronics > TVs'], ['laptop', 'Electronics > Computers'], ['fridge', 'Electronics > Appliances'], ['washing machine', 'Electronics > Appliances'],
+    ['vacuum', 'Electronics > Appliances'], ['coffee machine', 'Electronics > Appliances'], ['headphones', 'Electronics > Audio'], ['air fryer', 'Electronics > Appliances'],
+    ['dishwasher', 'Electronics > Appliances'], ['mobile phone', 'Electronics > Phones'], ['air conditioner', 'Electronics > Appliances'], ['soundbar', 'Electronics > Audio'],
+    ['camera', 'Electronics > Cameras'], ['gaming', 'Electronics > Gaming'], ['mattress', 'Home & Hardware > Bedroom'], ['sofa', 'Home & Hardware > Furniture']]
+    .map(([q, cat]) => [`https://www.harveynorman.com.au/catalogsearch/result/?q=${enc(q)}`, cat]),
+  petstock: [['dog food', 'Pet > Dog'], ['cat food', 'Pet > Cat'], ['dog treats', 'Pet > Dog'], ['cat litter', 'Pet > Cat'], ['flea and tick', 'Pet'], ['dog toys', 'Pet > Dog'],
+    ['puppy food', 'Pet > Dog'], ['kitten food', 'Pet > Cat'], ['dog bed', 'Pet > Dog'], ['bird food', 'Pet > Bird'], ['fish food', 'Pet > Fish'], ['worming', 'Pet']]
+    .map(([q, cat]) => [`https://www.petstock.com.au/search?q=${enc(q)}`, cat]),
+  petcircle: [['dog food', 'Pet > Dog'], ['cat food', 'Pet > Cat'], ['dog treats', 'Pet > Dog'], ['cat litter', 'Pet > Cat'], ['flea and tick', 'Pet'], ['dog toys', 'Pet > Dog'],
+    ['puppy food', 'Pet > Dog'], ['kitten food', 'Pet > Cat'], ['dog bed', 'Pet > Dog'], ['worming', 'Pet'], ['cat treats', 'Pet > Cat'], ['bird food', 'Pet > Bird']]
+    .map(([q, cat]) => [`https://www.petcircle.com.au/search?q=${enc(q)}`, cat]),
 };
 const zyteSource = (r, extractFrom, maxPages, specialsPages = 6) => ({
   runner: 'zyte',
@@ -232,6 +245,10 @@ export const SOURCES = {
   // come through. Kept as is (cheap); a better source is a later decision.
   decathlon: (() => { const z = zyteSource('decathlon', 'browserHtml', 2, 4); for (const r of [...z.specials, ...z.catalogue]) r.input.productPagesForUnpriced = true; return { ...z, host: 'www.decathlon.com.au' }; })(),
   ebgames: { ...zyteSource('ebgames', 'browserHtml', 2, 4), host: 'www.ebgames.com.au' },
+  // Harvey Norman listings sometimes show a finance figure (e.g. "$2.12") in the price slot: ignore implausible prices.
+  harveynorman: { ...zyteSource('harveynorman', 'httpResponseBody', 2), host: 'www.harveynorman.com.au', minPrice: 5 },
+  petstock: { ...zyteSource('petstock', 'browserHtml', 2, 4), host: 'www.petstock.com.au' },
+  petcircle: { ...zyteSource('petcircle', 'browserHtml', 2, 4), host: 'www.petcircle.com.au' },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
     host: 'www.jbhifi.com.au',
@@ -255,6 +272,7 @@ export function adaptItem(retailer, item) {
   const site = s.host.replace(/^www\./, '');
   if (out.url && !new URL(out.url).hostname.endsWith(site)) return { ...out, error: `links to another site (${new URL(out.url).hostname})` };
   if (out.productId == null || !out.name || out.price == null) return { ...out, error: out.error || 'missing id, name or price' };
+  if (s.minPrice && out.price < s.minPrice) return { ...out, error: `implausible price $${out.price}` };
   return out;
 }
 

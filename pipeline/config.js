@@ -69,6 +69,10 @@ export const RUN_CAPS_USD = {
   ...Object.fromEntries(['target', 'thegoodguys', 'petbarn', 'peto', 'decathlon', 'ebgames'].flatMap((r) => [
     [`specials:${r}`, r === 'decathlon' ? 3 : 1], [`catalogue:${r}`, r === 'decathlon' ? 9 : 5], [`wishlist:${r}`, 2],
   ])),
+  // Third batch (Zyte): Harvey Norman plain HTML; PETstock and Pet Circle need a browser.
+  ...Object.fromEntries(['harveynorman', 'petstock', 'petcircle'].flatMap((r) => [
+    [`specials:${r}`, r === 'harveynorman' ? 1 : 2], [`catalogue:${r}`, r === 'harveynorman' ? 3 : 4], [`wishlist:${r}`, 2],
+  ])),
 };
 
 // The monthly budget (soft and hard limits, what counts) is in shared/budget.js,

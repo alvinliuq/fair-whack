@@ -8,7 +8,7 @@
   <title>A deal shared with you · Fair Whack</title>
   <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap">
-  <link rel="stylesheet" href="/app.css?v=44">
+  <link rel="stylesheet" href="/app.css?v=45">
   <style>
     body { padding-bottom: 30px; }
     main { max-width: 560px; margin: 0 auto; padding: 14px; }
@@ -26,7 +26,7 @@
     const m = document.getElementById('m');
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const money = (c) => (c == null ? '' : `$${(c / 100).toFixed(2)}`);
-    const STORE = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon' };
+    const STORE = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon', harveynorman: 'Harvey Norman', petstock: 'PETstock', petcircle: 'Pet Circle' };
     const day = (iso) => new Date(iso).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
     const app = `/#/brand/${encodeURIComponent(id)}`;
     const join = `/#/login?ref=${encodeURIComponent(ref)}&next=${encodeURIComponent(`brand/${id}`)}`;

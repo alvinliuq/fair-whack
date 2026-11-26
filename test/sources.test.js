@@ -89,3 +89,17 @@ test('second batch (Zyte): listing items become products; Decathlon and EB Games
   assert.equal(r.snapshot.was_cents, 249500);
   assert.equal(r.snapshot.is_special, 1);
 });
+
+test('third batch (Zyte): Harvey Norman plain HTML, PETstock and Pet Circle by browser; implausible prices dropped', async () => {
+  const { ACTIVE_SOURCES, adaptItem } = await import('../pipeline/sources.js');
+  for (const r of ['harveynorman', 'petstock', 'petcircle']) {
+    assert.equal(ACTIVE_SOURCES[r].runner, 'zyte', r);
+    assert.ok(ACTIVE_RETAILERS.includes(r), `${r} shown in the app`);
+  }
+  assert.equal(ACTIVE_SOURCES.harveynorman.catalogue[0].input.extractFrom, 'httpResponseBody');
+  assert.equal(ACTIVE_SOURCES.petstock.catalogue[0].input.extractFrom, 'browserHtml');
+  const bad = adaptItem('harveynorman', { name: 'LG 77-inch OLED TV', price: '2.12', url: 'https://www.harveynorman.com.au/lg-77', productId: 'OLED77' });
+  assert.match(bad.error, /implausible/);
+  const ok = adaptItem('harveynorman', { name: 'LG 77-inch OLED TV', price: '3591', url: 'https://www.harveynorman.com.au/lg-77', productId: 'OLED77' });
+  assert.equal(ok.error, undefined);
+});

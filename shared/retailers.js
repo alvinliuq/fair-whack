@@ -20,6 +20,10 @@ export const RETAILER_INFO = {
   ebgames:          { name: 'EB Games',          kind: 'general', fallbackCategory: 'Electronics', color: '#7B2FBE' },
   peto:             { name: 'PetO',              kind: 'general', fallbackCategory: 'Pet', color: '#00A3AD' },
   decathlon:        { name: 'Decathlon',         kind: 'general', fallbackCategory: 'Sports & Outdoors', color: '#0082C3' },
+  // Third batch (27 Nov), read through Zyte.
+  harveynorman:     { name: 'Harvey Norman',     kind: 'general', fallbackCategory: 'Electronics', color: '#C8102E' },
+  petstock:         { name: 'PETstock',          kind: 'general', fallbackCategory: 'Pet', color: '#00843D' },
+  petcircle:        { name: 'Pet Circle',        kind: 'general', fallbackCategory: 'Pet', color: '#1B75BB' },
 };
 
 export const RETAILER_IDS = Object.keys(RETAILER_INFO);

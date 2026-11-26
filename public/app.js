@@ -2,7 +2,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 // Store names and the stores shown: filled from /api/meta (stores that have products). These are the fallbacks.
-const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon' };
+const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon', harveynorman: 'Harvey Norman', petstock: 'PETstock', petcircle: 'Pet Circle' };
 const STORES = ['woolworths', 'coles'];
 function applyStores(meta) {
   if (!meta || !Array.isArray(meta.stores) || !meta.stores.length) return;
@@ -240,7 +240,7 @@ const HOME_PICK = 'fw.homePick';
 // When two stores have the same product at the same price, Home shows this store first (big supermarkets, then
 // the general stores most testers use, then the rest).
 const SAME_PRICE_ORDER = ['woolworths', 'coles', 'aldi', 'costco', 'chemistwarehouse', 'kmart', 'bigw', 'target', 'jbhifi', 'thegoodguys',
-  'officeworks', 'bunnings', 'petbarn', 'peto', 'ebgames', 'decathlon'];
+  'officeworks', 'bunnings', 'harveynorman', 'petbarn', 'petstock', 'petcircle', 'peto', 'ebgames', 'decathlon'];
 function homePick() { try { return JSON.parse(localStorage.getItem(HOME_PICK)) || {}; } catch { return {}; } }
 function saveHomePick(v) { try { localStorage.setItem(HOME_PICK, JSON.stringify(v)); } catch {} }
 
@@ -418,10 +418,10 @@ views.deals = async (q, store) => {
 const STORE_GROUPS = [
   ['Groceries', ['woolworths', 'coles', 'aldi', 'costco'], '🛒', '#E8F6EC'],
   ['Department Stores', ['kmart', 'bigw', 'target'], '🏬', '#FDEBEC'],
-  ['Electronics', ['jbhifi', 'thegoodguys'], '🎧', '#FFF6D6'],
+  ['Electronics', ['jbhifi', 'thegoodguys', 'harveynorman'], '🎧', '#FFF6D6'],
   ['Tools & Home', ['bunnings'], '🔨', '#E6F2EA'],
   ['Health & Beauty', ['chemistwarehouse'], '💊', '#FCE8F3'],
-  ['Pets', ['petbarn', 'peto'], '🐾', '#FFEFE2'],
+  ['Pets', ['petbarn', 'petstock', 'petcircle', 'peto'], '🐾', '#FFEFE2'],
   ['Office', ['officeworks'], '📎', '#E6F0FB'],
   ['Sports & Gaming', ['decathlon', 'ebgames'], '⚽', '#EEE7FB'],
 ];
@@ -1195,7 +1195,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=12'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
+  if (!profMod) { profMod = await import('/profile.js?v=13'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
