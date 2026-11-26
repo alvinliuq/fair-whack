@@ -50,7 +50,11 @@ async function api(path, opts = {}) {
     credentials: 'same-origin',
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && !path.startsWith('/api/login')) { state.me = null; location.hash = '#/login'; throw new Error('Please sign in'); }
+  if (res.status === 401 && !path.startsWith('/api/login')) {
+    state.me = null;
+    if (!location.hash.startsWith('#/login')) { try { sessionStorage.setItem('fw.next', location.hash); } catch {} }
+    location.hash = '#/login'; throw new Error('Please sign in');
+  }
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
   // Something changed (list, alert, settings, shares…): Home updates the next time it's shown.
   if ((opts.method || 'GET') !== 'GET' && !path.startsWith('/api/login')) { keptHome.dirty = true; pagesChanged(); }
@@ -165,7 +169,10 @@ function pagedGrid(el, fetchPage, empty, keep = () => true) {
 // ---------- views ----------
 const views = {};
 
-views.login = () => {
+views.login = (q) => {
+  // From a shared deal (/deal?…&r=<code>): remember who invited them, and open the deal after signing in.
+  const ref = q?.get('ref') || sessionStorage.getItem('fw.ref') || '';
+  try { if (q?.get('ref')) sessionStorage.setItem('fw.ref', q.get('ref')); if (q?.get('next')) sessionStorage.setItem('fw.next', `#/${q.get('next')}`); } catch {}
   document.body.classList.add('anon');
   app.innerHTML = `<form class="login stack" id="f">
     ${MARK}
@@ -182,10 +189,13 @@ views.login = () => {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
-      await api('/api/login', { method: 'POST', body: { name: fd.get('name'), code: fd.get('code') } });
+      await api('/api/login', { method: 'POST', body: { name: fd.get('name'), code: fd.get('code'), ref: ref || undefined } });
       state.me = null; // route() reloads the profile
       document.body.classList.remove('anon');
-      if (location.hash === '#/') route(); else location.hash = '#/';
+      let next = '#/';
+      try { next = sessionStorage.getItem('fw.next') || '#/'; sessionStorage.removeItem('fw.next'); sessionStorage.removeItem('fw.ref'); } catch {}
+      if (!/^#\/[\w/?=&%.-]*$/.test(next) || next.startsWith('#/login')) next = '#/';
+      if (location.hash === next) route(); else location.hash = next;
     } catch (err) { $('#err').textContent = err.message; }
   };
 };
@@ -337,7 +347,8 @@ views.home = async () => {
     <section class="hsec"><div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
       <p class="sec-sub">Tap a store to see all its specials</p>
       <div id="bargains"><div class="skeleton" style="height:230px"></div></div></section>
-    <section class="hsec"><div id="top20"></div></section>`;
+    <section class="hsec"><div id="top20"></div></section>
+    <section class="hsec"><div id="brandzone"></div></section>`;
   // Sections alternate background (clear / white); empty ones are skipped so the stripes stay even.
   const stripe = () => {
     let i = 0;
@@ -352,6 +363,7 @@ views.home = async () => {
   soc().then((m) => m.homeRail($('#sharedrail'))).catch(() => {}).finally(stripe);
   api('/api/bargains/stores').then((d) => bargainTiles($('#bargains'), d.stores.filter((s) => STORES.includes(s.id)))).catch((e) => fail(e, $('#bargains')));
   api('/api/top20').then((d) => topTwenty($('#top20'), d)).catch(() => {}).finally(stripe);
+  brd().then((m) => m.homeRail($('#brandzone'))).catch(() => {}).finally(stripe);
 };
 
 // ----- One store's specials (from a Bargains tile) -----
@@ -1183,7 +1195,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); location.hash = '#/login'; };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=11'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
+  if (!profMod) { profMod = await import('/profile.js?v=12'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
@@ -1193,6 +1205,17 @@ async function soc() {
   if (!socMod) { socMod = await import('/social.js?v=2'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
   return socMod;
 }
+// FW2.2 "Your Brand, Your Deal" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.
+let brdMod;
+async function brd() {
+  if (!brdMod) { brdMod = await import('/brands.js?v=1'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
+  return brdMod;
+}
+views.brand = async (q, id) => (await brd()).page(id);
+views.brands = async () => (await brd()).allPage();
+views.earn = async () => (await brd()).earnPage();
+views.adminbrands = async () => (await brd()).adminPage();
+views.admincampaign = async (q, id) => (await brd()).campaignEditor(id);
 views.friends = async () => (await soc()).friendsPage();
 views.account = async () => (await soc()).accountPage();
 views.shared = async () => (await soc()).sharedPage();
@@ -1200,7 +1223,8 @@ views.settings = () => {
   app.innerHTML = `<h1>Settings</h1><div class="card menu">
     <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
     <a href="#/install"><span class="ic">📲</span><span>Add to Home Screen<span class="sub">Install on iPhone or Android</span></span></a>
-    <a href="#/about"><span class="ic">ℹ️</span><span>About the prices<span class="sub">Where they come from and how often</span></span></a></div>`;
+    <a href="#/about"><span class="ic">ℹ️</span><span>About the prices<span class="sub">Where they come from and how often</span></span></a>
+    <a href="#/earn"><span class="ic">🤝</span><span>How Fair Whack makes money<span class="sub">Partner brands, and what they can't change</span></span></a></div>`;
 };
 views.profile = async (q, section) => (section ? (await prof()).editor(section) : (await prof()).hub());
 views.bills = async (q) => (await prof()).modulePage('bills', q);
@@ -1211,7 +1235,7 @@ views.fuel = async (q) => {
   return fuelMod.page(q);
 };
 
-views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">Around 8am on Wednesdays and Saturdays: one summary of how many items on your list are on special, plus a notification of its own for each 💜🔔 item (with a bell) that goes on special (💜 items without a bell only count in the summary). At most 5 a day. Friends\' requests and shared products arrive straight away.</p><div id="pb"></div>'; renderPushBox($('#pb')); };
+views.alerts = () => { app.innerHTML = '<h1>Alerts</h1><p class="lead">Around 8am on Wednesdays and Saturdays: one summary of how many items on your list are on special, plus a notification of its own for each 💜🔔 item (with a bell) that goes on special (💜 items without a bell only count in the summary). At most 5 a day. Friends\' requests and shared products arrive straight away.</p><div id="pb"></div><div id="bab"></div>'; renderPushBox($('#pb')); brd().then((m) => m.alertsBox($('#bab'))).catch(() => {}); };
 
 views.install = () => {
   app.innerHTML = `<h1>Add to Home Screen</h1>
@@ -1245,6 +1269,7 @@ views.admin = async () => {
     const counts = o.counts.filter((c) => STORES.includes(c.retailer));
     const tally = (key, labels) => { const m = {}; for (const u of o.users) { const k = u[key] || '—'; m[k] = (m[k] || 0) + 1; } return Object.entries(m).map(([k, n]) => `${labels[k] || k}: ${n}`).join(' · '); };
     app.innerHTML = `<h1>Admin</h1>
+      <a class="card row" href="#/adminbrands" style="text-decoration:none;margin-bottom:10px"><span>🏷️ <b>Brand deals</b> <span class="small muted">Your Brand, Your Deal: brands, campaigns, results</span></span><span class="spacer"></span>›</a>
       <div class="card"><div class="row"><b>Data spend · ${esc(monthName(o.month))}</b><span class="spacer"></span><b class="num">$${o.spendUsd.toFixed(2)} / $${o.budgetUsd}</b></div>
         <div class="meter ${o.level !== 'ok' ? 'hot' : ''}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
         <p class="small muted">Apify $${o.spendBy.apify.toFixed(2)} · Zyte $${o.spendBy.zyte.toFixed(2)} (estimate) · SerpApi $${o.spendBy.serpapi.toFixed(2)} (plan fee) · Google Shopping lookups ${o.serpUsed}/${o.serpCap}</p>
@@ -1389,7 +1414,7 @@ async function route() {
   if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { location.hash = '#/welcome'; return; }
   document.body.classList.toggle('onboarding', name === 'welcome' && state.needsProfile);
   document.body.classList.toggle('on-search', name === 'search');
-  const tab = { home: 'home', digest: 'home', deals: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
+  const tab = { home: 'home', digest: 'home', deals: 'home', brand: 'home', brands: 'home', browse: 'browse', search: 'search', p: 'search', lists: 'lists', same: 'lists' }[name] || 'more';
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $('#sheet').hidden = true;
   // Friend requests badge: checked at most once a minute, not on every page.
@@ -1414,6 +1439,7 @@ async function route() {
       keptHome.dirty = false;
       api('/api/digest').then((d) => { if ($('#mine') && JSON.stringify(d) !== keptHome.digest) { keptHome.digest = JSON.stringify(d); keepRails(() => renderMine($('#mine'), d)); } }).catch(() => {});
       soc().then((m) => keepRails(() => m.homeRail($('#sharedrail')))).catch(() => {});
+      if ($('#brandzone')) brd().then((m) => keepRails(() => m.homeRail($('#brandzone')))).catch(() => {});
     }
     return;
   }
@@ -1423,13 +1449,14 @@ async function route() {
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
   if (isHome) keptHome.leaving = true;
   try {
-    if (name === 'login') return views.login();
+    if (name === 'login') return views.login(q);
     if (name === 'p') return await views.product(q, decodeURIComponent(parts.slice(1).join('/')));
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
     if (name === 'profile') return await views.profile(q, parts[1]);
     if (name === 'deals') return await views.deals(q, parts[1]);
     if (name === 'same') return await views.same(q, decodeURIComponent(parts[1] || ''));
+    if (name === 'brand' || name === 'admincampaign') return await views[name](q, decodeURIComponent(parts[1] || ''));
     if (name === 'add') return await (await soc()).addPage(decodeURIComponent(parts[1] || ''));
     return await (views[name] || views.home)(q);
   } catch (e) { fail(e); }

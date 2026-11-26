@@ -11,6 +11,7 @@ import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
 import { RETAILER_INFO } from './retailers.js';
 import { notify } from './push.js';
+import { registerBrandRoutes } from './brands-api.js';
 
 const FRESH_DAYS = 8;
 const ACTIVE_STAMP_MS = 3600000; // "last active" is refreshed at most once an hour per tester
@@ -153,7 +154,7 @@ const route = (method, pattern, handler, opts = {}) => {
 };
 
 route('POST', '/api/login', async ({ env, request }) => {
-  const { code, name } = await body(request);
+  const { code, name, ref } = await body(request);
   const cleanName = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
   if (!cleanName) throw new HttpError(400, 'Please enter your name');
   const typed = String(code || '').trim();
@@ -171,6 +172,9 @@ route('POST', '/api/login', async ({ env, request }) => {
   if (!existing) {
     await env.DB.prepare('INSERT INTO users (id, name, is_admin, is_design, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, cleanName, isAdmin ? 1 : 0, isDesign ? 1 : 0, nowIso()).run();
     await env.DB.prepare('INSERT INTO lists (id, user_id, name, retailer, created_at, sort_order) VALUES (?, ?, ?, NULL, ?, 1)').bind(uid(), id, 'My list', nowIso()).run();
+    // Joined from a shared deal link (/deal?…&r=<friend code>): remember who invited them.
+    const inviter = ref ? await env.DB.prepare('SELECT id FROM users WHERE friend_code = ?').bind(String(ref).slice(0, 40)).first().catch(() => null) : null;
+    if (inviter) await env.DB.prepare('UPDATE users SET referred_by = ? WHERE id = ?').bind(inviter.id, id).run().catch(() => {});
   } else if (isAdmin && !existing.is_admin) {
     await env.DB.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(id).run();
   }
@@ -207,7 +211,7 @@ function catOrder(retailer, names) {
 }
 
 route('GET', '/api/me', async ({ user, env }) => json({
-  user: { id: user.id, name: user.name, isAdmin: !!user.is_admin },
+  user: { id: user.id, name: user.name, isAdmin: !!user.is_admin, brandAlerts: user.brand_alerts !== 0 },
   profile: profileOf(user),
   needsProfile: !user.profile_done_at,
   vapidPublicKey: env.VAPID_PUBLIC_KEY || null,
@@ -467,7 +471,7 @@ route('GET', '/api/bargains/stores', async ({ env }) => json(await cached(env, '
 })));
 
 /** "Top 20 Choices By Aussie Families": most added to lists in the last week by people like you. */
-const TOP_VERSION = 2; // bump to drop cached Top 20 answers
+const TOP_VERSION = 3; // bump to drop cached Top 20 answers
 route('GET', '/api/top20', async ({ env, user }) => {
   const since = new Date(Date.now() - TOP.days * 86400000).toISOString();
   return json(await cached(env, cacheKey('top20', TOP_VERSION, user.id, new Date().toISOString().slice(0, 13)), async () => {
@@ -511,7 +515,7 @@ route('GET', '/api/top20', async ({ env, user }) => {
       if (group) perGroup.set(group, (perGroup.get(group) || 0) + 1);
       items.push({ ...pub(p), people: r.people, group, top: overall });
     }
-    return { forFamilies, title: forFamilies ? 'Top 20 Choices By Aussie Families' : 'Top 20 this week',
+    return { forFamilies, title: forFamilies ? 'Top 20 Choices By Aussie Families' : 'Most popular - Top 20 this week',
       groups: TOP_GROUPS.map(([g]) => g).filter((g) => perGroup.get(g)), items };
   }));
 });
@@ -1586,6 +1590,10 @@ route('POST', '/api/admin/matches/:id', async ({ env, user, request, params }) =
   } else throw new HttpError(400, 'action must be approve or reject');
   return json({ ok: true });
 }, { admin: true });
+
+// ---------- FW2.2 Your Brand, Your Deal (shared/brands-api.js) ----------
+registerBrandRoutes({ route, json, HttpError, body, nowIso, uid, selectIn, COLS, pub, sortOffers, isActive, profileVector, similarity, TOP,
+  ensureSocial, notify, readSession, CATEGORY_LIST });
 
 // ---------- entry ----------
 export async function handle(request, env) {

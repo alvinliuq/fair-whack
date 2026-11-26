@@ -1,6 +1,6 @@
 // Fair Whack service worker: offline shell + push notifications.
-const CACHE = 'fw-shell-v56';
-const SHELL = ['/', '/index.html', '/app.css?v=39', '/app.js?v=46', '/profile.js?v=11', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=2', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'fw-shell-v57';
+const SHELL = ['/', '/index.html', '/app.css?v=40', '/app.js?v=47', '/profile.js?v=12', '/household.js?v=7', '/fuel.js?v=5', '/maps.js?v=1', '/barcode.js?v=4', '/social.js?v=2', '/brands.js?v=1', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -38,8 +38,10 @@ self.addEventListener('push', (e) => {
     .catch(() => ({ notifications: [] }))
     .then(({ notifications: list }) => {
       const show = (title, body, url, tag) => self.registration.showNotification(title, { body: body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag, data: { url: url || '/#/' } });
-      if (!list.length) return show('Fair Whack', 'You have something new from a friend', '/#/shared', 'fw-social');
-      if (list.length > 3) return show(`${list.length} new from your friends`, list.slice(0, 3).map((n) => n.title).join('\n'), '/#/shared', 'fw-social');
+      // Friends (requests, shares) and brand deals (FW2.2) share this path.
+      const friendly = list.every((n) => !String(n.kind || '').startsWith('brand'));
+      if (!list.length) return show('Fair Whack', 'You have something new', '/#/', 'fw-social');
+      if (list.length > 3) return show(friendly ? `${list.length} new from your friends` : `${list.length} new on Fair Whack`, list.slice(0, 3).map((n) => n.title).join('\n'), friendly ? '/#/shared' : '/#/', 'fw-social');
       return Promise.all(list.map((n) => show(n.title, n.body, n.url, `fw-${n.id}`)));
     }));
 });

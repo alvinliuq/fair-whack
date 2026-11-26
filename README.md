@@ -113,3 +113,23 @@ accept. Friends see only products shared with them, never lists or profiles. Sha
 "Shared with you" and Me → Shared with you. Friend requests and shares are pushed straight away (`shared/push.js`:
 an empty VAPID wake-up push; the service worker then fetches `/api/notifications/pending`). QR codes use
 `qrcode-generator` and `jsqr`, copied from npm into `public/vendor/` at deploy.
+
+## Your Brand, Your Deal (FW2.2)
+
+Partner brand deals on Home, under "Most popular - Top 20 this week". Code: `shared/brands.js` (rules), `shared/brands-api.js`
+(API), `public/brands.js` (pages), `public/deal.html` (public share page), migration `0015_brand_deals.sql`.
+
+- **Set up:** Admin → **Brand deals**. Add a brand (logo, tab colour, website; tick the four admission checks to approve it),
+  then a campaign (type Brand site / Retailer event, offer line, image, landing page, dates, priority, optional Fair Whack code,
+  matching tags, featured products linked to the same products in Fair Whack). **Save and go live** sends brand alerts once.
+  Images can be uploaded (stored in D1, served from `/api/assets/<id>`).
+- **Who sees what:** `BRAND_ZONE.mode = 'fixed'` in `shared/brands.js`: everyone sees the same live campaigns, top 5 by priority.
+  Switch to `'match'` when there are enough users: only campaigns scoring 40+ (list category 40, brand on list or followed 30,
+  household target 20, similar families engaged 10), best first. The score already writes the reason on each card.
+- **Honesty rules:** every card and page says Partner; featured products always show other stores' prices, even cheaper ones;
+  partner deals never touch search, same-product comparison, Bargains or Top 20 (More → How Fair Whack makes money).
+- **People:** Follow brand (told about each new campaign) · Not interested (brand hidden 90 days) · Share to friends (push) or
+  as a link (`/deal?c=…&r=<friend code>`; someone who then signs up is recorded in `users.referred_by`).
+  Brand deal alerts: Settings → Alerts, on by default, at most one a week for deals scoring 70+, within the 5-a-day push cap.
+- **Links out:** `/api/go/<campaign>` counts the click, then redirects with `utm_source=fairwhack` (untick for affiliate links).
+- **Results:** the campaign table shows seen, clicks, CTR, added to list, follows, shares, Not interested (and its rate), share-page opens.

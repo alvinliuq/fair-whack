@@ -32,6 +32,7 @@ const server = http.createServer(async (req, res) => {
   let p = path.join(root, 'public', decodeURIComponent(url.pathname));
   if (!p.startsWith(path.join(root, 'public'))) { res.writeHead(403); return res.end(); }
   if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');
+  if (!fs.existsSync(p) && fs.existsSync(`${p}.html`)) p = `${p}.html`; // like Cloudflare Pages: /deal -> deal.html
   if (!fs.existsSync(p)) p = path.join(root, 'public', 'index.html');
   res.writeHead(200, { 'Content-Type': TYPES[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);

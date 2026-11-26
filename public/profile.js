@@ -53,10 +53,11 @@ export async function more() {
       <a href="#/alerts"><span class="ic">🔔</span><span>Alerts<span class="sub">Turn special alerts on or off for this device</span></span></a>
       <a href="#/install"><span class="ic">📲</span><span>Add to Home Screen<span class="sub">Install on iPhone or Android</span></span></a>
       <a href="#/about"><span class="ic">ℹ️</span><span>About the prices<span class="sub">Where they come from and how often</span></span></a>
+      <a href="#/earn"><span class="ic">🤝</span><span>How Fair Whack makes money<span class="sub">Partner brands, and what they can't change</span></span></a>
       ${state.me?.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
       <button id="logout"><span class="ic">↩︎</span><span>Sign out<span class="sub">Signed in as ${esc(state.me?.name)}</span></span></button>
     </div>
-    <p class="small muted center" style="margin-top:20px">Fair Whack FW2.0 internal beta · for testers only · please don't share screenshots outside the team</p>`;
+    <p class="small muted center" style="margin-top:20px">Fair Whack FW2.2 internal beta · for testers only · please don't share screenshots outside the team</p>`;
   document.getElementById('logout').onclick = ctx.logout;
   const billsEl = () => document.querySelector('.save-card[href="#/bills"] span:not(.ic)');
   const old = snap();
