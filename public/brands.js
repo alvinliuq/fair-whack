@@ -51,18 +51,32 @@ export async function homeRail(el) {
   const { api } = ctx;
   const d = await api('/api/brands/home').catch(() => null);
   if (!d || !d.campaigns.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sec-head"><h2>${ctx.esc(d.title)}</h2>${d.total > d.campaigns.length ? '<a href="#/brands">See all ›</a>' : ''}</div>
+  el.innerHTML = `<div class="sec-head"><h2>${ctx.esc(d.title)}</h2><a href="#/brands">See all${d.total > d.campaigns.length ? ` (${d.total})` : ''} ›</a></div>
     <p class="sec-sub">${d.campaigns.some((c) => !c.confirmed) ? 'Beta demo: brands are not partners yet' : 'Offers from partner brands'} · <a href="#/earn" class="muted-link">How this works</a></p>
     <div class="rail brail" tabindex="0" aria-label="Partner brand deals, swipe for more">${d.campaigns.map(card).join('')}</div>`;
 }
 
 export async function allPage() {
-  const { app, api } = ctx;
+  const { app, api, esc, toast } = ctx;
   app.innerHTML = '<h1>Your Brands, Your Deals</h1><p class="muted">Loading…</p>';
   const d = await api('/api/brands/all');
-  app.innerHTML = `<h1>Your Brands, Your Deals</h1><p class="lead small">Offers from partner brands. <a href="#/earn">How this works</a></p>
-    ${d.campaigns.length ? `<div class="bgrid">${d.campaigns.map(card).join('')}</div>` : '<div class="empty"><b>No partner deals right now</b>Check back soon.</div>'}
+  const followBtn = (c) => `<button type="button" class="btn small ${c.following ? 'light' : 'ghost'} bfollow-btn" data-fb="${esc(c.brand.id)}" aria-pressed="${c.following}">${c.following ? '✓ Following' : '+ Follow'}</button>`;
+  app.innerHTML = `<h1>Your Brands, Your Deals</h1>
+    <p class="lead small">All brand deals running now, most relevant to you first. ${d.campaigns.some((c) => !c.confirmed) ? 'Deals marked Beta demo are not from partners. ' : ''}<a href="#/earn">How this works</a></p>
+    ${d.campaigns.length ? `<div class="bgrid">${d.campaigns.map((c) => `<div class="bcard-wrap">${card(c)}<div class="bcard-actions"><span class="small muted">${esc(c.brand.name)}</span>${followBtn(c)}</div></div>`).join('')}</div>`
+      : '<div class="empty"><b>No brand deals right now</b>Check back soon.</div>'}
     ${d.hidden ? `<p class="small muted center">${d.hidden} hidden because you chose “Not interested”. <a href="#/alerts">Manage</a></p>` : ''}`;
+  app.querySelectorAll('[data-fb]').forEach((btn) => (btn.onclick = async () => {
+    const id = btn.dataset.fb, on = btn.getAttribute('aria-pressed') !== 'true';
+    const c = d.campaigns.find((x) => x.brand.id === id);
+    try {
+      await api(`/api/brands/${encodeURIComponent(id)}/follow`, { method: 'PUT', body: { on, campaign: on ? c.id : undefined } });
+      // A brand can have several deals: update every button for it.
+      app.querySelectorAll(`[data-fb="${CSS.escape(id)}"]`).forEach((b) => { b.setAttribute('aria-pressed', on); b.textContent = on ? '✓ Following' : '+ Follow'; b.classList.toggle('light', on); b.classList.toggle('ghost', !on); });
+      d.campaigns.filter((x) => x.brand.id === id).forEach((x) => (x.following = on));
+      toast(on ? `Following ${c.brand.name}` : `Unfollowed ${c.brand.name}`);
+    } catch (e) { toast(e.message); }
+  }));
 }
 
 // ---------- campaign page ----------

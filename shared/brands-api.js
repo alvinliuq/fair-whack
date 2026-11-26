@@ -99,7 +99,9 @@ export function registerBrandRoutes(d) {
   route('GET', '/api/brands/all', async ({ env, user }) => {
     const live = await liveCampaigns(env);
     const { me, scored } = await scoreAll(env, user, live);
-    return json({ campaigns: scored.filter((x) => !me.hidden.has(x.c.brand_id)).map((x) => cardOut(x.c, x)), hidden: scored.filter((x) => me.hidden.has(x.c.brand_id)).length });
+    // Most relevant first (score), then priority. Each card says whether you follow its brand.
+    const list = scored.filter((x) => !me.hidden.has(x.c.brand_id)).sort((a, b) => b.score - a.score || b.priority - a.priority);
+    return json({ campaigns: list.map((x) => ({ ...cardOut(x.c, x), following: me.follows.has(x.c.brand_id) })), hidden: scored.filter((x) => me.hidden.has(x.c.brand_id)).length });
   });
 
   async function productsFor(env, campaignId) {

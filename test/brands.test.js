@@ -194,3 +194,16 @@ test('Me → Brands you follow lists followed brands with their live deals', asy
   f = await t.call('/api/me/follows');
   assert.equal(f.brands[0].campaigns[0].id, id);
 });
+
+test('See all: every live deal, most relevant first, with follow state', async () => {
+  const { person } = setup();
+  const admin = await person('Boss', 'admin');
+  const t = await person('Tess');
+  const { id, brandId } = await makeCampaign(admin);
+  await admin.call(`/api/admin/campaigns/${id}/status`, { status: 'live' });
+  let all = await t.call('/api/brands/all');
+  assert.equal(all.campaigns[0].following, false);
+  await t.call(`/api/brands/${brandId}/follow`, { on: true, campaign: id }, 'PUT');
+  all = await t.call('/api/brands/all');
+  assert.equal(all.campaigns[0].following, true);
+});

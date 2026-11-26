@@ -903,3 +903,6 @@ td.bcol { min-width: 150px; }
 .demo-note { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; background: #FFF6E5; border: 1px solid #F3D9A6; border-radius: 12px; padding: 10px 12px; }
 .bfollow-deal { display: flex; align-items: center; gap: 10px; justify-content: space-between; text-decoration: none; color: inherit; border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
 .bfollow-deal > span:last-child { color: var(--grape-d); font-size: 20px; }
+.bcard-wrap { display: flex; flex-direction: column; gap: 8px; }
+.bcard-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 4px; border-bottom: 1px solid var(--line); }
+.bgrid .bcard { flex: none; }
