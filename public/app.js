@@ -632,6 +632,16 @@ views.search = async (q) => {
   } catch (e) { fail(e, $('#res')); }
 };
 
+/** One Google Shopping card (Search page and product page). lp: room for a "Lowest" pill. */
+function webCard(r, lp = false) {
+  return `<a class="web-card" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+      <span class="wc-img">${r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<b>?</b>'}</span>
+      <span class="wc-store">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span>
+      <span class="wc-name">${esc(r.title)}</span>
+      <span class="wc-price num"${lp ? ` data-cents="${r.priceCents}"` : ''}>${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}${lp ? LP : ''}</span>
+      ${r.delivery ? `<span class="wc-note">${esc(r.delivery)}</span>` : ''}
+    </a>`;
+}
 // Google Shopping comparison (stage 6): other shops' prices for the same words, looked up at most once a day per keyword.
 async function webPrices(term, el) {
   if (normQ(term).length < 2) return;
@@ -644,15 +654,8 @@ async function webPrices(term, el) {
     el.innerHTML = why ? `<div class="sec-head"><h2>Elsewhere online</h2></div><p class="small muted">${why}</p>` : '';
     return;
   }
-  const card = (r) => `<a class="web-card" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
-      <span class="wc-img">${r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<b>?</b>'}</span>
-      <span class="wc-store">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span>
-      <span class="wc-name">${esc(r.title)}</span>
-      <span class="wc-price num">${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}</span>
-      ${r.delivery ? `<span class="wc-note">${esc(r.delivery)}</span>` : ''}
-    </a>`;
   el.innerHTML = `<div class="sec-head"><h2>Elsewhere online</h2><span class="small muted">Google Shopping</span></div>
-    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, swipe for more">${rows.map(card).join('')}</div>
+    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, swipe for more">${rows.map((r) => webCard(r)).join('')}</div>
     <p class="small muted">Most relevant first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Shown as listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
 }
 const normQ = (t) => String(t || '').trim();
@@ -853,8 +856,8 @@ views.product = async (q, id) => {
       <p class="small muted">Checked ${ago(p.checkedAt)}${p.stale ? ' — may have changed' : ''}. ${p.anomaly ? '<b>Unusual price change, being checked.</b>' : ''}</p>
       <div class="row" style="margin:12px 0;gap:8px"><button class="btn ${on ? 'ghost' : ''}" id="watch" data-pid="${esc(p.id)}" style="flex:1;white-space:nowrap">${on ? '♥ On your list' : '♡ Add to my list'}</button><button class="btn light icon-btn" id="share" aria-label="Share with friends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4.5 4.5-1.4 1.4L13 6.8V15h-2V6.8L8.9 8.9 7.5 7.5zM5 13h2v6h10v-6h2v8H5z"/></svg></button>${p.url ? `<a class="btn light" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" aria-label="View at ${RET[p.retailer]}">${RET[p.retailer]} ↗</a>` : ''}</div>
       ${d.offers.length > 1 ? `<h2>Same product, other store</h2><div class="group">${d.offers.map((o) => offerRow(o, false, true)).join('')}</div>` : ''}
-      <div id="pweb"></div>
       <h2>Price history</h2><div class="card">${sparkline(d.history)}</div>
+      <div id="pweb"></div>
       ${d.sizes.length ? `<h2>Other sizes</h2><div class="group">${d.sizes.map((o) => `<a class="offer" href="#/p/${encodeURIComponent(o.id)}"><div class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span><span class="small">${esc(o.size || o.name)}</span></div><div class="p num">${money(o.effective)}</div><div></div><div class="u num">${esc(unitText(o))}</div></a>`).join('')}</div>` : ''}
       ${d.similar.length ? `<h2>Similar items, by unit price</h2><div class="grid">${d.similar.slice(0, 6).map(tile).join('')}</div>` : ''}`;
     $('#watch').onclick = () => onHeart(p.id).catch((e) => toast(e.message));
@@ -867,7 +870,7 @@ views.product = async (q, id) => {
 function markLowest() {
   const els = [...app.querySelectorAll('[data-cents]')].filter((e) => e.dataset.cents !== '');
   // Prices compared: each store row, plus the page's own price when it has no row of its own (only one of our stores).
-  const ownRow = !!app.querySelector('.group:not(.web-prices) [data-cents]');
+  const ownRow = !!app.querySelector('.group [data-cents]');
   const n = els.filter((e) => !('self' in e.dataset)).length + (ownRow ? 0 : 1);
   const min = Math.min(...els.map((e) => +e.dataset.cents));
   els.forEach((e) => { const pill = e.querySelector('.lp'); if (pill) pill.hidden = !(n > 1 && +e.dataset.cents === min); });
@@ -885,12 +888,8 @@ async function productWeb(p, el) {
     return;
   }
   el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
-    <div class="group web-prices">${rows.map((r) => `<a class="offer" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
-      <div class="l"><span class="ret web">${esc(r.store || 'Online shop')}</span><span class="small">${esc(r.title)}</span></div>
-      <div class="p num" data-cents="${r.priceCents}">${money(r.priceCents)}${LP}</div>
-      <div class="note">${r.wasCents && r.wasCents > r.priceCents ? `was ${money(r.wasCents)}` : ''}</div>
-      <div class="u">${esc(r.delivery || '')}</div></a>`).join('')}</div>
-    <p class="small muted">Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
+    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, cheapest first, swipe for more">${rows.map((r) => webCard(r, true)).join('')}</div>
+    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
   markLowest();
 }
 
