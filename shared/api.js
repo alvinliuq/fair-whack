@@ -1047,11 +1047,25 @@ route('GET', '/api/digest', async ({ env, user }) => {
       if (!ps || o.effective < ps.effective) byStore.set(k, o);
     }
   }
+  // "Cheapest store for each" (Home, All stores): an item on special somewhere is shown at its lowest current price
+  // anywhere, special or not, using prices seen in the last 28 days.
+  const recent = new Date(Date.now() - 28 * 86400000).toISOString();
+  const lowest = {};
+  for (const it of items) {
+    if (!best.has(it.item_id)) continue;
+    for (const r of offers.values()) {
+      if (r.id !== it.product_id && !(it.canon && r.canonical_product_id === it.canon)) continue;
+      if (!isActive(r.retailer) || r.cur_price_cents == null || !(r.cur_captured_at >= recent)) continue;
+      const o = { ...pub(r), alertMode: it.alert_mode, target: it.target_cents, itemId: it.item_id, listId: it.list_id };
+      const prev = lowest[it.item_id];
+      if (!prev || o.effective < prev.effective) lowest[it.item_id] = o;
+    }
+  }
   const top = await cached(env, 'digest-top', async () => (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND cur_promo_type = 'half_price' AND ${ACT}
       AND COALESCE(discount_flag,'') != 'inflated' AND cur_was_cents > 0 ORDER BY (cur_was_cents - cur_price_cents) DESC LIMIT 12`).bind(cut).all()).results.map(pub));
   const bySaving = (a, b) => (b.saving || 0) - (a.saving || 0);
   const lists = (await env.DB.prepare('SELECT id, name FROM lists WHERE user_id = ? ORDER BY COALESCE(sort_order, 1000000), created_at').bind(user.id).all()).results;
-  return json({ lists, fromYourList: [...best.values()].sort(bySaving), byStore: [...byStore.values()].sort(bySaving), topHalfPrice: top });
+  return json({ lists, fromYourList: [...best.values()].sort(bySaving), byStore: [...byStore.values()].sort(bySaving), lowest, topHalfPrice: top });
 });
 
 // ----- push -----

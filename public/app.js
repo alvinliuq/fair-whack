@@ -63,6 +63,7 @@ async function api(path, opts = {}) {
 
 function badges(p, { stale = true } = {}) {
   const b = [];
+  if (p.lowestNotSpecial) b.push('<span class="badge b-low" title="Cheapest store right now, though not on special there">Lowest price</span>');
   if (p.promoType === 'half_price') b.push('<span class="badge b-half">½ PRICE</span>');
   else if (p.special) b.push(`<span class="badge b-promo">${esc(p.multibuy ? p.promoText || 'Multibuy' : p.promoText || 'Special')}</span>`);
   if (p.discountFlag === 'low12') b.push('<span class="badge b-low">12-wk low</span>');
@@ -278,8 +279,11 @@ function renderMine(el, d) {
     pool = [...groups.values()].map((g) => {
       const offers = [...g.values()];
       const low = Math.min(...offers.map((o) => o.effective));
+      // A store without a special can still be the cheapest: then show that one (marked "Lowest price").
+      const cheaper = offers.map((o) => d.lowest?.[o.itemId]).filter((x) => x && x.effective < low).sort((x, y) => x.effective - y.effective)[0];
+      if (cheaper) return [{ ...cheaper, lowestNotSpecial: true, sortSaving: Math.max(...offers.map((o) => o.saving || 0)) }];
       return offers.filter((o) => o.effective === low).sort((x, y) => rank(x.retailer) - rank(y.retailer));
-    }).sort((x, y) => Math.max(...y.map((o) => o.saving || 0)) - Math.max(...x.map((o) => o.saving || 0))).flat();
+    }).sort((x, y) => Math.max(...y.map((o) => o.sortSaving ?? o.saving ?? 0)) - Math.max(...x.map((o) => o.sortSaving ?? o.saving ?? 0))).flat();
   }
   if (sel.length) pool.sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
