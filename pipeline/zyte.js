@@ -13,9 +13,13 @@ export const ZYTE_TARGETS = {
   target: { name: 'Target', urls: ['https://www.target.com.au/search?text=towel', 'https://www.target.com.au/'] },
   kmart: { name: 'Kmart', urls: ['https://www.kmart.com.au/category/home/bathroom/towels/', 'https://www.kmart.com.au/search/?searchTerm=towel'] },
   thegoodguys: { name: 'The Good Guys', urls: ['https://www.thegoodguys.com.au/televisions', 'https://www.thegoodguys.com.au/search?q=tv'] },
+  // Third batch (27 Nov).
+  harveynorman: { name: 'Harvey Norman', urls: ['https://www.harveynorman.com.au/televisions', 'https://www.harveynorman.com.au/catalogsearch/result/?q=tv'] },
+  petstock: { name: 'PETstock', urls: ['https://www.petstock.com.au/search?q=dog%20food', 'https://www.petstock.com.au/'] },
+  petcircle: { name: 'Pet Circle', urls: ['https://www.petcircle.com.au/search?q=dog%20food', 'https://www.petcircle.com.au/'] },
 };
 
-export const ZYTE_MAX_USD = 2; // stop the whole check here (trial cap is US$5)
+export const ZYTE_MAX_USD = 3; // stop checks once technical checks (all time) have cost this much
 
 async function zyte(body) {
   const key = process.env.ZYTE_API_KEY;

@@ -303,7 +303,7 @@ async function probe(db) {
 async function zyteCheck(db) {
   if (!process.env.ZYTE_API_KEY) { log('zyte: ZYTE_API_KEY is not set'); process.exitCode = 1; return; }
   const targets = opt.retailer ? { [opt.retailer]: ZYTE_TARGETS[opt.retailer] } : ZYTE_TARGETS;
-  const zyteSoFar = async () => Number((await db.all("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM pipeline_runs WHERE provider = 'zyte'"))[0].s);
+  const zyteSoFar = async () => Number((await db.all("SELECT COALESCE(SUM(cost_usd), 0) AS s FROM pipeline_runs WHERE provider = 'zyte' AND mode = 'zyte-check'"))[0].s);
   const results = [];
   for (const [id, t] of Object.entries(targets)) {
     if (!t) { log(`zyte: unknown store ${id}`); continue; }
