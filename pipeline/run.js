@@ -434,7 +434,14 @@ async function retry(db) {
 
 if (mode === 'weekly') { await specials(db); await wishlist(db); await match(db); }
 else if (mode === 'retry') await retry(db);
-else if (mode === 'saturday') { await specials(db, SATURDAY_RETAILERS); if (SATURDAY_RETAILERS.length) await match(db); }
+else if (mode === 'saturday') {
+  // Stores whose specials already updated in the last 20 hours (e.g. a manual run on Friday) are skipped.
+  const since = new Date(Date.now() - 20 * 3600000).toISOString();
+  const fresh = new Set((await db.all("SELECT DISTINCT retailer FROM pipeline_runs WHERE mode = 'specials' AND status = 'ok' AND started_at >= ?", [since])).map((x) => x.retailer));
+  const todo = SATURDAY_RETAILERS.filter((r) => !fresh.has(r));
+  if (todo.length < SATURDAY_RETAILERS.length) log(`saturday: already updated in the last 20 hours, skipped: ${SATURDAY_RETAILERS.filter((r) => fresh.has(r)).join(', ')}`);
+  await specials(db, todo); if (todo.length) await match(db);
+}
 else if (mode === 'specials') { await specials(db); await match(db); }
 else if (mode === 'wishlist') await wishlist(db);
 else if (mode === 'catalogue') { await catalogue(db); await match(db); }
