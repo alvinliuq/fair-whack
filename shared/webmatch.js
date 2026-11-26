@@ -17,11 +17,16 @@ const VARIANT = new Set(['advanced', 'plus', 'max', 'ultra', 'extra', 'forte', '
   'gummies', 'liquid', 'spray', 'chewable', 'effervescent']);
 const VARIANT_OF = { advance: 'advanced', kid: 'kids', womens: 'women', mens: 'men', prunes: 'prune', gummy: 'gummies' };
 const vNorm = (w) => VARIANT_OF[w] || w;
+// Model versions a store may leave out of its own name ("PS5 Console" without Disc/Digital/Slim): required in the
+// title only when our product names one.
+const ONE_WAY = new Set(['digital', 'disc', 'slim']);
+// Short names Google titles spell out.
+const SYN = [[/\bps5\b/g, 'playstation 5'], [/\bps4\b/g, 'playstation 4'], [/\bxsx\b/g, 'xbox series x']];
 // Words for the same unit, so "90 Capsules" matches "90 caps".
 const UNIT = { capsules: 'cap', capsule: 'cap', caps: 'cap', cap: 'cap', tablets: 'tab', tablet: 'tab', tabs: 'tab', tab: 'tab', t: 'tab', c: 'cap',
   softgels: 'cap', softgel: 'cap', grams: 'g', gram: 'g', litre: 'l', litres: 'l', liter: 'l', ml: 'ml', kg: 'kg', g: 'g', l: 'l', pk: 'pk', pc: 'pk' };
 const UNITS = new Set(['cap', 'tab', 'g', 'kg', 'ml', 'l', 'pk']);
-const words = (s) => normText(s).replace(/(\d)([a-z])/g, '$1 $2').split(' ').filter(Boolean).map((w) => UNIT[w] || w);
+const words = (s) => SYN.reduce((x, [re, to]) => x.replace(re, to), normText(s)).replace(/(\d)([a-z])/g, '$1 $2').split(' ').filter(Boolean).map((w) => UNIT[w] || w);
 /** Pack numbers ("90", "500 g" → "500g"). */
 function numbers(ws) {
   const out = new Set();
@@ -56,7 +61,7 @@ export function matchRow(p, title) {
   // Variant words must agree both ways ("Advanced", "Kids", "Digital", "Ultimate", "Album").
   const vWant = new Set(want.map(vNorm).filter((w) => VARIANT.has(w)));
   const vHave = new Set(t.map(vNorm).filter((w) => VARIANT.has(w)));
-  if ([...vWant].some((w) => !vHave.has(w)) || [...vHave].some((w) => !vWant.has(w))) return null;
+  if ([...vWant].some((w) => !vHave.has(w)) || [...vHave].some((w) => !vWant.has(w) && !ONE_WAY.has(w))) return null;
   if (MULTI.test(title) && !MULTI.test(full)) return null;
   // The words that name the product, brand left out (it was checked above). Count the differences both ways:
   // product words missing from the title + other naming words in the title. Allowed: 40% of the product's words, at least 1.

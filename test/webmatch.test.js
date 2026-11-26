@@ -55,3 +55,12 @@ test('real Google titles: brand spelling, sub-range names, sizes not shown, edit
   assert.deepEqual(pick({ name: 'Grand Theft Auto VI', brand: 'GTA VI', effective: 12500 }, [
     ['EB Games Australia', 'Grand Theft Auto VI', 12995], ['JB', 'Grand Theft Auto VI - The Album', 9000], ['PS', 'Grand Theft Auto VI: Ultimate Edition - Sony PlayStation 5', 15995]], ['jbhifi']), ['EB Games Australia']);
 });
+
+test('a store name without Disc/Digital/Slim matches either; PS5 = PlayStation 5', () => {
+  const out = sameOnline({ name: 'PS5 PlayStation 5 Console', brand: 'SONY COMP', effective: 49900 }, [
+    { store: 'u-buy.com.au', title: 'Sony PlayStation 5 Console Digital Edition', priceCents: 76500 },
+    { store: 'K', title: 'PlayStation 5 Digital Edition – 30th Anniversary Limited Edition Bundle', priceCents: 99900 },
+  ], ['jbhifi']);
+  assert.deepEqual(out.map((x) => x.store), ['u-buy.com.au']);
+  assert.equal(sameOnline({ name: 'PlayStation 5 Slim Digital Console', effective: 70000 }, [{ store: 'X', title: 'PlayStation 5 Slim Disc Console', priceCents: 80000 }]).length, 0);
+});
