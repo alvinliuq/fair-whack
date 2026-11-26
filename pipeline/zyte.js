@@ -15,8 +15,8 @@ export const ZYTE_TARGETS = {
   thegoodguys: { name: 'The Good Guys', urls: ['https://www.thegoodguys.com.au/televisions', 'https://www.thegoodguys.com.au/search?q=tv'] },
   // Third batch (27 Nov).
   harveynorman: { name: 'Harvey Norman', urls: ['https://www.harveynorman.com.au/televisions', 'https://www.harveynorman.com.au/catalogsearch/result/?q=tv'] },
-  petstock: { name: 'PETstock', urls: ['https://www.petstock.com.au/search?q=dog%20food', 'https://www.petstock.com.au/'] },
-  petcircle: { name: 'Pet Circle', urls: ['https://www.petcircle.com.au/search?q=dog%20food', 'https://www.petcircle.com.au/'] },
+  petstock: { name: 'PETstock', urls: ['https://www.petstock.com.au/collections/dog-food'] },
+  petcircle: { name: 'Pet Circle', urls: ['https://www.petcircle.com.au/dog/food/dry-food'] },
 };
 
 export const ZYTE_MAX_USD = 3; // stop checks once technical checks (all time) have cost this much

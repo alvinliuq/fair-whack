@@ -98,6 +98,7 @@ test('third batch (Zyte): Harvey Norman plain HTML, PETstock and Pet Circle by b
   }
   assert.equal(ACTIVE_SOURCES.harveynorman.catalogue[0].input.extractFrom, 'httpResponseBody');
   assert.equal(ACTIVE_SOURCES.petstock.catalogue[0].input.extractFrom, 'browserHtml');
+  assert.equal(ACTIVE_SOURCES.petcircle.catalogue[0].input.extractFrom, 'httpResponseBody');
   const bad = adaptItem('harveynorman', { name: 'LG 77-inch OLED TV', price: '2.12', url: 'https://www.harveynorman.com.au/lg-77', productId: 'OLED77' });
   assert.match(bad.error, /implausible/);
   const ok = adaptItem('harveynorman', { name: 'LG 77-inch OLED TV', price: '3591', url: 'https://www.harveynorman.com.au/lg-77', productId: 'OLED77' });

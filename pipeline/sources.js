@@ -81,19 +81,23 @@ const ZY = {
   ebgames: [['nintendo switch', 'Electronics > Gaming'], ['playstation 5', 'Electronics > Gaming'], ['xbox', 'Electronics > Gaming'], ['pokemon', 'Toys > Collectibles'],
     ['funko pop', 'Toys > Collectibles'], ['controller', 'Electronics > Gaming'], ['gaming headset', 'Electronics > Gaming'], ['lego', 'Toys'], ['gaming chair', 'Electronics > Gaming'],
     ['trading cards', 'Toys > Collectibles']].map(([q, cat]) => [`https://www.ebgames.com.au/search?q=${enc(q)}`, cat]),
-  // Third batch (checked 27 Nov): Harvey Norman's search pages work as plain HTML (its category pages don't);
-  // PETstock and Pet Circle search pages need a browser.
+  // Third batch (checked 27 Nov): Harvey Norman's search pages work as plain HTML (its category pages don't).
   harveynorman: [['tv', 'Electronics > TVs'], ['laptop', 'Electronics > Computers'], ['fridge', 'Electronics > Appliances'], ['washing machine', 'Electronics > Appliances'],
     ['vacuum', 'Electronics > Appliances'], ['coffee machine', 'Electronics > Appliances'], ['headphones', 'Electronics > Audio'], ['air fryer', 'Electronics > Appliances'],
     ['dishwasher', 'Electronics > Appliances'], ['mobile phone', 'Electronics > Phones'], ['air conditioner', 'Electronics > Appliances'], ['soundbar', 'Electronics > Audio'],
     ['camera', 'Electronics > Cameras'], ['gaming', 'Electronics > Gaming'], ['mattress', 'Home & Hardware > Bedroom'], ['sofa', 'Home & Hardware > Furniture']]
     .map(([q, cat]) => [`https://www.harveynorman.com.au/catalogsearch/result/?q=${enc(q)}`, cat]),
-  petstock: [['dog food', 'Pet > Dog'], ['cat food', 'Pet > Cat'], ['dog treats', 'Pet > Dog'], ['cat litter', 'Pet > Cat'], ['flea and tick', 'Pet'], ['dog toys', 'Pet > Dog'],
-    ['puppy food', 'Pet > Dog'], ['kitten food', 'Pet > Cat'], ['dog bed', 'Pet > Dog'], ['bird food', 'Pet > Bird'], ['fish food', 'Pet > Fish'], ['worming', 'Pet']]
-    .map(([q, cat]) => [`https://www.petstock.com.au/search?q=${enc(q)}`, cat]),
-  petcircle: [['dog food', 'Pet > Dog'], ['cat food', 'Pet > Cat'], ['dog treats', 'Pet > Dog'], ['cat litter', 'Pet > Cat'], ['flea and tick', 'Pet'], ['dog toys', 'Pet > Dog'],
-    ['puppy food', 'Pet > Dog'], ['kitten food', 'Pet > Cat'], ['dog bed', 'Pet > Dog'], ['worming', 'Pet'], ['cat treats', 'Pet > Cat'], ['bird food', 'Pet > Bird']]
-    .map(([q, cat]) => [`https://www.petcircle.com.au/search?q=${enc(q)}`, cat]),
+  // 27 Nov: PETstock and Pet Circle search pages return the same default products whatever the words, so their
+  // category pages are read instead. Specials pages come first (Black Friday / deals collections).
+  petstock: [['sale', 'Pet'], ['dog-food', 'Pet > Dog'], ['cat-food', 'Pet > Cat'], ['dog-treats', 'Pet > Dog'], ['cat-treats', 'Pet > Cat'],
+    ['cat-litter', 'Pet > Cat'], ['dog-toys', 'Pet > Dog'], ['cat-toys', 'Pet > Cat'], ['dog-beds', 'Pet > Dog'], ['puppy-food', 'Pet > Dog'],
+    ['kitten-food', 'Pet > Cat'], ['dog-grooming', 'Pet > Dog'], ['bird-food', 'Pet > Bird'], ['fish', 'Pet > Fish'], ['small-animal', 'Pet > Small animals']]
+    .map(([c, cat]) => [`https://www.petstock.com.au/collections/${c}`, cat]),
+  petcircle: [['collection/black-friday', 'Pet'], ['collection/dog-deals', 'Pet > Dog'], ['collection/cat-deals', 'Pet > Cat'], ['dog/food/dry-food', 'Pet > Dog'],
+    ['dog/food/wet-food', 'Pet > Dog'], ['dog/food/puppy', 'Pet > Dog'], ['dog/treats', 'Pet > Dog'], ['dog/toys', 'Pet > Dog'], ['dog/flea-tick-and-worming', 'Pet > Dog'],
+    ['dog/beds', 'Pet > Dog'], ['cat/food/dry-food', 'Pet > Cat'], ['cat/food/wet-food', 'Pet > Cat'], ['cat/food/kitten', 'Pet > Cat'], ['cat/treats', 'Pet > Cat'],
+    ['cat/flea-tick-and-worming', 'Pet > Cat'], ['cat/toys', 'Pet > Cat'], ['bird', 'Pet > Bird'], ['fish', 'Pet > Fish']]
+    .map(([c, cat]) => [`https://www.petcircle.com.au/${c}`, cat]),
 };
 const zyteSource = (r, extractFrom, maxPages, specialsPages = 6) => ({
   runner: 'zyte',
@@ -247,8 +251,9 @@ export const SOURCES = {
   ebgames: { ...zyteSource('ebgames', 'browserHtml', 2, 4), host: 'www.ebgames.com.au' },
   // Harvey Norman listings sometimes show a finance figure (e.g. "$2.12") in the price slot: ignore implausible prices.
   harveynorman: { ...zyteSource('harveynorman', 'httpResponseBody', 2), host: 'www.harveynorman.com.au', minPrice: 5 },
-  petstock: { ...zyteSource('petstock', 'browserHtml', 2, 4), host: 'www.petstock.com.au' },
-  petcircle: { ...zyteSource('petcircle', 'browserHtml', 2, 4), host: 'www.petcircle.com.au' },
+  // PETstock loads its product grid in the browser (20 a page, ?page=2 works); Pet Circle's category pages are plain HTML.
+  petstock: { ...zyteSource('petstock', 'browserHtml', 3, 3), host: 'www.petstock.com.au' },
+  petcircle: { ...zyteSource('petcircle', 'httpResponseBody', 3, 3), host: 'www.petcircle.com.au' },
   jbhifi: {
     actor: 'dromb~jbhifi-au-product-scraper',
     host: 'www.jbhifi.com.au',
