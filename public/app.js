@@ -246,6 +246,22 @@ const SAME_PRICE_ORDER = ['woolworths', 'coles', 'aldi', 'costco', 'chemistwareh
 function homePick() { try { return JSON.parse(localStorage.getItem(HOME_PICK)) || {}; } catch { return {}; } }
 function saveHomePick(v) { try { localStorage.setItem(HOME_PICK, JSON.stringify(v)); } catch {} }
 
+/** "Lowest" pill on Home tiles that are the lowest price anywhere (same comparison as the product page). */
+const lowestSeen = new Map();
+async function markHomeLowest(el, pool) {
+  const ids = [...new Set(pool.map((o) => o.id))];
+  const need = ids.filter((id) => !lowestSeen.has(id));
+  if (need.length) {
+    try { const r = await api('/api/lowest', { method: 'POST', body: { ids: need } }); need.forEach((id) => lowestSeen.set(id, !!r.lowest?.[id])); } catch { return; }
+  }
+  el.querySelectorAll('a.tile').forEach((a) => {
+    const id = decodeURIComponent(a.getAttribute('href').replace('#/p/', ''));
+    const price = a.querySelector('.price');
+    if (!price || !lowestSeen.get(id) || price.querySelector('.lp')) return;
+    price.classList.add('has-lp');
+    price.insertBefore(Object.assign(document.createElement('span'), { className: 'lp', textContent: 'Lowest' }), price.querySelector('small'));
+  });
+}
 function renderMine(el, d) {
   const lists = d.lists || [];
   const pick = homePick();
@@ -292,6 +308,7 @@ function renderMine(el, d) {
   if (!inList.length) body = `<div class="rail-empty"><b>Nothing from this list is on special right now</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
   else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
   el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${sel.length ? `${pool.length} on special` : `${pool.length} item${pool.length === 1 ? '' : 's'} on special · lowest price shown`}</p>` : '') + body;
+  markHomeLowest(el, pool);
   el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
     const r = b.dataset.store;
     let next = r ? (sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r]) : [];
@@ -892,6 +909,7 @@ async function productWeb(p, el) {
       await api(`/api/product/${encodeURIComponent(p.id)}/web/ignore`, { method: 'PUT', body: { store: b.dataset.store, on } });
       const r = rows.find((x) => (x.store || '') === b.dataset.store);
       if (r) r.ignored = on;
+      lowestSeen.clear();
       b.closest('.web-card').outerHTML = webCard(r, true);
       wire(); markLowest();
     } catch (err) { toast(err.message); }

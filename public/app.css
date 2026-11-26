@@ -949,3 +949,5 @@ body.sub-page .topbar .brand em { display: none; }
 .acc-form .hint { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .acc-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
 .acc-actions .btn { min-width: 110px; }
+.tile .foot .price.has-lp { align-items: center; }
+.tile .foot .price.has-lp small { flex-basis: 100%; }

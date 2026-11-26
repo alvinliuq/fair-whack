@@ -824,6 +824,30 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
   const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((r) => r.store_key));
   return json({ ...d, results: sameOnline(pub(p), d.results, have).map((r) => ({ ...r, ignored: ignored.has(r.storeKey) })) });
 });
+// Home "Deals on your list": which of these products is the lowest price anywhere we know of: our stores, plus
+// Google Shopping results already looked up for it (saved results only, so Home spends no lookups), less any
+// this tester ignored. The same comparison as the product page's "Lowest" pill.
+route('POST', '/api/lowest', async ({ env, user, request }) => {
+  const ids = [...new Set(((await body(request)).ids || []).map(String))].slice(0, 40);
+  const out = {};
+  for (const id of ids) {
+    const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(id).first();
+    if (!r) continue;
+    const p = pub(r);
+    if (p.effective == null) continue;
+    const canon = r.canonical_product_id || `c:${r.id}`;
+    const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT} AND cur_price_cents IS NOT NULL`).bind(r.id, canon).all()).results.map(pub);
+    const have = [...new Set(offers.map((o) => o.retailer))];
+    const others = offers.filter((o) => o.id !== p.id && o.effective != null).map((o) => o.effective);
+    const row = await env.DB.prepare('SELECT data FROM serp_cache WHERE q = ?').bind(serpKey(webQuery(p))).first().catch(() => null);
+    if (row) {
+      const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((x) => x.store_key));
+      sameOnline(p, JSON.parse(row.data).results || [], have).filter((x) => !ignored.has(x.storeKey)).forEach((x) => others.push(x.priceCents));
+    }
+    out[id] = others.length > 0 && p.effective <= Math.min(...others);
+  }
+  return json({ lowest: out });
+});
 // Ignore (or bring back) one shop's Google Shopping result for one product, for this tester only.
 route('PUT', '/api/product/:id/web/ignore', async ({ env, params, user, request }) => {
   const { store, on } = await body(request);
