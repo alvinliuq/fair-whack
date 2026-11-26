@@ -37,7 +37,8 @@ const psCard = (slug, brand, name, sizes, save, price, auto) => `<a href="/produ
 test('PETstock listing: price is the Buy Once price, was = price + Save; Autoship ignored', () => {
   const html = `<div>${psCard('black-hawk-original-lamb-rice-adult-dry-dog-food-variant-122713000003', 'Black Hawk', 'Black Hawk Original Lamb &amp; Rice Adult Dry Dog Food', ['20kg', '3kg', '10kg'], '7.55', '143.45', '135.90')}
     ${psCard('nexgard-spectra-large-variant-1', 'NEXGARD SPECTRA', 'NexGard Spectra Large Breed 15.1-30kg Flea, Tick &amp; Worming Dog Chews', ['6pk', '3pk'], '11.00', '93.00', '93.60')}
-    ${psCard('plain-food-variant-2', 'Acme', 'Acme Plain Dog Food', ['2kg'], '', '20.00', '18.00')}</div>`;
+    ${psCard('plain-food-variant-2', 'Acme', 'Acme Plain Dog Food', ['2kg'], '', '20.00', '18.00')}
+    ${psCard('not-loaded-variant-3', 'Milo', 'Milo and Luna Spin Tug', ['One size'], '7.00', '0.00', '0.00')}</div>`;
   const { items } = parsePetstockList(html, 'https://www.petstock.com.au/collections/dog-food');
   assert.deepEqual(items.map((x) => [x.price, x.regularPrice, x.size, x.brand?.name]), [[143.45, 151, '20kg', 'Black Hawk'], [93, 104, '6pk', 'NEXGARD SPECTRA'], [20, null, '2kg', 'Acme']]);
   assert.match(items[0].mainImage.url, /^https:\/\/cdn\.shopify\.com\//);

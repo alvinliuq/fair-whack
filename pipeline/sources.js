@@ -263,10 +263,10 @@ export const SOURCES = {
   // PETstock loads its product grid in the browser (20 a page, ?page=2 works); Pet Circle's category pages are plain HTML.
   // Our own parsers (27 Nov): listing cards show "Save $x" and the price but no was-price, and an Autoship price that
   // Zyte's extraction took as the price. List items refresh from their product pages (plain HTML: JSON-LD + "Was $").
-  petstock: { ...zyteSource('petstock', 'browserHtml', 3, 3, 'petstock'), host: 'www.petstock.com.au',
+  petstock: { ...(() => { const z = zyteSource('petstock', 'browserHtml', 3, 3, 'petstock'); z.catalogue[0].input.waitSeconds = 4; return z; })(), host: 'www.petstock.com.au',
     // Specials: up to 10 pages of the sale collection (20 a page), then page 1 of dog and cat food.
-    specials: [{ input: { pages: ZY.petstock.slice(0, 1), extractFrom: 'browserHtml', maxPages: 10, parser: 'petstock' }, max: 1 },
-      { input: { pages: ZY.petstock.slice(1, 3), extractFrom: 'browserHtml', maxPages: 1, parser: 'petstock' }, max: 1 }],
+    specials: [{ input: { pages: ZY.petstock.slice(0, 1), extractFrom: 'browserHtml', maxPages: 10, parser: 'petstock', waitSeconds: 4 }, max: 1 },
+      { input: { pages: ZY.petstock.slice(1, 3), extractFrom: 'browserHtml', maxPages: 1, parser: 'petstock', waitSeconds: 4 }, max: 1 }],
     refresh: (urls) => [{ input: { products: urls.slice(0, 60).map((u) => u.split('?')[0]), extractFrom: 'httpResponseBody', productParser: 'petstockProduct' }, max: 1 }] },
   // Pet Circle product pages (list refresh) only show a price in a browser.
   petcircle: { ...zyteSource('petcircle', 'httpResponseBody', 3, 3), host: 'www.petcircle.com.au', refresh: (urls) => [{ input: { products: urls.slice(0, 60), extractFrom: 'browserHtml' }, max: 1 }] },
@@ -293,6 +293,7 @@ export function adaptItem(retailer, item) {
   const site = s.host.replace(/^www\./, '');
   if (out.url && !new URL(out.url).hostname.endsWith(site)) return { ...out, error: `links to another site (${new URL(out.url).hostname})` };
   if (out.productId == null || !out.name || out.price == null) return { ...out, error: out.error || 'missing id, name or price' };
+  if (out.price <= 0) return { ...out, error: 'price $0 (not loaded)' };
   if (s.minPrice && out.price < s.minPrice) return { ...out, error: `implausible price $${out.price}` };
   return out;
 }

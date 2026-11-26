@@ -68,7 +68,9 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
       const parser = j.product ? input.productParser : input.parser;
       if (cost + perRequest(pEx, parser) > budgetUsd) { stopped = true; log(`${label}: run budget $${budgetUsd} reached, stopping`); break; }
       const body = parser
-        ? { url: j.url, [pEx === 'browserHtml' ? 'browserHtml' : 'httpResponseBody']: true, geolocation: 'AU' }
+        ? { url: j.url, [pEx === 'browserHtml' ? 'browserHtml' : 'httpResponseBody']: true, geolocation: 'AU',
+          // PETstock cards show "$0.00" until their prices load: give the page a few seconds first.
+          ...(pEx === 'browserHtml' && input.waitSeconds ? { actions: [{ action: 'waitForTimeout', timeout: input.waitSeconds }] } : {}) }
         : j.product
         ? { url: j.url, product: true, productOptions: { extractFrom: pEx }, geolocation: 'AU' }
         : input.navigation

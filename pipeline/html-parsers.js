@@ -54,7 +54,8 @@ export function parsePetstockList(html, pageUrl) {
     const auto = after.findIndex((x) => /^autoship$/i.test(x));
     const priceTokens = (auto >= 0 ? after.slice(0, auto) : after).filter((x) => /^\$\s?\d[\d,]*(\.\d\d)?$/.test(x));
     const price = money(priceTokens[priceTokens.length - 1]);
-    if (price == null) continue;
+    // "$0.00" is the card before its price has loaded (seen 27 Nov): no price yet, skip the card.
+    if (price == null || price < 0.5) continue;
     const save = money((after.slice(0, auto >= 0 ? auto : after.length).find((x) => /^save \$/i.test(x)) || ''));
     const size = after.find((x) => SIZE.test(x)) || null;
     const img = (c.match(/<img[^>]*src="([^"]+)"/) || [])[1];
