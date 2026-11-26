@@ -1,7 +1,7 @@
 // Google Shopping on the product page: keep only rows that look like the same product, drop used items, multipacks
 // and prices far from ours, and drop stores we already read ourselves for this product (our data is fresher).
-// One row per shop, sized rows first, cheapest first. A row whose title gives no pack size is kept but marked
-// sizeUnknown: the page shows it without counting it for "Lowest".
+// One row per shop, cheapest first. A row whose title gives no pack size is kept and marked sizeUnknown
+// ("Size not shown" on the page; it still counts for "Lowest").
 import { normText } from './normalize.js';
 import { RETAILER_INFO } from './retailers.js';
 
@@ -90,5 +90,5 @@ export function sameOnline(p, results, haveRetailers = []) {
     // Per shop: a row with a known size beats one without; then the cheaper.
     if (!prev || (prev.sizeUnknown && !row.sizeUnknown) || (prev.sizeUnknown === row.sizeUnknown && row.priceCents < prev.priceCents)) best.set(k, row);
   }
-  return [...best.values()].sort((a, b) => a.sizeUnknown - b.sizeUnknown || a.priceCents - b.priceCents).slice(0, 8);
+  return [...best.values()].sort((a, b) => a.priceCents - b.priceCents).slice(0, 8);
 }
