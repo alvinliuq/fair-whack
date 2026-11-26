@@ -1169,7 +1169,7 @@ route('POST', '/api/items/:id/not-same', async ({ env, user, params, request }) 
 });
 
 // ----- friends and sharing (stage 7) -----
-// Friends are added by user name (@handle) or by scanning a QR code; either way the other person must accept.
+// Friends are added by User ID (handle) or by scanning a QR code; either way the other person must accept.
 // Friends never see each other's lists or profile, only the products shared with them.
 const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
 const pairOf = (x, y) => (x < y ? { pair: `${x}|${y}`, a: x, b: y } : { pair: `${y}|${x}`, a: y, b: x });
@@ -1213,9 +1213,9 @@ route('GET', '/api/social', async ({ env, user }) => {
 
 route('PUT', '/api/social/handle', async ({ env, user, request }) => {
   const h = String((await body(request)).handle || '').trim().replace(/^@/, '').toLowerCase();
-  if (!HANDLE_RE.test(h)) throw new HttpError(400, 'User names are 3–20 letters, numbers, dots or underscores');
+  if (!HANDLE_RE.test(h)) throw new HttpError(400, 'A User ID is 3–20 letters, numbers, dots or underscores');
   const taken = await env.DB.prepare('SELECT id FROM users WHERE handle = ? AND id != ?').bind(h, user.id).first();
-  if (taken) throw new HttpError(409, 'That user name is taken');
+  if (taken) throw new HttpError(409, 'That User ID is taken');
   await ensureSocial(env, user);
   await env.DB.prepare('UPDATE users SET handle = ? WHERE id = ?').bind(h, user.id).run();
   return json({ ok: true, handle: h });
@@ -1240,7 +1240,7 @@ route('GET', '/api/social/lookup', async ({ env, url, user }) => {
   const code = url.searchParams.get('code'), handle = String(url.searchParams.get('handle') || '').replace(/^@/, '').toLowerCase();
   const u = code ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE friend_code = ?').bind(code).first()
     : handle ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE handle = ?').bind(handle).first() : null;
-  if (!u) throw new HttpError(404, code ? 'This QR code is no longer valid' : 'No one has that user name');
+  if (!u) throw new HttpError(404, code ? 'This QR code is no longer valid' : 'No one has that User ID');
   if (u.id === user.id) throw new HttpError(400, 'That’s you!');
   const f = await env.DB.prepare('SELECT status, requested_by, blocked_by FROM friendships WHERE pair = ?').bind(pairOf(user.id, u.id).pair).first();
   const status = !f ? 'none' : f.status === 'accepted' ? 'friends' : f.status === 'blocked' ? (f.blocked_by === user.id ? 'you_blocked' : 'none')
@@ -1253,7 +1253,7 @@ route('POST', '/api/friends/request', async ({ env, user, request }) => {
   const handle = String(b.handle || '').replace(/^@/, '').toLowerCase();
   const u = b.code ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE friend_code = ?').bind(String(b.code)).first()
     : handle ? await env.DB.prepare('SELECT id, name, handle FROM users WHERE handle = ?').bind(handle).first() : null;
-  if (!u) throw new HttpError(404, b.code ? 'This QR code is no longer valid' : 'No one has that user name');
+  if (!u) throw new HttpError(404, b.code ? 'This QR code is no longer valid' : 'No one has that User ID');
   if (u.id === user.id) throw new HttpError(400, 'That’s you!');
   const me = await ensureSocial(env, user);
   const pr = pairOf(me.id, u.id);

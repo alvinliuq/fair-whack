@@ -945,3 +945,8 @@ body.sub-page .topbar .brand em { display: none; }
 .ab-meta { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ab-st, .ab-f { text-align: right; white-space: nowrap; }
 .ab-type.partner { color: var(--grape-d); font-weight: 750; }
+/* Me → My account */
+.acc-form { display: flex; flex-direction: column; gap: 18px; padding: 18px 16px 16px; }
+.acc-form .hint { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.acc-actions { display: flex; justify-content: flex-end; padding-top: 2px; }
+.acc-actions .btn { min-width: 110px; }

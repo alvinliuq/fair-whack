@@ -1,6 +1,6 @@
 // Fair Whack — friends and sharing (stage 7).
-// Me → Friends: your @user name and QR code, scan a friend's code, add by user name, requests, friends.
-// Me → My account: display name and @user name. Shared with you: products friends sent.
+// Me → Friends: your User ID and QR code, scan a friend's code, add by User ID, requests, friends.
+// Me → My account: name to be seen and User ID. Shared with you: products friends sent.
 // Friends are added only when the other person accepts. Friends can't see each other's lists or profile.
 let ctx;
 export function init(c) { ctx = c; }
@@ -35,12 +35,12 @@ export async function meSheet() {
   const { state, esc, sheet } = ctx;
   const s = await socialData().catch(() => null);
   const badge = (n) => (n ? `<span class="pill">${n}</span>` : '');
-  sheet(`<div class="me-head"><span class="avatar big">${esc(initials(state.me.name))}</span><div><b>${esc(state.me.name)}</b>${s ? `<div class="small muted">@${esc(s.me.handle)}</div>` : ''}</div></div>
+  sheet(`<div class="me-head"><span class="avatar big">${esc(initials(state.me.name))}</span><div><b>${esc(state.me.name)}</b>${s ? `<div class="small muted">User ID: ${esc(s.me.handle)}</div>` : ''}</div></div>
     <div class="card menu">
       <a href="#/friends"><span class="ic">🧑‍🤝‍🧑</span><span>Friends ${badge(s?.incoming.length)}<span class="sub">Your QR code · add friends · requests</span></span></a>
       <a href="#/shared"><span class="ic">🎁</span><span>Shared with you ${badge(s?.unseenShares)}<span class="sub">Products your friends sent</span></span></a>
       <a href="#/following"><span class="ic">🏷️</span><span>Brands you follow<span class="sub">Their current deals · unfollow</span></span></a>
-      <a href="#/account"><span class="ic">👤</span><span>My account<span class="sub">Name and user name</span></span></a>
+      <a href="#/account"><span class="ic">👤</span><span>My account<span class="sub">Name and User ID</span></span></a>
       <a href="#/profile"><span class="ic">📋</span><span>My profile<span class="sub">You and your family, fuel, bills</span></span></a>
       ${state.me.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
       <button id="me-out"><span class="ic">↩︎</span><span>Sign out</span></button>
@@ -74,22 +74,22 @@ export async function friendsPage() {
   const { app, esc, api, toast } = ctx;
   app.innerHTML = '<h1>Friends</h1><p class="muted">Loading…</p>';
   const s = await socialData(true);
-  const person = (p, actions) => `<div class="r friend"><span class="avatar">${esc(initials(p.name))}</span><span class="n"><b>${esc(p.name)}</b><span class="small muted">@${esc(p.handle || '')}</span></span>${actions}</div>`;
+  const person = (p, actions) => `<div class="r friend"><span class="avatar">${esc(initials(p.name))}</span><span class="n"><b>${esc(p.name)}</b><span class="small muted">User ID: ${esc(p.handle || '')}</span></span>${actions}</div>`;
   app.innerHTML = `<h1>Friends</h1>
     <p class="lead">Share good finds with friends. Friends see only what you share with them, never your lists or profile.</p>
     <div class="card qr-card">
       <div id="qr" class="qr" aria-label="Your friend QR code"></div>
-      <div class="qr-t"><b>@${esc(s.me.handle)}</b><span class="small muted">Friends scan this code, or add you by your user name. You'll be asked before anyone is added.</span>
-        <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn small" id="scan">Scan a friend's code</button><button class="btn small light" id="byname">Add by user name</button><button class="btn small light" id="sharecode">Send my link</button></div></div>
+      <div class="qr-t"><b>User ID: ${esc(s.me.handle)}</b><span class="small muted">Friends scan this code, or add you by your User ID. You'll be asked before anyone is added.</span>
+        <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn small" id="scan">Scan a friend's code</button><button class="btn small light" id="byname">Add by User ID</button><button class="btn small light" id="sharecode">Send my link</button></div></div>
     </div>
     ${s.incoming.length ? `<h2>Requests</h2><div class="card list-rows">${s.incoming.map((p) => person(p, `<button class="btn small" data-accept="${esc(p.id)}">Accept</button><button class="btn small light" data-decline="${esc(p.id)}">Decline</button>`)).join('')}</div>` : ''}
     <h2>Your friends ${s.friends.length ? `<span class="small muted">${s.friends.length}</span>` : ''}</h2>
     ${s.friends.length ? `<div class="card list-rows">${s.friends.map((p) => person(p, `<button class="linkbtn small" data-manage="${esc(p.id)}" data-name="${esc(p.name)}">Manage</button>`)).join('')}</div>`
-      : '<div class="empty"><b>No friends yet</b>Show your QR code to someone, or add them by user name.</div>'}
+      : '<div class="empty"><b>No friends yet</b>Show your QR code to someone, or add them by User ID.</div>'}
     ${s.outgoing.length ? `<h2>Waiting for them to accept</h2><div class="card list-rows">${s.outgoing.map((p) => person(p, `<button class="linkbtn small" data-decline="${esc(p.id)}">Cancel</button>`)).join('')}</div>` : ''}
     ${s.blocked.length ? `<h2>Blocked</h2><div class="card list-rows">${s.blocked.map((p) => person(p, `<button class="linkbtn small" data-decline="${esc(p.id)}">Unblock</button>`)).join('')}</div>` : ''}
     <p class="small muted center" style="margin-top:16px"><button class="linkbtn small" id="newcode">Make a new QR code</button> · the old code and link stop working.</p>`;
-  qrSvg(addLink(s.me.code)).then((svg) => { $('#qr').innerHTML = svg; }).catch(() => { $('#qr').innerHTML = `<div class="small muted center">QR code unavailable here.<br>User name: <b>@${esc(s.me.handle)}</b></div>`; });
+  qrSvg(addLink(s.me.code)).then((svg) => { $('#qr').innerHTML = svg; }).catch(() => { $('#qr').innerHTML = `<div class="small muted center">QR code unavailable here.<br>User ID: <b>${esc(s.me.handle)}</b></div>`; });
   const done = (msg) => { invalidate(); toast(msg); friendsPage(); refreshBadge(); };
   app.onclick = async (e) => {
     const b = e.target.closest('button');
@@ -122,7 +122,7 @@ function manageSheet(id, name, done) {
 
 async function shareMyLink(me) {
   const url = addLink(me.code);
-  const text = `Add me on Fair Whack (@${me.handle})`;
+  const text = `Add me on Fair Whack (User ID: ${me.handle})`;
   try {
     if (navigator.share) await navigator.share({ title: 'Fair Whack', text, url });
     else { await navigator.clipboard.writeText(`${text}: ${url}`); ctx.toast('Link copied'); }
@@ -131,7 +131,7 @@ async function shareMyLink(me) {
 
 function byNameSheet() {
   const { sheet } = ctx;
-  sheet(`<h3>Add by user name</h3><form id="byname-f" class="row" style="gap:8px"><input name="h" placeholder="@username" autocapitalize="none" autocomplete="off" required style="flex:1"><button class="btn">Find</button></form><div id="byname-r"></div>`);
+  sheet(`<h3>Add by User ID</h3><form id="byname-f" class="row" style="gap:8px"><input name="h" placeholder="Their User ID" autocapitalize="none" autocomplete="off" required style="flex:1"><button class="btn">Find</button></form><div id="byname-r"></div>`);
   $('#byname-f').onsubmit = (e) => { e.preventDefault(); confirmPerson({ handle: e.target.h.value.trim() }, $('#byname-r')); };
   setTimeout(() => $('#byname-f input')?.focus(), 50);
 }
@@ -143,7 +143,7 @@ async function confirmPerson(who, el) {
   try {
     const r = await api(`/api/social/lookup?${who.code ? `code=${encodeURIComponent(who.code)}` : `handle=${encodeURIComponent(who.handle)}`}`);
     const msg = { friends: 'You are already friends.', requested: 'Request sent. Waiting for them to accept.', they_requested: 'They asked to be your friend.', you_blocked: 'You blocked this person.' }[r.status];
-    el.innerHTML = `<div class="card list-rows"><div class="r friend"><span class="avatar">${esc(initials(r.person.name))}</span><span class="n"><b>${esc(r.person.name)}</b><span class="small muted">@${esc(r.person.handle)}</span></span></div></div>
+    el.innerHTML = `<div class="card list-rows"><div class="r friend"><span class="avatar">${esc(initials(r.person.name))}</span><span class="n"><b>${esc(r.person.name)}</b><span class="small muted">User ID: ${esc(r.person.handle)}</span></span></div></div>
       ${msg ? `<p class="small muted">${msg}</p>` : ''}
       ${['none', 'they_requested'].includes(r.status) ? `<button class="btn" id="send-req" style="width:100%">${r.status === 'they_requested' ? 'Accept' : 'Send friend request'}</button>` : ''}`;
     const b = $('#send-req', el);
@@ -169,8 +169,8 @@ export async function addPage(code) {
 async function scanFriend() {
   const { toast } = ctx;
   let jsQR;
-  try { jsQR = await loadScript('/vendor/jsQR.js', 'jsQR'); } catch { toast('The scanner is not available here. Add them by user name instead.'); return; }
-  if (!navigator.mediaDevices?.getUserMedia) { toast('This browser can\'t open the camera. Add them by user name instead.'); return; }
+  try { jsQR = await loadScript('/vendor/jsQR.js', 'jsQR'); } catch { toast('The scanner is not available here. Add them by User ID instead.'); return; }
+  if (!navigator.mediaDevices?.getUserMedia) { toast('This browser can\'t open the camera. Add them by User ID instead.'); return; }
   const ov = document.createElement('div');
   ov.className = 'scanner';
   ov.setAttribute('role', 'dialog');
@@ -183,7 +183,7 @@ async function scanFriend() {
   const close = () => { stop = true; stream?.getTracks().forEach((t) => t.stop()); ov.remove(); };
   $('.scan-close', ov).onclick = close;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } }); }
-  catch { close(); toast('The camera could not start. Add them by user name instead.'); return; }
+  catch { close(); toast('The camera could not start. Add them by User ID instead.'); return; }
   const v = $('video', ov);
   v.srcObject = stream; await v.play().catch(() => {});
   const c = document.createElement('canvas'), g = c.getContext('2d', { willReadFrequently: true });
@@ -207,10 +207,12 @@ export async function accountPage() {
   const s = await socialData(true);
   const signIn = state.me.id.replace(/^[ud]:/, '').replace(/-/g, ' ');
   app.innerHTML = `<h1>My account</h1>
-    <form class="card form" id="acc">
-      <label>Name<input name="name" value="${esc(state.me.name)}" maxlength="40" required><span class="small muted">What friends see. You still sign in with “${esc(signIn)}” and the invite code.</span></label>
-      <label>User name<div class="row" style="gap:6px"><span class="muted">@</span><input name="handle" value="${esc(s.me.handle)}" maxlength="20" autocapitalize="none" autocomplete="off" required style="flex:1"></div><span class="small muted">3–20 letters, numbers, dots or underscores. Friends use it to add you.</span></label>
-      <button class="btn">Save</button>
+    <form class="card acc-form" id="acc">
+      <div class="field"><label for="acc-name">Name to be seen</label><input id="acc-name" name="name" value="${esc(state.me.name)}" maxlength="40" required>
+        <span class="hint">What friends see. You still sign in with “${esc(signIn)}” and the invite code.</span></div>
+      <div class="field"><label for="acc-id">User ID</label><input id="acc-id" name="handle" value="${esc(s.me.handle)}" maxlength="20" autocapitalize="none" autocomplete="off" spellcheck="false" required>
+        <span class="hint">3–20 letters, numbers, dots or underscores. Friends type it to add you.</span></div>
+      <div class="acc-actions"><button class="btn">Save</button></div>
     </form>`;
   $('#acc').onsubmit = async (e) => {
     e.preventDefault();
