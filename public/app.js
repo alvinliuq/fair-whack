@@ -11,7 +11,7 @@ function applyStores(meta) {
 }
 // Store logos (shown at 88×88; files are 264×264 for 3x screens, supplied by Alvin 26 Nov): public/icons/stores/<id>.png. A store without one shows a coloured badge.
 const STORE_LOGOS = Object.fromEntries(['woolworths', 'coles', 'aldi', 'jbhifi', 'costco', 'kmart', 'bunnings', 'petbarn', 'bigw', 'chemistwarehouse',
-  'thegoodguys', 'target', 'officeworks', 'ebgames', 'peto', 'decathlon'].map((r) => [r, `/icons/stores/${r}.png?v=2`]));
+  'thegoodguys', 'target', 'officeworks', 'ebgames', 'peto', 'decathlon', 'harveynorman', 'petstock', 'petcircle'].map((r) => [r, `/icons/stores/${r}.png?v=2`]));
 const storeLogo = (r, cls = '') => `<span class="slogo ${r} ${cls} ${STORE_LOGOS[r] ? 'has-img' : ''}" aria-hidden="true">${STORE_LOGOS[r] ? `<img src="${STORE_LOGOS[r]}" alt="" width="88" height="88" decoding="async">` : `<b>${(RET[r] || '?')[0]}</b>`}</span>`;
 const MARK = '<svg class="mark" viewBox="34 57 100 102" aria-hidden="true"><polygon points="76,59 89,79 111,66 108,91 132,101 113,115 124,138 99,134 88,157 76,136 52,145 58,119 36,106 58,92 52,68" fill="#C8F169"/><path d="M84 82v37M69 106l15 16 15-16" fill="none" stroke="#5B2BE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const state = { me: null, profile: null, needsProfile: false, meta: null, vapid: null, saved: new Map(), products: new Map(), listOpen: {} };
