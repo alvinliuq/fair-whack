@@ -130,11 +130,13 @@ function tile(p) {
   </a>`;
 }
 
-function offerRow(o, best) {
+const LP = '<span class="lp" hidden>Lowest</span>';
+/** A store's price row. lp: mark the cheapest later with a "Lowest" pill (product page) instead of "Cheapest". */
+function offerRow(o, best, lp = false) {
   const save = o.saving ? `<span class="note">Save ${money(o.saving)}</span>` : '';
-  return `<a class="offer ${best ? 'best' : ''}" href="#/p/${encodeURIComponent(o.id)}">
-    <div class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span>${badges(o)}${best ? '<span class="tag-best">Cheapest</span>' : ''}</div>
-    <div class="p num">${money(o.effective)}</div>
+  return `<a class="offer ${best && !lp ? 'best' : ''}" href="#/p/${encodeURIComponent(o.id)}">
+    <div class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span>${badges(o)}${best && !lp ? '<span class="tag-best">Cheapest</span>' : ''}</div>
+    <div class="p num"${lp ? ` data-cents="${o.effective ?? ''}"` : ''}>${money(o.effective)}${lp ? LP : ''}</div>
     <div class="note">${o.was ? `was ${money(o.was)} ` : ''}${save}</div>
     <div class="u num">${esc(unitText(o))}${o.perUse ? ` · ${money(o.perUse)}/use` : ''}</div>
   </a>`;
@@ -843,21 +845,54 @@ views.product = async (q, id) => {
     app.innerHTML = `
       <div class="hero">${thumb(p)}<div><span class="ret ${p.retailer}">${RET[p.retailer]}</span><h1>${esc(p.name)}</h1><div class="small muted">${esc(p.size || '')}${p.brand ? ` · ${esc(p.brand)}` : ''}</div>${badges(p, { stale: false })}</div></div>
       <div class="facts">
-        <div class="fact"><b class="num">${money(p.effective)}</b><span>${p.was ? `was ${money(p.was)}` : 'Current price'}${p.multibuy ? ` · ${esc(p.promoText)}` : ''}</span></div>
+        <div class="fact"><b class="num" data-cents="${p.effective ?? ''}" data-self>${money(p.effective)}${LP}</b><span>${p.was ? `was ${money(p.was)}` : 'Current price'}${p.multibuy ? ` · ${esc(p.promoText)}` : ''}</span></div>
         <div class="fact"><b class="num">${esc(unitText(p) || '—')}</b><span>Unit price</span></div>
         ${p.perUse ? `<div class="fact"><b class="num">${money(p.perUse)}</b><span>Per use (${p.uses} uses)</span></div>` : ''}
         ${p.low12 ? `<div class="fact"><b class="num">${money(p.low12)}</b><span>Lowest in ${p.historyWeeks || 12} weeks</span></div>` : ''}
       </div>
       <p class="small muted">Checked ${ago(p.checkedAt)}${p.stale ? ' — may have changed' : ''}. ${p.anomaly ? '<b>Unusual price change, being checked.</b>' : ''}</p>
       <div class="row" style="margin:12px 0;gap:8px"><button class="btn ${on ? 'ghost' : ''}" id="watch" data-pid="${esc(p.id)}" style="flex:1;white-space:nowrap">${on ? '♥ On your list' : '♡ Add to my list'}</button><button class="btn light icon-btn" id="share" aria-label="Share with friends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4.5 4.5-1.4 1.4L13 6.8V15h-2V6.8L8.9 8.9 7.5 7.5zM5 13h2v6h10v-6h2v8H5z"/></svg></button>${p.url ? `<a class="btn light" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" aria-label="View at ${RET[p.retailer]}">${RET[p.retailer]} ↗</a>` : ''}</div>
-      ${d.offers.length > 1 ? `<h2>Same product, other store</h2><div class="group">${d.offers.map((o, i) => offerRow(o, i === 0 && (d.offers[1].effective ?? 1e12) > (o.effective ?? 0))).join('')}</div>` : ''}
+      ${d.offers.length > 1 ? `<h2>Same product, other store</h2><div class="group">${d.offers.map((o) => offerRow(o, false, true)).join('')}</div>` : ''}
+      <div id="pweb"></div>
       <h2>Price history</h2><div class="card">${sparkline(d.history)}</div>
       ${d.sizes.length ? `<h2>Other sizes</h2><div class="group">${d.sizes.map((o) => `<a class="offer" href="#/p/${encodeURIComponent(o.id)}"><div class="l"><span class="ret ${o.retailer}">${RET[o.retailer]}</span><span class="small">${esc(o.size || o.name)}</span></div><div class="p num">${money(o.effective)}</div><div></div><div class="u num">${esc(unitText(o))}</div></a>`).join('')}</div>` : ''}
       ${d.similar.length ? `<h2>Similar items, by unit price</h2><div class="grid">${d.similar.slice(0, 6).map(tile).join('')}</div>` : ''}`;
     $('#watch').onclick = () => onHeart(p.id).catch((e) => toast(e.message));
     $('#share').onclick = async () => (await soc()).shareSheet(p).catch((e) => toast(e.message));
+    markLowest();
+    productWeb(p, $('#pweb'));
   } catch (e) { fail(e); }
 };
+/** Show "Lowest" on the cheapest price on the product page (our stores and Google Shopping), when there are 2+ to compare. */
+function markLowest() {
+  const els = [...app.querySelectorAll('[data-cents]')].filter((e) => e.dataset.cents !== '');
+  // Prices compared: each store row, plus the page's own price when it has no row of its own (only one of our stores).
+  const ownRow = !!app.querySelector('.group:not(.web-prices) [data-cents]');
+  const n = els.filter((e) => !('self' in e.dataset)).length + (ownRow ? 0 : 1);
+  const min = Math.min(...els.map((e) => +e.dataset.cents));
+  els.forEach((e) => { const pill = e.querySelector('.lp'); if (pill) pill.hidden = !(n > 1 && +e.dataset.cents === min); });
+}
+/** The same product at other online shops (Google Shopping), cheapest first. */
+async function productWeb(p, el) {
+  el.innerHTML = '<h2>Other shops online</h2><div class="skeleton" style="height:70px"></div>';
+  let d;
+  try { d = await api(`/api/product/${encodeURIComponent(p.id)}/web`); } catch { d = { results: [] }; }
+  if (!el.isConnected) return;
+  const rows = d.results || [];
+  if (!rows.length) {
+    const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s lookups. More tomorrow!' }[d.unavailable];
+    el.innerHTML = why ? `<h2>Other shops online</h2><p class="small muted">${why}</p>` : '';
+    return;
+  }
+  el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
+    <div class="group web-prices">${rows.map((r) => `<a class="offer" href="${esc(r.link || '#')}" target="_blank" rel="noopener noreferrer">
+      <div class="l"><span class="ret web">${esc(r.store || 'Online shop')}</span><span class="small">${esc(r.title)}</span></div>
+      <div class="p num" data-cents="${r.priceCents}">${money(r.priceCents)}${LP}</div>
+      <div class="note">${r.wasCents && r.wasCents > r.priceCents ? `was ${money(r.wasCents)}` : ''}</div>
+      <div class="u">${esc(r.delivery || '')}</div></a>`).join('')}</div>
+    <p class="small muted">Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page.</p>`;
+  markLowest();
+}
 
 // ----- sheets -----
 function sheet(html, onMount, onClose) {

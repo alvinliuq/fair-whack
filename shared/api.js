@@ -9,6 +9,7 @@ import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-i
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
+import { webQuery, sameOnline } from './webmatch.js';
 import { RETAILER_INFO } from './retailers.js';
 import { notify } from './push.js';
 import { registerBrandRoutes } from './brands-api.js';
@@ -775,13 +776,15 @@ export function serpResults(data) {
   }
   return out;
 }
-route('GET', '/api/search/web', async ({ env, url, user }) => {
-  const q = serpKey(url.searchParams.get('q') || '');
-  if (q.length < 2) return json({ q, results: [] });
+route('GET', '/api/search/web', async ({ env, url, user }) => json(await serpLookup(env, user, url.searchParams.get('q') || '')));
+/** One Google Shopping lookup (cached, capped). Returns { q, fetchedAt, results, cached, stale?, unavailable? }. */
+async function serpLookup(env, user, raw) {
+  const q = serpKey(raw);
+  if (q.length < 2) return { q, results: [] };
   const row = await env.DB.prepare('SELECT fetched_at, data FROM serp_cache WHERE q = ?').bind(q).first().catch(() => null);
   const saved = row ? { q, fetchedAt: row.fetched_at, ...JSON.parse(row.data) } : null;
-  if (saved && Date.now() - Date.parse(row.fetched_at) < SERPAPI.cacheHours * 3600000) return json({ ...saved, cached: true });
-  const stale = (why) => json(saved ? { ...saved, cached: true, stale: why } : { q, results: [], unavailable: why });
+  if (saved && Date.now() - Date.parse(row.fetched_at) < SERPAPI.cacheHours * 3600000) return { ...saved, cached: true };
+  const stale = (why) => (saved ? { ...saved, cached: true, stale: why } : { q, results: [], unavailable: why });
   if (!env.SERPAPI_KEY) return stale('not set up');
   const spend = await monthSpend(async (sql, p) => (await env.DB.prepare(sql).bind(...p).all()).results);
   if (budgetLevel(spend.total) === 'hard') return stale('budget');
@@ -809,7 +812,16 @@ route('GET', '/api/search/web', async ({ env, url, user }) => {
   const out = { q, fetchedAt: nowIso(), results: serpResults(data) };
   await env.DB.prepare('INSERT INTO serp_cache (q, fetched_at, data) VALUES (?, ?, ?) ON CONFLICT(q) DO UPDATE SET fetched_at = excluded.fetched_at, data = excluded.data')
     .bind(q, out.fetchedAt, JSON.stringify({ results: out.results })).run();
-  return json({ ...out, cached: false });
+  return { ...out, cached: false };
+}
+// Product page: the same product at other online shops (Google Shopping), filtered to real matches.
+route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
+  const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
+  if (!p) throw new HttpError(404, 'Product not found');
+  const canon = p.canonical_product_id || `c:${p.id}`;
+  const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map((r) => r.retailer);
+  const d = await serpLookup(env, user, webQuery(pub(p)));
+  return json({ ...d, results: sameOnline(pub(p), d.results, have) });
 });
 
 route('GET', '/api/search/barcode', async ({ env, url }) => {
