@@ -194,8 +194,8 @@ async function specials(db, retailers = RETAILERS) {
   }
 }
 
-async function wishlist(db) {
-  for (const r of RETAILERS) {
+async function wishlist(db, retailers = RETAILERS) {
+  for (const r of retailers) {
     // Wishlisted products plus their matched twins at this retailer, not already refreshed this week.
     const fresh = new Date(Date.now() - 3 * 86400000).toISOString();
     const rows = await db.all(`
@@ -414,7 +414,23 @@ async function accountChecks() {
 
 const db = await makeDb();
 log(`mode=${mode} retailers=${RETAILERS.join(',')}`);
+/** Wednesday/Saturday 5pm: stores whose specials did not update successfully in the last 20 hours run again
+ *  (Wednesday: every store, with their list items; Saturday: every store but the supermarkets). */
+async function retry(db) {
+  const day = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short' }).format(new Date());
+  const expected = day === 'Sat' ? SATURDAY_RETAILERS : RETAILERS;
+  const since = new Date(Date.now() - 20 * 3600000).toISOString();
+  const ok = new Set((await db.all("SELECT DISTINCT retailer FROM pipeline_runs WHERE mode = 'specials' AND status = 'ok' AND started_at >= ?", [since])).map((x) => x.retailer));
+  const todo = expected.filter((r) => !ok.has(r) && !(SOURCES[r] && !SOURCES[r].specials.length));
+  log(`retry (${day}): ${todo.length ? `running again: ${todo.join(', ')}` : 'every store updated, nothing to do'}`);
+  if (!todo.length) return;
+  await specials(db, todo);
+  if (day !== 'Sat') await wishlist(db, todo);
+  await match(db);
+}
+
 if (mode === 'weekly') { await specials(db); await wishlist(db); await match(db); }
+else if (mode === 'retry') await retry(db);
 else if (mode === 'saturday') { await specials(db, SATURDAY_RETAILERS); if (SATURDAY_RETAILERS.length) await match(db); }
 else if (mode === 'specials') { await specials(db); await match(db); }
 else if (mode === 'wishlist') await wishlist(db);

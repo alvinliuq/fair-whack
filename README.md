@@ -38,6 +38,7 @@ In Apify, set a monthly usage limit (Settings → Usage & billing) as a second s
 | Wed 08:00 | One merged push per tester for list items on special |
 | Sat 02:30 | Specials of every retailer except the supermarkets (Woolworths, Coles, ALDI change theirs on Wednesdays), matching |
 | Sat 08:00 | One merged push per tester for list items on special |
+| Wed + Sat 17:00 | `retry`: stores whose specials did not update successfully that day run again (Wednesday with their list items). Admin shows a warning for any store whose last specials run failed or whose last good one is older than 8 days (supermarkets) or 5 days (others) |
 | Mon 03:00 | Catalogue crawl (~10k products per store, each store's own departments), only if 27+ days since the last one |
 
 Run any job by hand: **Actions → Pipeline → Run workflow** (`status` shows spend).

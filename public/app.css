@@ -952,3 +952,7 @@ body.sub-page .topbar .brand em { display: none; }
 .tile .foot .price.has-lp { align-items: center; }
 .tile .foot .price.has-lp small { flex-basis: 100%; }
 .wc-note.wc-close { color: #7A4B00; font-weight: 700; }
+/* Admin: stores whose specials did not update */
+.notice.warn { background: #FFF4E0; border-color: #F3C98B; margin-bottom: 10px; }
+.admin-warn ul { margin: 6px 0; padding-left: 18px; }
+.admin-warn li { margin: 4px 0; }

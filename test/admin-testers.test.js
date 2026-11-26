@@ -101,3 +101,23 @@ test('merge: lists, alerts and history move to one account', async () => {
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM lists WHERE user_id = 'u:sherry'").get().n, 0);
   assert.equal((await boss.call('/api/admin/overview')).removed.length, 0, 'a merged name is not blocked');
 });
+
+test('admin overview warns about stores whose specials did not update', async () => {
+  const { default: fs } = await import('node:fs'); const { default: os } = await import('node:os'); const { default: path } = await import('node:path');
+  const { makeD1, migrate } = await import('../dev/d1shim.js'); const { handle } = await import('../shared/api.js');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fw-warn-')), 't.db');
+  migrate(file);
+  const env = { DB: makeD1(file), INVITE_CODE: 'beta', ADMIN_CODE: 'admin', SESSION_SECRET: 's' };
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const run = env.DB.raw.prepare("INSERT INTO pipeline_runs (mode, retailer, started_at, status, message) VALUES ('specials', ?, ?, ?, ?)");
+  run.run('woolworths', day(9), 'ok', ''); run.run('woolworths', day(2), 'failed', 'Apify 403: monthly usage limit');
+  run.run('kmart', day(1), 'ok', '');
+  run.run('target', day(7), 'ok', '');
+  const login = await handle(new Request('http://x/api/login', { method: 'POST', body: JSON.stringify({ name: 'Boss', code: 'admin' }) }), env);
+  const cookie = login.headers.get('Set-Cookie').split(';')[0];
+  const o = await (await handle(new Request('http://x/api/admin/overview', { headers: { Cookie: cookie } }), env)).json();
+  const w = Object.fromEntries(o.storeWarnings.map((x) => [x.retailer, x]));
+  assert.ok(w.woolworths.failedAt && /usage limit/.test(w.woolworths.why));
+  assert.ok(w.target && !w.target.failedAt);
+  assert.ok(!w.kmart);
+});

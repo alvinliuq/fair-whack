@@ -1460,7 +1460,20 @@ route('GET', '/api/admin/overview', async ({ env, user }) => {
       (SELECT COUNT(*) FROM search_log q WHERE q.user_id = u.id) AS searches,
       (SELECT COUNT(*) FROM push_subs s WHERE s.user_id = u.id) AS devices FROM users u ORDER BY u.created_at`).all()).results;
   const removed = (await env.DB.prepare('SELECT id, name, removed_at FROM removed_users ORDER BY removed_at DESC').all().catch(() => ({ results: [] }))).results;
-  return json({
+  // Stores whose specials did not update: the last specials run failed, or the last good one is too old
+  // (supermarkets: 8 days, they change on Wednesdays; other stores: 5 days, they run Wednesday and Saturday).
+  const lastRuns = (await env.DB.prepare(`SELECT retailer, status, started_at, message FROM pipeline_runs p WHERE mode = 'specials'
+      AND id = (SELECT MAX(id) FROM pipeline_runs q WHERE q.mode = 'specials' AND q.retailer = p.retailer)`).all()).results;
+  const lastOk = new Map((await env.DB.prepare("SELECT retailer, MAX(started_at) AS t FROM pipeline_runs WHERE mode = 'specials' AND status = 'ok' GROUP BY retailer").all()).results.map((x) => [x.retailer, x.t]));
+  const storeWarnings = lastRuns.filter((r) => isActive(r.retailer)).map((r) => {
+    const okAt = lastOk.get(r.retailer);
+    const maxDays = ['woolworths', 'coles', 'aldi'].includes(r.retailer) ? 8 : 5;
+    const old = !okAt || Date.now() - Date.parse(okAt) > maxDays * 86400000;
+    if (r.status !== 'failed' && !old) return null;
+    return { retailer: r.retailer, failedAt: r.status === 'failed' ? r.started_at : null, lastOk: okAt || null,
+      why: r.status === 'failed' ? String(r.message || '').replace(/\s+/g, ' ').slice(0, 160) : null };
+  }).filter(Boolean);
+  return json({ storeWarnings,
     spendUsd: spend.total, spendBy: spend.by, month: spend.month, budgetUsd: BUDGET.monthlyUsd, softUsd: BUDGET.softUsd, hardUsd: BUDGET.hardUsd,
     level: budgetLevel(spend.total), serpUsed: serp?.n || 0, serpCap: SERPAPI.stopAtSearches, runs, counts, pending, users, removed, me: user.id });
 }, { admin: true });

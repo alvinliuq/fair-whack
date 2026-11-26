@@ -1331,7 +1331,11 @@ views.admin = async () => {
     const pct = Math.min(100, (o.spendUsd / o.budgetUsd) * 100);
     const counts = o.counts.filter((c) => STORES.includes(c.retailer));
     const tally = (key, labels) => { const m = {}; for (const u of o.users) { const k = u[key] || '—'; m[k] = (m[k] || 0) + 1; } return Object.entries(m).map(([k, n]) => `${labels[k] || k}: ${n}`).join(' · '); };
+    const warn = (o.storeWarnings || []).filter((w) => STORES.includes(w.retailer));
     app.innerHTML = `<h1>Admin</h1>
+      ${warn.length ? `<div class="notice warn admin-warn"><b>⚠️ Specials not updated at ${warn.length} store${warn.length === 1 ? '' : 's'}</b>
+        <ul>${warn.map((w) => `<li><b>${RET[w.retailer] || w.retailer}</b>: ${w.failedAt ? `last run failed ${ago(w.failedAt)}` : 'no failed run, but no update'}${w.lastOk ? ` · last good update ${ago(w.lastOk)}` : ' · never updated'}${w.why ? `<div class="small muted">${esc(w.why)}</div>` : ''}</li>`).join('')}</ul>
+        <p class="small">A failed Wednesday or Saturday run is retried at 5pm the same day. To run one now: GitHub → Actions → Pipeline → Run workflow (weekly, or saturday), with the store in “Only this retailer”.</p></div>` : ''}
       <a class="card row" href="#/adminbrands" style="text-decoration:none;margin-bottom:10px"><span>🏷️ <b>Brand deals</b> <span class="small muted">Your Brands, Your Deals: brands, campaigns, results</span></span><span class="spacer"></span>›</a>
       <div class="card"><div class="row"><b>Data spend · ${esc(monthName(o.month))}</b><span class="spacer"></span><b class="num">$${o.spendUsd.toFixed(2)} / $${o.budgetUsd}</b></div>
         <div class="meter ${o.level !== 'ok' ? 'hot' : ''}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
