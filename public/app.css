@@ -918,7 +918,6 @@ td.bcol { min-width: 150px; }
 #back-btn { display: none; margin-right: 4px; }
 body.sub-page #back-btn { display: inline-grid; }
 body.sub-page .topbar .brand em { display: none; }
-.tile .foot .price.has-lp { flex-wrap: nowrap; align-items: center; }
 .tile .foot .price .lp { font: 800 10.5px "DM Sans", sans-serif; background: var(--lime); color: var(--ink); border-radius: 5px; padding: 3px 6px; white-space: nowrap; letter-spacing: 0; }
 /* "Lowest" pill on the product page: our stores' rows, Google Shopping rows and the page's own price. */
 .lp { font: 800 10.5px "DM Sans", sans-serif; background: var(--lime); color: var(--ink); border-radius: 5px; padding: 3px 6px; white-space: nowrap; letter-spacing: 0; }

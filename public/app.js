@@ -122,7 +122,7 @@ function tile(p) {
     <span class="ret ${p.retailer}">${RET[p.retailer]}</span>
     <div class="name">${esc(p.name)}</div>
     <div class="foot">
-      <div class="price num${p.lowestNotSpecial ? ' has-lp' : ''}">${money(p.effective)}${p.was ? `<small>${money(p.was)}</small>` : ''}${p.lowestNotSpecial ? '<span class="lp" title="Cheapest store right now (not on special there)">Lowest</span>' : ''}</div>
+      <div class="price num">${money(p.effective)}${p.was ? `<small>${money(p.was)}</small>` : ''}</div>
       ${p.multibuy ? `<div class="unit">${esc(p.promoText)} · ${money(p.price)} for 1</div>` : ''}
       <div class="unit num">${esc(unitText(p))}${p.perUse ? ` · ${money(p.perUse)}/use` : ''}</div>
       ${heart(p)}
@@ -265,26 +265,19 @@ function renderMine(el, d) {
       if (k.some((x) => seen.has(x))) return false; k.forEach((x) => seen.add(x)); return true;
     });
   } else {
-    // All stores: one product = matched across stores (or the same name). Show the cheapest store;
-    // if several stores share the lowest price, show each of them. A store listing it twice shows once.
+    // All stores: one product = matched across stores (or the same name), on special at one or more stores.
+    // Show only its lowest special; on a tie, the store whose price was checked most recently.
     const alias = new Map(); const groups = new Map();
     for (const o of inList) {
       const keys = [o.canonical && `c|${o.canonical}`, `n|${nameKey(o)}`].filter(Boolean);
       const k = keys.map((x) => alias.get(x)).find(Boolean) || keys[0];
       keys.forEach((x) => alias.set(x, k));
-      if (!groups.has(k)) groups.set(k, new Map());
-      const g = groups.get(k), p = g.get(o.retailer);
-      if (!p || o.effective < p.effective) g.set(o.retailer, o);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(o);
     }
-    // Biggest saving first; stores with the same price for one product sit next to each other.
-    pool = [...groups.values()].map((g) => {
-      const offers = [...g.values()];
-      const low = Math.min(...offers.map((o) => o.effective));
-      // A store without a special can still be the cheapest: then show that one (marked "Lowest" next to the price).
-      const cheaper = offers.map((o) => d.lowest?.[o.itemId]).filter((x) => x && x.effective < low).sort((x, y) => x.effective - y.effective)[0];
-      if (cheaper) return [{ ...cheaper, lowestNotSpecial: true, sortSaving: Math.max(...offers.map((o) => o.saving || 0)) }];
-      return offers.filter((o) => o.effective === low).sort((x, y) => rank(x.retailer) - rank(y.retailer));
-    }).sort((x, y) => Math.max(...y.map((o) => o.sortSaving ?? o.saving ?? 0)) - Math.max(...x.map((o) => o.sortSaving ?? o.saving ?? 0))).flat();
+    const newer = (a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || '')) || rank(a.retailer) - rank(b.retailer);
+    pool = [...groups.values()].map((g) => g.sort((a, b) => a.effective - b.effective || newer(a, b))[0])
+      .sort((a, b) => (b.saving || 0) - (a.saving || 0));
   }
   if (sel.length) pool.sort((a, b) => (b.saving || 0) - (a.saving || 0));
   const picker = lists.length > 1
@@ -298,7 +291,7 @@ function renderMine(el, d) {
   let body;
   if (!inList.length) body = `<div class="rail-empty"><b>Nothing from this list is on special right now</b>Tap ♡ on any product to watch it.<p style="margin:10px 0 0"><a class="btn small" href="#/browse">Browse products</a></p></div>`;
   else body = `<div class="rail" tabindex="0" aria-label="Your items on special, swipe for more">${pool.map(tile).join('')}<div class="rail-end"><a href="#/lists"><span aria-hidden="true">→</span>See My List</a></div></div>`;
-  el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${sel.length ? `${pool.length} on special` : `${pool.length} item${pool.length === 1 ? '' : 's'} · cheapest store for each`}</p>` : '') + body;
+  el.innerHTML = toggles + (inList.length ? `<p class="sec-sub" style="margin-top:0">${sel.length ? `${pool.length} on special` : `${pool.length} item${pool.length === 1 ? '' : 's'} on special · lowest price shown`}</p>` : '') + body;
   el.querySelectorAll('[data-store]').forEach((b) => (b.onclick = () => {
     const r = b.dataset.store;
     let next = r ? (sel.includes(r) ? sel.filter((x) => x !== r) : [...sel, r]) : [];
@@ -346,7 +339,7 @@ views.home = async () => {
     <section class="hsec hero"><h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
       <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
       ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}</section>
-    <section class="hsec"><div class="sec-head"><h2>Best deals on your list</h2><span id="minepick"></span></div>
+    <section class="hsec"><div class="sec-head"><h2>Deals on your list</h2><span id="minepick"></span></div>
       <div id="mine"><div class="skeleton" style="height:120px"></div></div></section>
     <section class="hsec"><div id="sharedrail"></div></section>
     <section class="hsec"><div class="sec-head" id="deals"><h2>Bargains you're missing</h2></div>
