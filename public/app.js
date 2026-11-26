@@ -379,7 +379,7 @@ views.deals = async (q, store) => {
       <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="popular" class="${f.sort === 'popular' ? 'on' : ''}">Most popular</button></div></div>
     <p class="small muted" id="dlabel" style="margin:0 0 10px;text-align:right"></p>
     <div id="res"></div>`;
-  const remember = () => history.replaceState(null, '', link({}));
+  const remember = () => history.replaceState(history.state, '', link({}));
   const loadCats = () => api(`/api/categories${qs({ scope: 'deals', retailer: store })}`).then((c) => {
     const total = c.categories.reduce((n, x) => n + x.count, 0);
     $('#dcount').textContent = `${total.toLocaleString()} on special this week`;
@@ -443,7 +443,7 @@ function openGroup(card, [name, ids, icon, bg], count, gi, again) {
   const fromT = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
   const dur = reduce || again ? 0 : 340;
   // The open group is part of the address, so going back from a store lands here, not on the bare Browse page.
-  history.replaceState(null, '', `#/browse?g=${gi}`);
+  history.replaceState(history.state, '', `#/browse?g=${gi}`);
   back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur, fill: 'both' });
   // Lift first (a little bigger, deeper shadow), then grow into the panel.
   panel.animate([
@@ -461,7 +461,7 @@ function openGroup(card, [name, ids, icon, bg], count, gi, again) {
     back.animate([{ opacity: 1 }, { opacity: 0 }], { duration: go ? 0 : dur, fill: 'both' });
     const a = panel.animate([{ transform: 'none', opacity: 1 }, { transform: t, opacity: 0.4 }], { duration: go ? 0 : 300, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'both' });
     a.onfinish = () => { panel.remove(); back.remove(); card.style.visibility = ''; };
-    if (!go) history.replaceState(null, '', '#/browse');
+    if (!go) history.replaceState(history.state, '', '#/browse');
   };
   const onHash = () => close(true);
   addEventListener('hashchange', onHash);
@@ -515,7 +515,7 @@ views.browse = async (q, store) => {
   let seq = 0;
   const runSearch = async (v) => {
     v = v.trim();
-    history.replaceState(null, '', `#/browse/${store}${qs({ ...f, q: v })}`);
+    history.replaceState(history.state, '', `#/browse/${store}${qs({ ...f, q: v })}`);
     if (v.length < 2) { sres.hidden = true; body.hidden = false; return; }
     const my = ++seq;
     body.hidden = true; sres.hidden = false;
@@ -1392,10 +1392,26 @@ addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scroll
 // (Friends, My account, My profile…) shows the menu again instead of leaving it.
 const withoutMe = (h) => h.replace(/([?&])me=1(&|$)/, (m, a, b) => (b ? a : '')).replace(/[?&]$/, '') || '#/';
 const withMe = (h) => (/[?&]me=1\b/.test(h) ? h : `${h || '#/'}${h.includes('?') ? '&' : '?'}me=1`);
-function markMe(on) { history.replaceState(null, '', on ? withMe(location.hash) : withoutMe(location.hash)); }
+function markMe(on) { history.replaceState(history.state, '', on ? withMe(location.hash) : withoutMe(location.hash)); }
+// The 5 tab pages (Home, Browse, Search, My List, More) are the top level: swiping back or forward there does
+// nothing. Each time a tab page is shown, a second copy of it is pushed onto the history ("guard"), so a back
+// swipe lands on the same page (and is answered by pushing the guard again) and never reaches older pages.
+// Pages inside a tab (a store, a product, a deal…) still swipe back to where they came from.
+const TAB_ROOTS = ['home', 'browse', 'search', 'lists', 'more'];
+function isTabRoot(hash = location.hash) {
+  const parts = withoutMe(hash || '#/').slice(1).split('?')[0].split('/').filter(Boolean);
+  const name = parts[0] || 'home';
+  return TAB_ROOTS.includes(name) && parts.length <= 1;
+}
+function guardTabRoot() {
+  if (!state.me || !isTabRoot() || history.state?.fwGuard) return;
+  history.pushState({ ...(history.state || {}), fwGuard: true }, '', location.href);
+}
+addEventListener('popstate', () => { if (isTabRoot()) setTimeout(guardTabRoot, 0); });
+
 async function route() {
   if (/[?&]me=1\b/.test(location.hash)) {
-    history.replaceState(null, '', withoutMe(location.hash));
+    history.replaceState(history.state, '', withoutMe(location.hash));
     if (state.me) setTimeout(() => soc().then((m) => m.meSheet()).catch(() => {}), 0);
   }
   const [path, query] = (location.hash.slice(1) || '/').split('?');
@@ -1436,6 +1452,7 @@ async function route() {
     refreshHearts();
     for (const [r, x] of keptHome.rails || []) r.scrollLeft = x;
     requestAnimationFrame(() => { window.scrollTo(0, keptHome.y || 0); for (const [r, x] of keptHome.rails || []) r.scrollLeft = x; });
+    setTimeout(guardTabRoot, 0);
     if (keptHome.dirty) {
       keptHome.dirty = false;
       api('/api/digest').then((d) => { if ($('#mine') && JSON.stringify(d) !== keptHome.digest) { keptHome.digest = JSON.stringify(d); keepRails(() => renderMine($('#mine'), d)); } }).catch(() => {});
@@ -1445,10 +1462,11 @@ async function route() {
     return;
   }
   if (isHome) keptHome.nodes = null;
-  if (!isHome && restorePage(location.hash)) { shownHash = location.hash.split('?')[0]; return; }
+  if (!isHome && restorePage(location.hash)) { shownHash = location.hash.split('?')[0]; setTimeout(guardTabRoot, 0); return; }
   shownHash = location.hash.split('?')[0];
   if (!q.get('store') && !q.get('cat') && !q.get('sort')) window.scrollTo(0, 0);
   if (isHome) keptHome.leaving = true;
+  setTimeout(guardTabRoot, 0);
   try {
     if (name === 'login') return views.login(q);
     if (name === 'p') return await views.product(q, decodeURIComponent(parts.slice(1).join('/')));
