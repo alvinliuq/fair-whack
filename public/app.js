@@ -1258,7 +1258,7 @@ async function soc() {
 // FW2.2 "Your Brands, Your Deals" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.
 let brdMod;
 async function brd() {
-  if (!brdMod) { brdMod = await import('/brands.js?v=7'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
+  if (!brdMod) { brdMod = await import('/brands.js?v=8'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
   return brdMod;
 }
 views.brand = async (q, id) => (await brd()).page(id);
