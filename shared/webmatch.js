@@ -40,7 +40,8 @@ export function sameOnline(p, results, haveRetailers = []) {
     const t = words(r.title);
     const ts = new Set(t);
     if (brand.length && !brand.every((w) => ts.has(w))) continue;
-    if (key.length && key.filter((w) => ts.has(w)).length / key.length < 0.75) continue;
+    // Every word of the name: one missing word is often the variant ("Advanced", "Kids", "Plus").
+    if (!key.every((w) => ts.has(w))) continue;
     const tn = numbers(t);
     if ([...nums].some((n) => !tn.has(n))) continue;
     if (price && (r.priceCents < price * 0.4 || r.priceCents > price * 2.5)) continue;

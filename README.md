@@ -103,7 +103,7 @@ and prices every eligible plan at the home's postcode, including GST.
 Search shows an **Elsewhere online** section under our own results (Google's relevance order, used items labelled): other shops' prices for the same words from Google
 Shopping via SerpApi (`GET /api/search/web`, Developer plan, 5,000 searches a month). Each keyword is looked up at most
 once every 24 hours for everyone (`serp_cache`). Lookups stop at 4,900 a month, 60 per tester a day, and at the monthly
-budget's hard stop; the last saved results are shown instead. The product page also looks its product up (`GET /api/product/:id/web`, same cache and caps) and keeps only rows that are the same product (`shared/webmatch.js`: brand, 75% of the name's words, the same pack numbers, price within 0.4–2.5× ours, no used items, no store we already read for it); the cheapest price on the page, ours or Google's, gets a **Lowest** pill. Settings: `shared/budget.js` → `SERPAPI`.
+budget's hard stop; the last saved results are shown instead. The product page also looks its product up (`GET /api/product/:id/web`, same cache and caps) and keeps only rows that are the same product (`shared/webmatch.js`: brand, every word of the name, the same pack numbers, price within 0.4–2.5× ours, no used items, no store we already read for it); the cheapest price on the page, ours or Google's, gets a **Lowest** pill. Settings: `shared/budget.js` → `SERPAPI`.
 
 ## Friends and sharing (stage 7)
 

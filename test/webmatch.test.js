@@ -18,6 +18,7 @@ test('keeps the same product, drops other sizes, used, odd prices and our own st
     r('Life Space Broad Spectrum Probiotic Advanced 90 Capsules', 'Coles', 3700),
     r('Life Space Broad Spectrum Probiotic Advanced 90 Capsules', 'Wholesale', 900),
     r('Swisse Probiotic Advanced 90 Capsules', 'Amazon.com.au', 3000),
+    r('Life Space Broad Spectrum Probiotic 90 Capsules', 'eBay', 3195),
   ], ['coles']);
   assert.deepEqual(out.map((x) => [x.store, x.priceCents]), [['Chemist Warehouse', 3299], ['Amazon.com.au', 3495], ['Priceline', 3999]]);
   assert.equal(out[0].retailer, 'chemistwarehouse');
