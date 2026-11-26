@@ -778,7 +778,7 @@ export function serpResults(data) {
 }
 route('GET', '/api/search/web', async ({ env, url, user }) => json(await serpLookup(env, user, url.searchParams.get('q') || '')));
 /** One Google Shopping lookup (cached, capped). Returns { q, fetchedAt, results, cached, stale?, unavailable? }. */
-async function serpLookup(env, user, raw) {
+async function serpLookup(env, user, raw, kind = 'search') {
   const q = serpKey(raw);
   if (q.length < 2) return { q, results: [] };
   const row = await env.DB.prepare('SELECT fetched_at, data FROM serp_cache WHERE q = ?').bind(q).first().catch(() => null);
@@ -788,11 +788,11 @@ async function serpLookup(env, user, raw) {
   if (!env.SERPAPI_KEY) return stale('not set up');
   const spend = await monthSpend(async (sql, p) => (await env.DB.prepare(sql).bind(...p).all()).results);
   if (budgetLevel(spend.total) === 'hard') return stale('budget');
-  const mk = `serp:m:${spend.month}`, dk = `serp:d:${user.id}:${melDay()}`;
+  const mk = `serp:m:${spend.month}`, dk = `serp:${kind === 'product' ? 'p' : 'd'}:${user.id}:${melDay()}`;
   const used = (await env.DB.prepare('SELECT key, n FROM api_quota WHERE key IN (?, ?)').bind(mk, dk).all()).results;
   const n = (k) => used.find((r) => r.key === k)?.n || 0;
   if (n(mk) >= SERPAPI.stopAtSearches) return stale('month');
-  if (!user.is_admin && n(dk) >= SERPAPI.perUserPerDay) return stale('today');
+  if (!user.is_admin && n(dk) >= (kind === 'product' ? SERPAPI.productsPerUserPerDay : SERPAPI.perUserPerDay)) return stale('today');
   // Count the lookup before making it, so two quick requests can't both slip past the cap.
   await env.DB.batch([
     env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(mk),
@@ -820,12 +820,12 @@ async function productWeb(env, user, r) {
   const p = pub(r);
   const canon = r.canonical_product_id || `c:${r.id}`;
   const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(r.id, canon).all()).results.map((x) => x.retailer);
-  const d = await serpLookup(env, user, webQuery(p));
+  const d = await serpLookup(env, user, webQuery(p), 'product');
   let rows = d.results || [];
   let results = sameOnline(p, rows, have, { min: 0 });
   const loose = webQueryLoose(p);
   if (results.length < WEB_MIN && serpKey(loose) !== serpKey(webQuery(p)) && serpKey(loose).length >= 2) {
-    const d2 = await serpLookup(env, user, loose);
+    const d2 = await serpLookup(env, user, loose, 'product');
     const seen = new Set(rows.map((x) => `${x.store}|${x.title}|${x.priceCents}`));
     rows = [...rows, ...(d2.results || []).filter((x) => !seen.has(`${x.store}|${x.title}|${x.priceCents}`))];
   }
