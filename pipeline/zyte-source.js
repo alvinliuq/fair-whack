@@ -3,6 +3,7 @@
 // Zyte returns no price per request, so each successful request is recorded at a cautious estimate
 // (ZYTE_EST_USD); Zyte's own spending limit (US$70 a month) is the final safety net.
 import { ZYTE_EST_USD, BUDGET } from '../shared/budget.js';
+import { PARSERS } from './html-parsers.js';
 
 const API = 'https://api.zyte.com/v1/extract';
 
@@ -33,7 +34,10 @@ const PAGE_PATTERNS = [
 ];
 function withParam(u, k, v) { const x = new URL(u); x.searchParams.set(k, String(v)); return x.toString(); }
 
-const perRequest = (extractFrom) => (extractFrom === 'browserHtml' ? ZYTE_EST_USD.browser : 0) + ZYTE_EST_USD.extraction;
+// With a parser of our own only the page is fetched (no automatic extraction): cheaper.
+const perRequest = (extractFrom, parser) => (parser
+  ? (extractFrom === 'browserHtml' ? ZYTE_EST_USD.browser : ZYTE_EST_USD.http)
+  : (extractFrom === 'browserHtml' ? ZYTE_EST_USD.browser : 0) + ZYTE_EST_USD.extraction);
 
 /** Zyte spend recorded this month (estimates). */
 export async function zyteMonthUsd(db, since) {
@@ -49,7 +53,7 @@ export async function zyteMonthUsd(db, since) {
  */
 export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = console.log, concurrency = 4 } = {}) {
   if (process.env.APIFY_FIXTURE_DIR) return { items: [], costUsd: 0, status: 'SUCCEEDED' };
-  const est = perRequest(input.extractFrom);
+
   let cost = 0, stopped = false;
   const items = [];
   const jobs = input.products
@@ -60,15 +64,24 @@ export async function runZyte(input, { label = 'zyte', budgetUsd = 5, log = cons
   const work = async () => {
     while (jobs.length && !stopped) {
       const j = jobs.shift();
-      if (cost + perRequest(j.product ? (input.productExtractFrom || input.extractFrom) : input.extractFrom) > budgetUsd) { stopped = true; log(`${label}: run budget $${budgetUsd} reached, stopping`); break; }
       const pEx = j.product ? (input.productExtractFrom || input.extractFrom) : input.extractFrom;
-      const body = j.product
+      const parser = j.product ? input.productParser : input.parser;
+      if (cost + perRequest(pEx, parser) > budgetUsd) { stopped = true; log(`${label}: run budget $${budgetUsd} reached, stopping`); break; }
+      const body = parser
+        ? { url: j.url, [pEx === 'browserHtml' ? 'browserHtml' : 'httpResponseBody']: true, geolocation: 'AU' }
+        : j.product
         ? { url: j.url, product: true, productOptions: { extractFrom: pEx }, geolocation: 'AU' }
         : input.navigation
           ? { url: j.url, productNavigation: true, productNavigationOptions: { extractFrom: pEx }, geolocation: 'AU' }
           : { url: j.url, productList: true, productListOptions: { extractFrom: pEx }, geolocation: 'AU' };
       const { status, data } = await zyte(body);
-      if (status === 200) cost += perRequest(pEx);
+      if (status === 200) cost += perRequest(pEx, parser);
+      if (status === 200 && parser) {
+        const html = data.browserHtml ?? (data.httpResponseBody ? Buffer.from(data.httpResponseBody, 'base64').toString('utf8') : '');
+        const out = PARSERS[parser](html, j.url);
+        if (j.product) data.product = out.items[0] ? { ...out.items[0], url: out.items[0].url || j.url } : null;
+        else data.productList = { products: out.items, paginationNext: out.next ? { url: out.next } : null };
+      }
       if (!j.product && input.navigation) {
         // Navigation: product links (+ next page) -> each product page read on its own.
         const links = (data.productNavigation?.items || []).map((x) => x.url).filter(Boolean);

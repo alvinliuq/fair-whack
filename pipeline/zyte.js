@@ -8,7 +8,7 @@ import { ZYTE_EST_USD } from '../shared/budget.js';
 export const ZYTE_TARGETS = {
   decathlon: { name: 'Decathlon', urls: ['https://www.decathlon.com.au/search?q=tent', 'https://www.decathlon.com.au/'] },
   petbarn: { name: 'Petbarn', urls: ['https://www.petbarn.com.au/dogs/dog-food', 'https://www.petbarn.com.au/search?q=dog%20food'] },
-  peto: { name: 'PetO', urls: ['https://www.peto.com.au/search?q=dog+food', 'https://www.peto.com.au/'] },
+  peto: { name: 'PetO', urls: ['https://peto.com.au/dog/dog-food/', 'https://peto.com.au/promo/'] },
   ebgames: { name: 'EB Games', urls: ['https://www.ebgames.com.au/search?q=nintendo', 'https://www.ebgames.com.au/'] },
   target: { name: 'Target', urls: ['https://www.target.com.au/search?text=towel', 'https://www.target.com.au/'] },
   kmart: { name: 'Kmart', urls: ['https://www.kmart.com.au/category/home/bathroom/towels/', 'https://www.kmart.com.au/search/?searchTerm=towel'] },

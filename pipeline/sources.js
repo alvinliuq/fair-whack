@@ -72,8 +72,11 @@ const ZY = {
     ['cats/cat-litter', 'Pet > Cat'], ['cats/cat-toys', 'Pet > Cat'], ['cats/cat-scratchers', 'Pet > Cat'], ['fish', 'Pet > Fish']].map(([c, cat]) => [`https://www.petbarn.com.au/${c}`, cat])
     .concat([['flea and tick', 'Pet'], ['worming', 'Pet'], ['dog collar', 'Pet > Dog'], ['bird food', 'Pet > Bird'], ['rabbit', 'Pet > Small animals']]
       .map(([q, cat]) => [`https://www.petbarn.com.au/search?q=${enc(q)}`, cat])),
-  peto: [['https://www.peto.com.au/', 'Pet'], ['https://www.peto.com.au/collections/dog-food', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat-food', 'Pet > Cat'],
-    ['https://www.peto.com.au/collections/dog', 'Pet > Dog'], ['https://www.peto.com.au/collections/cat', 'Pet > Cat']],
+  // PetO moved to a new site (27 Nov): peto.com.au/<pet>/<range>/, ?page=N. Promotions first (specials read the first pages).
+  peto: [['promo', 'Pet'], ['dog/dog-food', 'Pet > Dog'], ['cat/cat-food', 'Pet > Cat'], ['dog/dog-treats', 'Pet > Dog'], ['cat/treats', 'Pet > Cat'],
+    ['dog/pharmacy', 'Pet > Dog'], ['cat/pharmacy', 'Pet > Cat'], ['litter', 'Pet > Cat'], ['puppy-kitten/puppy-food', 'Pet > Dog'],
+    ['puppy-kitten/kitten-food', 'Pet > Cat'], ['dog/essentials', 'Pet > Dog'], ['cat/essentials', 'Pet > Cat'], ['other-pets', 'Pet > Small animals']]
+    .map(([c, cat]) => [`https://peto.com.au/${c}/`, cat]),
   decathlon: [['tent', 'Sports > Camping'], ['sleeping bag', 'Sports > Camping'], ['hiking shoes', 'Sports > Hiking'], ['backpack', 'Sports > Hiking'], ['running shoes', 'Sports > Running'],
     ['bike', 'Sports > Cycling'], ['swimming', 'Sports > Swimming'], ['yoga', 'Sports > Fitness'], ['dumbbells', 'Sports > Fitness'], ['football', 'Sports > Team sports'],
     ['jacket', 'Clothing > Outdoor'], ['kids', 'Sports > Kids'], ['tennis', 'Sports > Racket'], ['fishing', 'Sports > Fishing']]
@@ -99,11 +102,12 @@ const ZY = {
     ['cat/flea-tick-and-worming', 'Pet > Cat'], ['cat/toys', 'Pet > Cat'], ['bird', 'Pet > Bird'], ['fish', 'Pet > Fish']]
     .map(([c, cat]) => [`https://www.petcircle.com.au/${c}`, cat]),
 };
-const zyteSource = (r, extractFrom, maxPages, specialsPages = 6) => ({
+// parser: read listing pages with our own parser (pipeline/html-parsers.js) instead of Zyte's extraction.
+const zyteSource = (r, extractFrom, maxPages, specialsPages = 6, parser = undefined) => ({
   runner: 'zyte',
   // Specials: page 1 of the first listings (prices refresh; was-prices mark specials).
-  specials: [{ input: { pages: ZY[r].slice(0, specialsPages), extractFrom, maxPages: 1 }, max: 1 }],
-  catalogue: [{ input: { pages: ZY[r], extractFrom, maxPages }, max: 1 }],
+  specials: [{ input: { pages: ZY[r].slice(0, specialsPages), extractFrom, maxPages: 1, parser }, max: 1 }],
+  catalogue: [{ input: { pages: ZY[r], extractFrom, maxPages, parser }, max: 1 }],
   refresh: (urls) => [{ input: { products: urls.slice(0, 60), extractFrom }, max: 1 }],
 });
 
@@ -242,7 +246,12 @@ export const SOURCES = {
   thegoodguys: { ...zyteSource('thegoodguys', 'httpResponseBody', 3), host: 'www.thegoodguys.com.au' },
   petbarn: { ...zyteSource('petbarn', 'httpResponseBody', 3), host: 'www.petbarn.com.au' },
   // PetO: listing pages carry prices, product pages do not, so list items refresh from listings instead.
-  peto: { ...zyteSource('peto', 'httpResponseBody', 3), host: 'www.peto.com.au', refresh: () => [] },
+  // Our own parser (27 Nov): Zyte's extraction took the "Everyday Price" (the was-price) as the price. Specials: page 1
+  // of the promotions page and the main ranges.
+  peto: { ...zyteSource('peto', 'httpResponseBody', 3, 6, 'peto'), host: 'peto.com.au', refresh: () => [],
+    // Specials: up to 8 pages of the promotions page (16 a page), then page 1 of the main ranges.
+    specials: [{ input: { pages: ZY.peto.slice(0, 1), extractFrom: 'httpResponseBody', maxPages: 8, parser: 'peto' }, max: 1 },
+      { input: { pages: ZY.peto.slice(1, 6), extractFrom: 'httpResponseBody', maxPages: 1, parser: 'peto' }, max: 1 }] },
   // Decathlon: Zyte reads its listing cards badly (badge text as the name, no price), so each product's own page is read.
   // Decathlon (checked 25 Nov): Zyte reads most listing cards badly (a badge such as "BLACK FRIDAY" as the name,
   // no price, often no link) and its product pages have no price without a browser, so only about 30 products
@@ -252,7 +261,13 @@ export const SOURCES = {
   // Harvey Norman listings sometimes show a finance figure (e.g. "$2.12") in the price slot: ignore implausible prices.
   harveynorman: { ...zyteSource('harveynorman', 'httpResponseBody', 2), host: 'www.harveynorman.com.au', minPrice: 5 },
   // PETstock loads its product grid in the browser (20 a page, ?page=2 works); Pet Circle's category pages are plain HTML.
-  petstock: { ...zyteSource('petstock', 'browserHtml', 3, 3), host: 'www.petstock.com.au' },
+  // Our own parsers (27 Nov): listing cards show "Save $x" and the price but no was-price, and an Autoship price that
+  // Zyte's extraction took as the price. List items refresh from their product pages (plain HTML: JSON-LD + "Was $").
+  petstock: { ...zyteSource('petstock', 'browserHtml', 3, 3, 'petstock'), host: 'www.petstock.com.au',
+    // Specials: up to 10 pages of the sale collection (20 a page), then page 1 of dog and cat food.
+    specials: [{ input: { pages: ZY.petstock.slice(0, 1), extractFrom: 'browserHtml', maxPages: 10, parser: 'petstock' }, max: 1 },
+      { input: { pages: ZY.petstock.slice(1, 3), extractFrom: 'browserHtml', maxPages: 1, parser: 'petstock' }, max: 1 }],
+    refresh: (urls) => [{ input: { products: urls.slice(0, 60).map((u) => u.split('?')[0]), extractFrom: 'httpResponseBody', productParser: 'petstockProduct' }, max: 1 }] },
   // Pet Circle product pages (list refresh) only show a price in a browser.
   petcircle: { ...zyteSource('petcircle', 'httpResponseBody', 3, 3), host: 'www.petcircle.com.au', refresh: (urls) => [{ input: { products: urls.slice(0, 60), extractFrom: 'browserHtml' }, max: 1 }] },
   jbhifi: {
