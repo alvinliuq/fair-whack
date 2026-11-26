@@ -1591,7 +1591,7 @@ route('POST', '/api/admin/matches/:id', async ({ env, user, request, params }) =
   return json({ ok: true });
 }, { admin: true });
 
-// ---------- FW2.2 Your Brand, Your Deal (shared/brands-api.js) ----------
+// ---------- FW2.2 Your Brands, Your Deals (shared/brands-api.js) ----------
 registerBrandRoutes({ route, json, HttpError, body, nowIso, uid, selectIn, COLS, pub, sortOffers, isActive, profileVector, similarity, TOP,
   ensureSocial, notify, readSession, CATEGORY_LIST });
 

@@ -1,4 +1,4 @@
-// Fair Whack FW2.2 — "Your Brand, Your Deal": partner brand campaigns.
+// Fair Whack FW2.2 — "Your Brands, Your Deals": partner brand campaigns.
 // Home rail (under Top 20) · campaign page (#/brand/<id>) · all deals (#/brands) · How Fair Whack makes money (#/earn)
 // · brand alerts (Settings → Alerts) · Admin → Brand deals (#/adminbrands, #/admincampaign/<id|new>).
 // Partner placement only ever affects this section: never search, store comparisons or Top 20.
@@ -58,9 +58,9 @@ export async function homeRail(el) {
 
 export async function allPage() {
   const { app, api } = ctx;
-  app.innerHTML = '<h1>Your Brand, Your Deal</h1><p class="muted">Loading…</p>';
+  app.innerHTML = '<h1>Your Brands, Your Deals</h1><p class="muted">Loading…</p>';
   const d = await api('/api/brands/all');
-  app.innerHTML = `<h1>Your Brand, Your Deal</h1><p class="lead small">Offers from partner brands. <a href="#/earn">How this works</a></p>
+  app.innerHTML = `<h1>Your Brands, Your Deals</h1><p class="lead small">Offers from partner brands. <a href="#/earn">How this works</a></p>
     ${d.campaigns.length ? `<div class="bgrid">${d.campaigns.map(card).join('')}</div>` : '<div class="empty"><b>No partner deals right now</b>Check back soon.</div>'}
     ${d.hidden ? `<p class="small muted center">${d.hidden} hidden because you chose “Not interested”. <a href="#/alerts">Manage</a></p>` : ''}`;
 }
@@ -173,11 +173,36 @@ async function shareSheet(c) {
   };
 }
 
+// ---------- Me → Brands you follow ----------
+export async function followingPage() {
+  const { app, api, esc, toast } = ctx;
+  app.innerHTML = '<h1>Brands you follow</h1><p class="muted">Loading…</p>';
+  const d = await api('/api/me/follows');
+  app.innerHTML = `<h1>Brands you follow</h1>
+    <p class="lead small">You hear about every new deal from these brands (when brand deal alerts are on in Settings → Alerts).</p>
+    ${d.brands.length ? `<div class="stack">${d.brands.map((b) => `<div class="card bfollow" data-b="${esc(b.id)}">
+        <div class="row">${logoBadge(b, 'small')}<span class="n" style="flex:1;min-width:0"><b>${esc(b.name)}</b>
+          <span class="small muted" style="display:block">${b.confirmed ? 'Partner' : 'Beta demo'}${b.host ? ` · ${esc(b.host)}` : ''}</span></span>
+          <button class="btn small light" data-unf="${esc(b.id)}">Unfollow</button></div>
+        ${b.campaigns.length ? b.campaigns.map((c) => `<a class="bfollow-deal" href="#/brand/${encodeURIComponent(c.id)}"><span><b>${esc(c.offer)}</b><span class="small muted" style="display:block">${esc(c.title)} · <span class="${soon(c.endsAt) ? 'hot' : ''}">${endsText(c.endsAt)}</span></span></span><span aria-hidden="true">›</span></a>`).join('')
+          : '<p class="small muted" style="margin:8px 0 0">No deal right now. We\'ll tell you when there\'s a new one.</p>'}
+      </div>`).join('')}</div>`
+      : '<div class="empty"><b>You don\'t follow any brands yet</b>Tap <b>+ Follow brand</b> on a deal in Your Brands, Your Deals on Home.<p style="margin:10px 0 0"><a class="btn small" href="#/">Go to Home</a></p></div>'}`;
+  app.querySelectorAll('[data-unf]').forEach((btn) => (btn.onclick = async () => {
+    const b = d.brands.find((x) => x.id === btn.dataset.unf);
+    try {
+      await api(`/api/brands/${encodeURIComponent(b.id)}/follow`, { method: 'PUT', body: { on: false } });
+      toast(`Unfollowed ${b.name}`, { label: 'Undo', run: () => api(`/api/brands/${encodeURIComponent(b.id)}/follow`, { method: 'PUT', body: { on: true } }).then(() => followingPage()) });
+      followingPage();
+    } catch (e) { toast(e.message); }
+  }));
+}
+
 // ---------- How Fair Whack makes money ----------
 export function earnPage() {
   ctx.app.innerHTML = `<h1>How Fair Whack makes money</h1><div class="card stack">
     <p><b>Fair Whack is built around your list.</b> We help you find the right products for your household at the best price, and help good brands reach people who are already looking for what they sell.</p>
-    <p><b>Your Brand, Your Deal</b> on Home shows offers from partner brands. Every partner offer is marked <span class="partner inline">Partner</span>. Partners may pay us a fee for the placement, or a commission when you buy after tapping through.</p>
+    <p><b>Your Brands, Your Deals</b> on Home shows offers from partner brands. Every partner offer is marked <span class="partner inline">Partner</span>. Partners may pay us a fee for the placement, or a commission when you buy after tapping through.</p>
     <p><b>What payment never changes:</b> search results, “same product in other stores”, store comparisons, Bargains and Top 20. On a partner's page we still show other stores' prices for the same product, even when another store is cheaper.</p>
     <p><b>Who can be a partner:</b> known brands and official stores only, with real offers (lower than their recent usual price, or an extra you can't get elsewhere), in categories our users shop for.</p>
     <p><b>You're in control:</b> follow brands you like, choose “Not interested” to hide a brand for 90 days, or turn off brand deal alerts in Settings → Alerts.</p>
@@ -192,7 +217,7 @@ export async function alertsBox(el) {
   el.innerHTML = `<h2>Brand deals</h2><div class="card stack">
     <label class="row switch-row"><span style="flex:1"><b>Brand deal alerts</b><span class="small muted" style="display:block">At most one a week, only for partner deals that closely match your list and household. Brands you follow tell you about every new deal.</span></span>
       <input type="checkbox" id="balerts" ${d.on ? 'checked' : ''}></label>
-    ${d.follows.length ? `<div><b class="small">Following</b><div class="bchips">${d.follows.map((b) => `<span class="chip">${esc(b.name)} <button class="linkbtn" data-unf="${esc(b.id)}" aria-label="Unfollow ${esc(b.name)}">✕</button></span>`).join('')}</div></div>` : ''}
+    ${d.follows.length ? `<div><b class="small">Following</b> <a class="small" href="#/following">See all</a><div class="bchips">${d.follows.map((b) => `<span class="chip">${esc(b.name)} <button class="linkbtn" data-unf="${esc(b.id)}" aria-label="Unfollow ${esc(b.name)}">✕</button></span>`).join('')}</div></div>` : ''}
     ${d.hidden.length ? `<div><b class="small">Not interested</b><div class="bchips">${d.hidden.map((b) => `<span class="chip">${esc(b.name)} <span class="muted small">until ${new Date(b.until).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</span> <button class="linkbtn" data-unh="${esc(b.id)}" aria-label="Show ${esc(b.name)} again">✕</button></span>`).join('')}</div></div>` : ''}
     <p class="small muted">${esc(DISCLOSURE)} <a href="#/earn">How Fair Whack makes money</a></p></div>`;
   $('#balerts', el).onchange = async (e) => { try { await api('/api/me/brand-alerts', { method: 'PUT', body: { on: e.target.checked } }); toast(e.target.checked ? 'Brand deal alerts on' : 'Brand deal alerts off'); } catch (err) { toast(err.message); } };
@@ -212,7 +237,7 @@ export async function adminPage() {
   const d = await api('/api/admin/brands');
   const live = d.campaigns.filter((c) => c.live);
   app.innerHTML = `<h1>Brand deals</h1>
-    <p class="lead small">“Your Brand, Your Deal” on Home. Mode: <b>${d.zone.mode === 'fixed' ? `same ${d.zone.size} live campaigns for everyone` : 'matched to each person'}</b> · ${live.length} live${live.length > d.zone.size ? ` (only the first ${d.zone.size} by priority show)` : ''}.</p>
+    <p class="lead small">“Your Brands, Your Deals” on Home. Mode: <b>${d.zone.mode === 'fixed' ? `same ${d.zone.size} live campaigns for everyone` : 'matched to each person'}</b> · ${live.length} live${live.length > d.zone.size ? ` (only the first ${d.zone.size} by priority show)` : ''}.</p>
     <div class="row"><h2 style="flex:1">Campaigns</h2><a class="btn small" href="#/admincampaign/new">+ New campaign</a></div>
     <div class="card" style="overflow-x:auto"><table class="t"><tr><th>Campaign</th><th>Status</th><th>Dates</th><th title="People who saw it on Home">Seen</th><th>Clicks</th><th title="Clicks ÷ daily views">CTR</th><th title="Added to a list from the page">Listed</th><th>Follows</th><th>Shares</th><th title="Not interested">Hidden</th><th title="Share-page opens by people not signed in">Opens</th></tr>
       ${d.campaigns.map((c) => `<tr><td class="bcol"><a href="#/admincampaign/${esc(c.id)}"><b>${esc(c.brand_name)}</b> · ${esc(c.title)}</a><div class="small muted">${c.brand_confirmed ? 'Partner' : 'Beta demo'} · ${esc(d.kinds[c.kind])} · priority ${c.priority}</div></td>

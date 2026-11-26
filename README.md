@@ -114,7 +114,7 @@ accept. Friends see only products shared with them, never lists or profiles. Sha
 an empty VAPID wake-up push; the service worker then fetches `/api/notifications/pending`). QR codes use
 `qrcode-generator` and `jsqr`, copied from npm into `public/vendor/` at deploy.
 
-## Your Brand, Your Deal (FW2.2)
+## Your Brands, Your Deals (FW2.2)
 
 Partner brand deals on Home, under "Most popular - Top 20 this week". Code: `shared/brands.js` (rules), `shared/brands-api.js`
 (API), `public/brands.js` (pages), `public/deal.html` (public share page), migration `0015_brand_deals.sql`.

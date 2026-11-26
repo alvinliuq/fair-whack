@@ -39,6 +39,7 @@ export async function meSheet() {
     <div class="card menu">
       <a href="#/friends"><span class="ic">🧑‍🤝‍🧑</span><span>Friends ${badge(s?.incoming.length)}<span class="sub">Your QR code · add friends · requests</span></span></a>
       <a href="#/shared"><span class="ic">🎁</span><span>Shared with you ${badge(s?.unseenShares)}<span class="sub">Products your friends sent</span></span></a>
+      <a href="#/following"><span class="ic">🏷️</span><span>Brands you follow<span class="sub">Their current deals · unfollow</span></span></a>
       <a href="#/account"><span class="ic">👤</span><span>My account<span class="sub">Name and user name</span></span></a>
       <a href="#/profile"><span class="ic">📋</span><span>My profile<span class="sub">You and your family, fuel, bills</span></span></a>
       ${state.me.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}

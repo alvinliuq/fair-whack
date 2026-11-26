@@ -1,4 +1,4 @@
-// FW2.2 "Your Brand, Your Deal": matching rules, admin set-up, Home, campaign page, follow / not interested,
+// FW2.2 "Your Brands, Your Deals": matching rules, admin set-up, Home, campaign page, follow / not interested,
 // sharing, the outbound link and brand alerts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -91,7 +91,7 @@ test('Home shows live campaigns with a reason; page compares other stores honest
   assert.equal(home.campaigns.length, 0, 'drafts are not shown');
   await admin.call(`/api/admin/campaigns/${id}/status`, { status: 'live' });
   home = await t.call('/api/brands/home');
-  assert.equal(home.title, 'Your Brand, Your Deal');
+  assert.equal(home.title, 'Your Brands, Your Deals');
   assert.equal(home.campaigns.length, 1);
   assert.equal(home.campaigns[0].reason, 'Hand-picked by Fair Whack');
 
@@ -178,4 +178,19 @@ test('beta demo brands (not confirmed): labelled demo, no public link, no push a
   await admin.call('/api/admin/brands', { ...b, confirmed: true, checks: { known: 1, official: 1, real_offer: 1, overlap: 1 } });
   assert.equal((await fan.call('/api/brands/home')).campaigns[0].confirmed, true);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'brand'").get().n, 1);
+});
+
+test('Me → Brands you follow lists followed brands with their live deals', async () => {
+  const { person } = setup();
+  const admin = await person('Boss', 'admin');
+  const t = await person('Tess');
+  const { id, brandId } = await makeCampaign(admin);
+  assert.equal((await t.call('/api/me/follows')).brands.length, 0);
+  await t.call(`/api/brands/${brandId}/follow`, { on: true }, 'PUT');
+  let f = await t.call('/api/me/follows');
+  assert.equal(f.brands[0].name, 'Kalenji');
+  assert.equal(f.brands[0].campaigns.length, 0, 'draft campaigns are not listed');
+  await admin.call(`/api/admin/campaigns/${id}/status`, { status: 'live' });
+  f = await t.call('/api/me/follows');
+  assert.equal(f.brands[0].campaigns[0].id, id);
 });

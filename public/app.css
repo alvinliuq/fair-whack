@@ -833,7 +833,7 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-si
 .top-btn#set-btn, .top-btn.me { width: 36px; padding: 0; justify-content: center; }
 .top-btn#set-btn svg, .top-btn.me svg { width: 21px; height: 21px; }
 
-/* ---------- FW2.2 Your Brand, Your Deal ---------- */
+/* ---------- FW2.2 Your Brands, Your Deals ---------- */
 .muted-link { color: var(--ink-3); }
 .partner { position: absolute; top: 10px; left: 10px; background: rgba(27, 21, 48, .78); color: #fff; font-size: 11px; font-weight: 750; letter-spacing: .02em; padding: 3px 8px; border-radius: 999px; }
 .partner.inline { position: static; display: inline-block; background: var(--lilac-soft); color: var(--grape-d); }
@@ -901,3 +901,5 @@ td.bcol { min-width: 150px; }
 .partner.demo { background: #FFF1D6; color: #7A4B00; }
 .partner.demo:not(.inline) { background: rgba(122, 75, 0, .85); color: #fff; }
 .demo-note { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; background: #FFF6E5; border: 1px solid #F3D9A6; border-radius: 12px; padding: 10px 12px; }
+.bfollow-deal { display: flex; align-items: center; gap: 10px; justify-content: space-between; text-decoration: none; color: inherit; border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.bfollow-deal > span:last-child { color: var(--grape-d); font-size: 20px; }

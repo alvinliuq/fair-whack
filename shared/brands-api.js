@@ -1,4 +1,4 @@
-// FW2.2 "Your Brand, Your Deal": API routes. Registered from shared/api.js with its helpers (see the bottom of api.js).
+// FW2.2 "Your Brands, Your Deals": API routes. Registered from shared/api.js with its helpers (see the bottom of api.js).
 import { BRAND_ZONE, KINDS, scoreCampaign, pickForHome, outboundUrl, safeUrl, slugify, isLive, cleanTarget } from './brands.js';
 
 export function registerBrandRoutes(d) {
@@ -92,7 +92,7 @@ export function registerBrandRoutes(d) {
     // Campaigns that went live on their start date get their alerts sent the first time anyone opens Home.
     const due = live.filter((c) => !c.notified_at && c.brand_confirmed);
     for (const c of due) await sendAlerts(env, c).catch((e) => console.error('brand alerts', e));
-    return json({ title: 'Your Brand, Your Deal', mode: BRAND_ZONE.mode, campaigns: shown.map((x) => cardOut(x.c, x)), total: live.length });
+    return json({ title: 'Your Brands, Your Deals', mode: BRAND_ZONE.mode, campaigns: shown.map((x) => cardOut(x.c, x)), total: live.length });
   });
 
   /** Every live campaign ("See all"). */
@@ -268,6 +268,17 @@ export function registerBrandRoutes(d) {
     await env.DB.prepare('UPDATE users SET brand_alerts = ? WHERE id = ?').bind(on ? 1 : 0, user.id).run();
     return json({ ok: true, on });
   });
+  /** Me → Brands you follow: each followed brand with its live campaigns (Demo or Partner). */
+  route('GET', '/api/me/follows', async ({ env, user }) => {
+    const brands = (await env.DB.prepare(`SELECT b.id, b.name, b.logo_url AS logo, b.color, b.website, b.confirmed, f.created_at AS since
+        FROM user_brand_follow f JOIN brands b ON b.id = f.brand_id WHERE f.user_id = ? ORDER BY b.name COLLATE NOCASE`).bind(user.id).all()).results;
+    const live = (await liveCampaigns(env)).filter((c) => brands.some((b) => b.id === c.brand_id));
+    return json({ brands: brands.map((b) => ({
+      id: b.id, name: b.name, logo: b.logo, color: b.color, host: hostOf(b.website), confirmed: !!b.confirmed, since: b.since,
+      campaigns: live.filter((c) => c.brand_id === b.id).map((c) => ({ id: c.id, title: c.title, offer: c.offer, endsAt: c.ends_at })),
+    })) });
+  });
+
   route('GET', '/api/me/brand-alerts', async ({ env, user }) => {
     const follows = (await env.DB.prepare('SELECT b.id, b.name, b.logo_url AS logo, b.color FROM user_brand_follow f JOIN brands b ON b.id = f.brand_id WHERE f.user_id = ? ORDER BY b.name').bind(user.id).all()).results;
     const hidden = (await env.DB.prepare('SELECT b.id, b.name, h.until FROM user_brand_hide h JOIN brands b ON b.id = h.brand_id WHERE h.user_id = ? AND h.until > ? ORDER BY b.name').bind(user.id, nowIso()).all()).results;

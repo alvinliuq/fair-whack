@@ -1,4 +1,4 @@
-// FW2.2 "Your Brand, Your Deal": matching rules and link building (no database access here, so it can be tested).
+// FW2.2 "Your Brands, Your Deals": matching rules and link building (no database access here, so it can be tested).
 
 export const BRAND_ZONE = {
   // 'fixed': every tester sees the same live campaigns (test phase and early launch: too few users to judge

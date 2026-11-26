@@ -1202,17 +1202,18 @@ views.more = async () => (await prof()).more();
 // Friends and sharing (Me button, top right on every page).
 let socMod;
 async function soc() {
-  if (!socMod) { socMod = await import('/social.js?v=2'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
+  if (!socMod) { socMod = await import('/social.js?v=3'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
   return socMod;
 }
-// FW2.2 "Your Brand, Your Deal" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.
+// FW2.2 "Your Brands, Your Deals" (public/brands.js): Home rail, campaign pages, brand alerts, Admin → Brand deals.
 let brdMod;
 async function brd() {
-  if (!brdMod) { brdMod = await import('/brands.js?v=3'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
+  if (!brdMod) { brdMod = await import('/brands.js?v=4'); brdMod.init({ api, esc, toast, app, state, sheet, RET, money, heart, thumb, shrink, pickFile }); }
   return brdMod;
 }
 views.brand = async (q, id) => (await brd()).page(id);
 views.brands = async () => (await brd()).allPage();
+views.following = async () => (await brd()).followingPage();
 views.earn = async () => (await brd()).earnPage();
 views.adminbrands = async () => (await brd()).adminPage();
 views.admincampaign = async (q, id) => (await brd()).campaignEditor(id);
@@ -1269,7 +1270,7 @@ views.admin = async () => {
     const counts = o.counts.filter((c) => STORES.includes(c.retailer));
     const tally = (key, labels) => { const m = {}; for (const u of o.users) { const k = u[key] || '—'; m[k] = (m[k] || 0) + 1; } return Object.entries(m).map(([k, n]) => `${labels[k] || k}: ${n}`).join(' · '); };
     app.innerHTML = `<h1>Admin</h1>
-      <a class="card row" href="#/adminbrands" style="text-decoration:none;margin-bottom:10px"><span>🏷️ <b>Brand deals</b> <span class="small muted">Your Brand, Your Deal: brands, campaigns, results</span></span><span class="spacer"></span>›</a>
+      <a class="card row" href="#/adminbrands" style="text-decoration:none;margin-bottom:10px"><span>🏷️ <b>Brand deals</b> <span class="small muted">Your Brands, Your Deals: brands, campaigns, results</span></span><span class="spacer"></span>›</a>
       <div class="card"><div class="row"><b>Data spend · ${esc(monthName(o.month))}</b><span class="spacer"></span><b class="num">$${o.spendUsd.toFixed(2)} / $${o.budgetUsd}</b></div>
         <div class="meter ${o.level !== 'ok' ? 'hot' : ''}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
         <p class="small muted">Apify $${o.spendBy.apify.toFixed(2)} · Zyte $${o.spendBy.zyte.toFixed(2)} (estimate) · SerpApi $${o.spendBy.serpapi.toFixed(2)} (plan fee) · Google Shopping lookups ${o.serpUsed}/${o.serpCap}</p>
