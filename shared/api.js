@@ -827,8 +827,8 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
 // Home "Deals on your list": which of these products is the lowest price anywhere we know of: our stores, plus
 // Google Shopping results already looked up for it (saved results only, so Home spends no lookups), less any
 // this tester ignored. The same comparison as the product page's "Lowest" pill.
-route('POST', '/api/lowest', async ({ env, user, request }) => {
-  const ids = [...new Set(((await body(request)).ids || []).map(String))].slice(0, 40);
+route('GET', '/api/lowest', async ({ env, user, url }) => {
+  const ids = [...new Set((url.searchParams.get('ids') || '').split(',').filter(Boolean))].slice(0, 40);
   const out = {};
   for (const id of ids) {
     const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(id).first();

@@ -252,7 +252,7 @@ async function markHomeLowest(el, pool) {
   const ids = [...new Set(pool.map((o) => o.id))];
   const need = ids.filter((id) => !lowestSeen.has(id));
   if (need.length) {
-    try { const r = await api('/api/lowest', { method: 'POST', body: { ids: need } }); need.forEach((id) => lowestSeen.set(id, !!r.lowest?.[id])); } catch { return; }
+    try { const r = await api(`/api/lowest?ids=${need.map(encodeURIComponent).join(',')}`); need.forEach((id) => lowestSeen.set(id, !!r.lowest?.[id])); } catch { return; }
   }
   el.querySelectorAll('a.tile').forEach((a) => {
     const id = decodeURIComponent(a.getAttribute('href').replace('#/p/', ''));

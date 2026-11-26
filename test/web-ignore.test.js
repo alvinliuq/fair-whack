@@ -29,7 +29,7 @@ test('product web prices: filtered, and ignore is per tester', async (t) => {
   assert.deepEqual(d.results.map((r) => r.ignored), [true, false]);
   assert.deepEqual((await call(bob, '/api/product/coles%3A1/web')).results.map((r) => r.ignored), [false, false]);
   // Home: lowest anywhere, from saved Google results, less what this tester ignored (Ann ignores eBay - kings at $35.90).
-  const low = async (cookie) => (await call(cookie, '/api/lowest', 'POST', { ids: ['coles:1'] })).lowest['coles:1'];
+  const low = async (cookie) => (await call(cookie, '/api/lowest?ids=coles%3A1')).lowest['coles:1'];
   assert.equal(await low(ann), true);
   assert.equal(await low(bob), false);
   await call(ann, '/api/product/coles%3A1/web/ignore', 'PUT', { store: 'eBay - kings', on: false });
