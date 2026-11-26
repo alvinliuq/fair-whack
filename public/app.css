@@ -828,3 +828,7 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-si
 .tile { position: relative; }
 .tile .foot { position: static; padding-right: 50px; min-height: 44px; }
 .tile .foot .heart { top: auto; bottom: 12px; right: 12px; transform: none; }
+
+/* Top bar: settings (rounded gear) and Me (icon only) are both round 36px buttons */
+.top-btn#set-btn, .top-btn.me { width: 36px; padding: 0; justify-content: center; }
+.top-btn#set-btn svg, .top-btn.me svg { width: 21px; height: 21px; }

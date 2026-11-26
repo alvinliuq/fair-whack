@@ -845,11 +845,11 @@ views.product = async (q, id) => {
 };
 
 // ----- sheets -----
-function sheet(html, onMount) {
+function sheet(html, onMount, onClose) {
   const s = $('#sheet');
   s.innerHTML = `<div class="panel" role="dialog" aria-modal="true">${html}</div>`;
   s.hidden = false;
-  const close = () => { s.hidden = true; s.innerHTML = ''; };
+  const close = () => { s.hidden = true; s.innerHTML = ''; onClose?.(); };
   s.onclick = (e) => { if (e.target === s) close(); };
   onMount?.(s, close);
   return close;
@@ -1190,7 +1190,7 @@ views.more = async () => (await prof()).more();
 // Friends and sharing (Me button, top right on every page).
 let socMod;
 async function soc() {
-  if (!socMod) { socMod = await import('/social.js?v=1'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile }); }
+  if (!socMod) { socMod = await import('/social.js?v=2'); socMod.init({ api, esc, toast, app, state, logout, sheet, RET, money, thumb, heart, ago, tile, markMe }); }
   return socMod;
 }
 views.friends = async () => (await soc()).friendsPage();
@@ -1362,7 +1362,16 @@ async function keepRails(draw) {
   for (const [id, x] of pos) { const r = id && document.getElementById(id)?.querySelector('.rail, .store-grid'); if (r) r.scrollLeft = x; }
 }
 addEventListener('scroll', () => { if (keptHome.leaving) keptHome.lastY = scrollY; keptHome.lastPageY = scrollY; }, { passive: true });
+// The Me menu marks the page it was opened on (…?me=1), so going back from a page opened from the menu
+// (Friends, My account, My profile…) shows the menu again instead of leaving it.
+const withoutMe = (h) => h.replace(/([?&])me=1(&|$)/, (m, a, b) => (b ? a : '')).replace(/[?&]$/, '') || '#/';
+const withMe = (h) => (/[?&]me=1\b/.test(h) ? h : `${h || '#/'}${h.includes('?') ? '&' : '?'}me=1`);
+function markMe(on) { history.replaceState(null, '', on ? withMe(location.hash) : withoutMe(location.hash)); }
 async function route() {
+  if (/[?&]me=1\b/.test(location.hash)) {
+    history.replaceState(null, '', withoutMe(location.hash));
+    if (state.me) setTimeout(() => soc().then((m) => m.meSheet()).catch(() => {}), 0);
+  }
   const [path, query] = (location.hash.slice(1) || '/').split('?');
   const q = new URLSearchParams(query || '');
   const parts = path.split('/').filter(Boolean);
@@ -1434,7 +1443,7 @@ document.addEventListener('click', (e) => {
   e.preventDefault(); e.stopPropagation();
   location.hash = `#/same/${encodeURIComponent(t.dataset.same)}`;
 }, true);
-addEventListener('hashchange', (e) => { leftHash = new URL(e.oldURL).hash || '#/'; route(); });
+addEventListener('hashchange', (e) => { leftHash = withoutMe(new URL(e.oldURL).hash || '#/'); route(); });
 // Tabs inside a page (Fuel: Nearby/Route/Saved, Bills: Electricity/Gas) don't add history,
 // so the back swipe goes to the page above (More), not the previous tab.
 document.addEventListener('click', (e) => {

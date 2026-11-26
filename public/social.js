@@ -43,7 +43,8 @@ export async function meSheet() {
       <a href="#/profile"><span class="ic">📋</span><span>My profile<span class="sub">You and your family, fuel, bills</span></span></a>
       ${state.me.isAdmin ? '<a href="#/admin"><span class="ic">🛠️</span><span>Admin<span class="sub">Spend, data runs, match review, testers</span></span></a>' : ''}
       <button id="me-out"><span class="ic">↩︎</span><span>Sign out</span></button>
-    </div>`);
+    </div>`, null, () => ctx.markMe(false));
+  ctx.markMe(true);
   $('#me-out').onclick = ctx.logout;
   document.querySelectorAll('#sheet .menu a').forEach((a) => a.addEventListener('click', () => { $('#sheet').hidden = true; }));
 }
