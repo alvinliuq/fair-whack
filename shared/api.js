@@ -829,22 +829,30 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
 // this tester ignored. The same comparison as the product page's "Lowest" pill.
 route('GET', '/api/lowest', async ({ env, user, url }) => {
   const ids = [...new Set((url.searchParams.get('ids') || '').split(',').filter(Boolean))].slice(0, 40);
+  if (!ids.length) return json({ lowest: {} });
+  const qs = (n) => Array(n).fill('?').join(',');
+  // A few queries for all of them (one per product took ~1s each).
+  const mine = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id IN (${qs(ids.length)})`).bind(...ids).all()).results;
+  const canonOf = (r) => r.canonical_product_id || `c:${r.id}`;
+  const canons = [...new Set(mine.map(canonOf))];
+  const twins = canons.length ? (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE canonical_product_id IN (${qs(canons.length)}) AND ${ACT} AND cur_price_cents IS NOT NULL`).bind(...canons).all()).results.map(pub) : [];
+  const keys = [...new Set(mine.map((r) => serpKey(webQuery(pub(r)))))];
+  const saved = new Map((await env.DB.prepare(`SELECT q, data FROM serp_cache WHERE q IN (${qs(keys.length)})`).bind(...keys).all().catch(() => ({ results: [] }))).results.map((x) => [x.q, x.data]));
+  const ign = (await env.DB.prepare(`SELECT product_id, store_key FROM user_web_ignore WHERE user_id = ? AND product_id IN (${qs(ids.length)})`).bind(user.id, ...ids).all()).results;
   const out = {};
-  for (const id of ids) {
-    const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(id).first();
-    if (!r) continue;
+  for (const r of mine) {
     const p = pub(r);
     if (p.effective == null) continue;
-    const canon = r.canonical_product_id || `c:${r.id}`;
-    const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT} AND cur_price_cents IS NOT NULL`).bind(r.id, canon).all()).results.map(pub);
+    const offers = twins.filter((o) => o.canonical === canonOf(r));
+    if (!offers.some((o) => o.id === p.id)) offers.push(p);
     const have = [...new Set(offers.map((o) => o.retailer))];
     const others = offers.filter((o) => o.id !== p.id && o.effective != null).map((o) => o.effective);
-    const row = await env.DB.prepare('SELECT data FROM serp_cache WHERE q = ?').bind(serpKey(webQuery(p))).first().catch(() => null);
-    if (row) {
-      const ignored = new Set((await env.DB.prepare('SELECT store_key FROM user_web_ignore WHERE user_id = ? AND product_id = ?').bind(user.id, p.id).all()).results.map((x) => x.store_key));
-      sameOnline(p, JSON.parse(row.data).results || [], have).filter((x) => !ignored.has(x.storeKey)).forEach((x) => others.push(x.priceCents));
+    const data = saved.get(serpKey(webQuery(p)));
+    if (data) {
+      const ignored = new Set(ign.filter((x) => x.product_id === p.id).map((x) => x.store_key));
+      sameOnline(p, JSON.parse(data).results || [], have).filter((x) => !ignored.has(x.storeKey)).forEach((x) => others.push(x.priceCents));
     }
-    out[id] = others.length > 0 && p.effective <= Math.min(...others);
+    out[p.id] = others.length > 0 && p.effective <= Math.min(...others);
   }
   return json({ lowest: out });
 });
