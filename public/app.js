@@ -632,7 +632,8 @@ function webCard(r, lp = false) {
       <span class="wc-img">${r.thumb ? `<img src="${esc(r.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<b>?</b>'}</span>
       <span class="wc-store">${esc(r.store || 'Online shop')}${r.used ? ' · used' : ''}</span>
       <span class="wc-name">${esc(r.title)}</span>
-      <span class="wc-price num"${lp && !r.ignored ? ` data-cents="${r.priceCents}"` : ''}>${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}${lp ? LP : ''}</span>
+      <span class="wc-price num"${lp && !r.ignored && !r.sizeUnknown ? ` data-cents="${r.priceCents}"` : ''}>${money(r.priceCents)}${r.wasCents && r.wasCents > r.priceCents ? `<small>${money(r.wasCents)}</small>` : ''}${lp ? LP : ''}</span>
+      ${r.sizeUnknown ? '<span class="wc-note">Size not shown · not compared</span>' : ''}
       ${r.delivery ? `<span class="wc-note">${esc(r.delivery)}</span>` : ''}
     </a>`;
 }
@@ -883,7 +884,7 @@ async function productWeb(p, el) {
   }
   el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
     <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, cheapest first, swipe for more">${rows.map((r) => webCard(r, true)).join('')}</div>
-    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page. Tap Ignore on a shop you don’t trust or a wrong match: it turns grey and isn’t counted for Lowest.</p>`;
+    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page. Tap Ignore on a shop you don’t trust or a wrong match: it turns grey and isn’t counted for Lowest. Listings that don’t show the pack size aren’t counted either.</p>`;
   const wire = () => el.querySelectorAll('.wc-ignore').forEach((b) => b.onclick = async (e) => {
     e.preventDefault(); e.stopPropagation();
     const on = b.getAttribute('aria-pressed') !== 'true';

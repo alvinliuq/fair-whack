@@ -44,3 +44,14 @@ test('query and store names', () => {
   assert.equal(ourRetailer('Woolworths Online'), 'woolworths');
   assert.equal(ourRetailer('Amazon.com.au'), null);
 });
+
+test('real Google titles: brand spelling, sub-range names, sizes not shown, editions', () => {
+  const pick = (p, rows, have = []) => sameOnline(p, rows.map(([store, title, priceCents]) => ({ store, title, priceCents })), have).map((x) => `${x.sizeUnknown ? '?' : ''}${x.store}`);
+  assert.deepEqual(pick({ name: 'Melrose FutureLab Bone Matrix 120 Capsules', brand: 'Melrose', effective: 2500 }, [
+    ['Nourishing Apothecary', 'Melrose FutureLab Bone Matrix', 4995], ['AV', 'Melrose FutureLab | Testosterone Matrix', 4395], ['SM', "Melrose Origins Men's Optimal 120c", 3821]]), ['?Nourishing Apothecary']);
+  assert.deepEqual(pick({ name: 'Nulax Natural Laxative Tablets With Prebiotic Senna + Aloe 40 Tablets', brand: 'Nu-Lax', effective: 699 }, [
+    ['BVP', 'Nulax Natural Laxative with Prebiotic 40 Tablets', 650], ['K', 'Nu-Lax Natural Laxative Tablets with Senna & Prunes 40 Tablets', 780],
+    ['E', '3 X Nu-lax Natural Laxative Tablets With Prebiotic 40 Tablets', 2000], ['N', 'Nu-Lax Natural Laxative With Prebiotic 180 Tablets', 1999]]), ['BVP']);
+  assert.deepEqual(pick({ name: 'Grand Theft Auto VI', brand: 'GTA VI', effective: 12500 }, [
+    ['EB Games Australia', 'Grand Theft Auto VI', 12995], ['JB', 'Grand Theft Auto VI - The Album', 9000], ['PS', 'Grand Theft Auto VI: Ultimate Edition - Sony PlayStation 5', 15995]], ['jbhifi']), ['EB Games Australia']);
+});
