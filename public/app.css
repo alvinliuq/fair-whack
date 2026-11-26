@@ -937,3 +937,15 @@ body.sub-page .topbar .brand em { display: none; }
 .web-card.ignored { background: var(--mist); box-shadow: none; }
 .web-card.ignored > :not(.wc-ignore) { opacity: .45; filter: grayscale(1); }
 .web-card.ignored .wc-ignore { background: var(--grape); color: #fff; }
+/* Admin → Brand deals: brand list as aligned columns, no logos. */
+.adm-brands { padding: 4px 14px; }
+.ab-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px 64px 78px; gap: 10px; align-items: center; width: 100%; padding: 12px 0; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.ab-row:first-child, .ab-head + .ab-row { border-top: 0; }
+.ab-head { cursor: default; padding: 8px 0 6px; font-size: 11.5px; font-weight: 750; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
+.ab-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ab-name b { font-size: 15px; }
+.ab-name .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-type { font-size: 12px; color: var(--ink-2); }
+.ab-type.partner { color: var(--grape-d); font-weight: 750; }
+.ab-num { text-align: right; }
+.ab-row > span:last-child { text-align: right; }

@@ -261,7 +261,13 @@ export async function adminPage() {
         <td class="num">${c.stats.follow}</td><td class="num">${c.stats.share}</td><td class="num ${c.stats.hideRate > 0.2 ? 'hot' : ''}">${c.stats.hide}${c.stats.views ? ` <span class="muted">(${pct(c.stats.hideRate)})</span>` : ''}</td><td class="num">${c.stats.opens}</td></tr>`).join('') || '<tr><td colspan="11" class="muted">No campaigns yet</td></tr>'}</table></div>
     <p class="small muted">“Hidden” is the share of people who saw it and chose Not interested: the main check that a deal suits its audience.</p>
     <div class="row"><h2 style="flex:1">Brands</h2><button class="btn small" id="newbrand">+ New brand</button></div>
-    <div class="card list-rows">${d.brands.map((b) => `<button class="r brow-admin" data-b="${esc(b.id)}">${logoBadge({ name: b.name, logo: b.logo_url, color: b.color }, 'small')}<span class="n"><b>${esc(b.name)}</b><span class="small muted">${b.confirmed ? 'Partner' : 'Beta demo'} · ${esc((b.website || '').replace(/^https?:\/\/(www\.)?/, ''))} · ${b.followers} following</span></span><span class="bstatus ${b.status}">${esc(b.status)}</span></button>`).join('') || '<p class="small muted">No brands yet. Add a brand first, then its campaigns.</p>'}</div>`;
+    <div class="card adm-brands">${d.brands.length ? `<div class="ab-row ab-head"><span>Brand</span><span>Type</span><span class="ab-num">Following</span><span>Status</span></div>
+      ${d.brands.map((b) => `<button class="ab-row" data-b="${esc(b.id)}">
+        <span class="ab-name"><b>${esc(b.name)}</b><span class="small muted">${esc((b.website || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</span></span>
+        <span class="ab-type ${b.confirmed ? 'partner' : ''}">${b.confirmed ? 'Partner' : 'Beta demo'}</span>
+        <span class="ab-num num">${b.followers}</span>
+        <span><span class="bstatus ${b.status}">${esc(b.status)}</span></span>
+      </button>`).join('')}` : '<p class="small muted">No brands yet. Add a brand first, then its campaigns.</p>'}</div>`;
   $('#newbrand').onclick = () => brandSheet({}, d);
   app.querySelectorAll('[data-b]').forEach((x) => (x.onclick = () => brandSheet(d.brands.find((b) => b.id === x.dataset.b), d)));
 }
