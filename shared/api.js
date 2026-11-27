@@ -781,7 +781,7 @@ route('GET', '/api/search/web', async ({ env, url, user }) => json(await serpLoo
 async function serpLookup(env, user, raw, kind = 'search') {
   const q = serpKey(raw);
   if (q.length < 2) return { q, results: [] };
-  return serpCall(env, user, { key: q, kind, params: { engine: 'google_shopping', q, location: 'Melbourne,Victoria,Australia' }, parse: serpResults });
+  return serpCall(env, user, { key: q, kind, params: { engine: 'google_shopping', q, location: 'Melbourne,Victoria,Australia', gl: 'au', hl: 'en', google_domain: 'google.com.au' }, parse: serpResults });
 }
 /** Shared by Google Shopping and Google Lens: the saved answer for `key` if fresh, else one SerpApi call within
  *  the budget, the month's cap and the tester's daily cap for this kind. */
@@ -806,14 +806,14 @@ async function serpCall(env, user, { key, kind, params, parse }) {
     env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(mk),
     env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(dk),
   ]);
-  const p = new URLSearchParams({ ...params, gl: 'au', hl: 'en', google_domain: 'google.com.au', api_key: env.SERPAPI_KEY });
+  const p = new URLSearchParams({ ...params, api_key: env.SERPAPI_KEY });
   let data;
   try {
     const res = await fetch(`https://serpapi.com/search.json?${p}`);
     data = await res.json();
     if (!res.ok || data.error) {
       // "no results" is an answer worth saving; anything else is not.
-      if (!/hasn't returned any results/i.test(data.error || '')) return stale('error');
+      if (!/hasn't returned any results/i.test(data.error || '')) { console.error(`SerpApi ${params.engine} error:`, res.status, data.error); return stale('error'); }
       data = {};
     }
   } catch { return stale('error'); }
@@ -893,7 +893,7 @@ route('POST', '/api/product/:id/lens', async ({ env, params, user }) => {
   if (!r) throw new HttpError(404, 'Product not found');
   const p = pub(r);
   if (!/^https:\/\//.test(p.image || '')) throw new HttpError(400, "This product has no photo to search with");
-  const d = await serpCall(env, user, { key: lensKey(p.id), kind: 'lens', params: { engine: 'google_lens', url: p.image, type: 'products', country: 'au' }, parse: lensResults });
+  const d = await serpCall(env, user, { key: lensKey(p.id), kind: 'lens', params: { engine: 'google_lens', url: p.image, type: 'visual_matches', country: 'au', hl: 'en' }, parse: lensResults });
   const canon = r.canonical_product_id || `c:${r.id}`;
   const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(r.id, canon).all()).results.map((x) => x.retailer);
   return json({ ...d, results: (d.results || []).filter((x) => !x.used && !have.includes(ourRetailer(x.store))) });
