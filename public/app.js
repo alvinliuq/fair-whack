@@ -939,8 +939,8 @@ function lensShow(d, box) {
     return;
   }
   box.innerHTML = `<div class="sec-head"><h2>Found by photo</h2><span class="small muted">${rows.length} result${rows.length === 1 ? '' : 's'} · Google Lens</span></div>
-    <div class="lens-grid">${rows.map((r) => webCard(r)).join('')}</div>
-    <p class="small muted">Shops whose product photo looks like this one, most similar first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Not checked by us: it may be a different model, size or an accessory, so check before you buy. Not counted for Lowest. Opens the shop’s page.</p>`;
+    <div class="rail web-rail" tabindex="0" aria-label="Shops found by photo, most similar first, swipe for more">${rows.map((r) => webCard(r)).join('')}</div>
+    <p class="small muted">Shops whose product photo looks like this one, most similar first; used items left out. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Not checked by us: it may be a different model, size or an accessory, so check before you buy. Not counted for Lowest. Opens the shop’s page.</p>`;
 }
 
 // ----- sheets -----

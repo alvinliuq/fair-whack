@@ -8,14 +8,14 @@ import path from 'node:path';
 import { makeD1, migrate } from '../dev/d1shim.js';
 import { handle, lensResults } from '../shared/api.js';
 
-test('lensResults keeps AUD-priced rows only, in Google order', () => {
+test('lensResults keeps new, AUD-priced rows only, in Google order', () => {
   const rows = lensResults({ visual_matches: [
     { title: 'A', source: 'Shop A', link: 'https://a', price: { value: '$1,899.00', extracted_value: 1899, currency: '$' } },
     { title: 'B', source: 'Shop B', link: 'https://b', price: { value: '£999', extracted_value: 999, currency: '£' } },
     { title: 'C', source: 'Shop C', link: 'https://c' },
     { title: 'D used', source: 'Shop D', link: 'https://d', price: { extracted_value: 1200, currency: 'A$' } },
   ] });
-  assert.deepEqual(rows.map((r) => [r.store, r.priceCents, r.used]), [['Shop A', 189900, false], ['Shop D', 120000, true]]);
+  assert.deepEqual(rows.map((r) => [r.store, r.priceCents]), [['Shop A', 189900]], 'used items are left out');
 });
 
 test('product page: no Google Shopping match, then search by photo', async (t) => {

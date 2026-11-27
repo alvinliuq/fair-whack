@@ -834,6 +834,9 @@ export function lensResults(data) {
     const price = typeof pr.extracted_value === 'number' ? Math.round(pr.extracted_value * 100) : toCents(pr.value);
     if (!r.title || !price) continue;
     const link = typeof r.link === 'string' && /^https:\/\//.test(r.link) ? r.link : null;
+    // Second-hand listings are left out altogether.
+    if (r.condition && !/^new$/i.test(String(r.condition))) continue;
+    if (/\b(used|pre-?owned|refurbished|refurb|second[- ]hand|ex[- ]demo)\b/i.test(`${r.title} ${r.source || ''}`)) continue;
     const k = `${r.source}|${r.title}|${price}`;
     if (seen.has(k)) continue;
     seen.add(k);
@@ -843,7 +846,6 @@ export function lensResults(data) {
       priceCents: price,
       link,
       thumb: typeof r.thumbnail === 'string' && /^https:\/\//.test(r.thumbnail) ? r.thumbnail : null,
-      used: /\b(used|pre-?owned|refurbished|second[- ]hand)\b/i.test(r.title),
       inStock: r.in_stock === false ? false : undefined,
     });
     if (out.length >= 60) break;
@@ -881,7 +883,7 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
   if (!r) throw new HttpError(404, 'Product not found');
   const { p, have, ...d } = await productWeb(env, user, r);
   const lens = await lensSaved(env, p.id);
-  if (lens) lens.results = (lens.results || []).filter((x) => !have.includes(ourRetailer(x.store)));
+  if (lens) lens.results = (lens.results || []).filter((x) => !x.used && !have.includes(ourRetailer(x.store)));
   return json({ ...d, canLens: /^https:\/\//.test(p.image || ''), lens });
 });
 // Product page: "Search by product photo" — Google Lens on the product's own photo, run only when a tester asks.
@@ -894,7 +896,7 @@ route('POST', '/api/product/:id/lens', async ({ env, params, user }) => {
   const d = await serpCall(env, user, { key: lensKey(p.id), kind: 'lens', params: { engine: 'google_lens', url: p.image, type: 'products', country: 'au' }, parse: lensResults });
   const canon = r.canonical_product_id || `c:${r.id}`;
   const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(r.id, canon).all()).results.map((x) => x.retailer);
-  return json({ ...d, results: (d.results || []).filter((x) => !have.includes(ourRetailer(x.store))) });
+  return json({ ...d, results: (d.results || []).filter((x) => !x.used && !have.includes(ourRetailer(x.store))) });
 });
 // Home "Deals on your list": which of these products is the lowest price anywhere: our stores plus the product's
 // Google Shopping results (looked up now if not saved in the last 24 hours, the same as opening the product page),
