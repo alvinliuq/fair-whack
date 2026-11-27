@@ -887,35 +887,60 @@ function markLowest() {
   const min = Math.min(...els.map((e) => +e.dataset.cents));
   els.forEach((e) => { const pill = e.querySelector('.lp'); if (pill) pill.hidden = !(n > 1 && +e.dataset.cents === min); });
 }
-/** The same product at other online shops (Google Shopping), cheapest first. */
+/** The same product at other online shops (Google Shopping), cheapest first, then "Search by product photo". */
 async function productWeb(p, el) {
   el.innerHTML = '<h2>Other shops online</h2><div class="skeleton" style="height:70px"></div>';
   let d;
   try { d = await api(`/api/product/${encodeURIComponent(p.id)}/web`); } catch { d = { results: [] }; }
   if (!el.isConnected) return;
   const rows = d.results || [];
+  const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s lookups. More tomorrow!' }[d.unavailable];
+  const lensBtn = d.canLens ? `<button class="btn light lens-btn" type="button" id="lens-go">${ICON_CAM}<span>Search by product photo</span></button>` : '';
+  const lensBox = '<div id="plens"></div>';
   if (!rows.length) {
-    const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s lookups. More tomorrow!' }[d.unavailable];
-    el.innerHTML = why ? `<h2>Other shops online</h2><p class="small muted">${why}</p>` : '';
+    el.innerHTML = `<h2>Other shops online</h2><p class="small muted">${why || 'No other online shops found for this product yet.'}</p>${lensBtn}${lensBox}`;
+  } else {
+    el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
+    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, cheapest first, swipe for more">${rows.map((r) => webCard(r, true)).join('')}</div>
+    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page. Tap Ignore on a shop you don’t trust or a wrong match: it turns grey and isn’t counted for Lowest. “Size not shown”: the listing doesn’t say the pack size, check it before you buy. “Close match”: added when fewer than 5 shops have the exact product; it may be a different version, so check it, or tap Ignore.</p>${lensBtn}${lensBox}`;
+    const wire = () => el.querySelectorAll('.wc-ignore').forEach((b) => b.onclick = async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      try {
+        await api(`/api/product/${encodeURIComponent(p.id)}/web/ignore`, { method: 'PUT', body: { store: b.dataset.store, on } });
+        const r = rows.find((x) => (x.store || '') === b.dataset.store);
+        if (r) r.ignored = on;
+        lowestSeen.clear();
+        b.closest('.web-card').outerHTML = webCard(r, true);
+        wire(); markLowest();
+      } catch (err) { toast(err.message); }
+    });
+    wire();
+    markLowest();
+  }
+  // Someone already searched this product by photo today: show those results straight away (costs nothing).
+  if (d.lens) lensShow(d.lens, $('#plens', el));
+  const go = $('#lens-go', el);
+  if (go) go.onclick = async () => {
+    const box = $('#plens', el);
+    go.disabled = true;
+    box.innerHTML = '<div class="sec-head"><h2>Found by photo</h2></div><div class="skeleton" style="height:90px"></div>';
+    try { lensShow(await api(`/api/product/${encodeURIComponent(p.id)}/lens`, { method: 'POST' }), box); } catch (err) { box.innerHTML = ''; toast(err.message); }
+    go.disabled = false;
+  };
+}
+/** "Search by product photo" results (Google Lens): every shop found, most similar first, not checked by us. */
+function lensShow(d, box) {
+  if (!box) return;
+  const rows = d.results || [];
+  const why = { budget: 'Paused for the rest of the month (beta budget).', month: 'This month’s lookups are used up; they reset on the 1st.', today: 'You’ve used today’s photo searches. More tomorrow!', error: 'The photo search didn’t work this time. Try again later.', 'not set up': 'Photo search isn’t switched on yet.' }[d.unavailable];
+  if (!rows.length) {
+    box.innerHTML = `<div class="sec-head"><h2>Found by photo</h2></div><p class="small muted">${why || 'No other online shops found for this product yet.'}</p>`;
     return;
   }
-  el.innerHTML = `<div class="sec-head"><h2>Other shops online</h2><span class="small muted">Google Shopping</span></div>
-    <div class="rail web-rail" tabindex="0" aria-label="Prices at other online shops, cheapest first, swipe for more">${rows.map((r) => webCard(r, true)).join('')}</div>
-    <p class="small muted">Cheapest first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. As listed on Google Shopping, which may not include delivery. Opens the shop’s page. Tap Ignore on a shop you don’t trust or a wrong match: it turns grey and isn’t counted for Lowest. “Size not shown”: the listing doesn’t say the pack size, check it before you buy. “Close match”: added when fewer than 5 shops have the exact product; it may be a different version, so check it, or tap Ignore.</p>`;
-  const wire = () => el.querySelectorAll('.wc-ignore').forEach((b) => b.onclick = async (e) => {
-    e.preventDefault(); e.stopPropagation();
-    const on = b.getAttribute('aria-pressed') !== 'true';
-    try {
-      await api(`/api/product/${encodeURIComponent(p.id)}/web/ignore`, { method: 'PUT', body: { store: b.dataset.store, on } });
-      const r = rows.find((x) => (x.store || '') === b.dataset.store);
-      if (r) r.ignored = on;
-      lowestSeen.clear();
-      b.closest('.web-card').outerHTML = webCard(r, true);
-      wire(); markLowest();
-    } catch (err) { toast(err.message); }
-  });
-  wire();
-  markLowest();
+  box.innerHTML = `<div class="sec-head"><h2>Found by photo</h2><span class="small muted">${rows.length} result${rows.length === 1 ? '' : 's'} · Google Lens</span></div>
+    <div class="lens-grid">${rows.map((r) => webCard(r)).join('')}</div>
+    <p class="small muted">Shops whose product photo looks like this one, most similar first. Checked ${ago(d.fetchedAt)}${d.stale ? ' (saved results)' : ''}. Not checked by us: it may be a different model, size or an accessory, so check before you buy. Not counted for Lowest. Opens the shop’s page.</p>`;
 }
 
 // ----- sheets -----

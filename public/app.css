@@ -956,3 +956,11 @@ body.sub-page .topbar .brand em { display: none; }
 .notice.warn { background: #FFF4E0; border-color: #F3C98B; margin-bottom: 10px; }
 .admin-warn ul { margin: 6px 0; padding-left: 18px; }
 .admin-warn li { margin: 4px 0; }
+
+/* Product page: "Search by product photo" (Google Lens) — button, and every result as a 2-column grid. */
+.lens-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 4px 0 8px; }
+.lens-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.lens-btn:disabled { opacity: .6; }
+.lens-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+@media (min-width: 560px) { .lens-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.lens-grid > .web-card { display: flex; flex-direction: column; gap: 3px; background: #fff; border-radius: var(--r); padding: 10px; text-decoration: none; color: var(--ink); box-shadow: 0 1px 3px rgba(40, 20, 90, .08); min-width: 0; }

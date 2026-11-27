@@ -9,7 +9,7 @@ import { searchTokens, pickIds, INDEX_VERSION, INDEX_META_KEY } from './search-i
 import { cleanSection, sectionById, RETAILER_ALIASES, ELEC_NETWORKS, GAS_NETWORKS, SECTIONS, progress } from '../public/household.js';
 import { compare } from './energy.js';
 import { BUDGET, SERPAPI, monthSpend, budgetLevel } from './budget.js';
-import { webQuery, webQueryLoose, sameOnline, storeKey, WEB_MIN } from './webmatch.js';
+import { webQuery, webQueryLoose, sameOnline, storeKey, ourRetailer, WEB_MIN } from './webmatch.js';
 import { RETAILER_INFO } from './retailers.js';
 import { notify } from './push.js';
 import { registerBrandRoutes } from './brands-api.js';
@@ -781,6 +781,12 @@ route('GET', '/api/search/web', async ({ env, url, user }) => json(await serpLoo
 async function serpLookup(env, user, raw, kind = 'search') {
   const q = serpKey(raw);
   if (q.length < 2) return { q, results: [] };
+  return serpCall(env, user, { key: q, kind, params: { engine: 'google_shopping', q, location: 'Melbourne,Victoria,Australia' }, parse: serpResults });
+}
+/** Shared by Google Shopping and Google Lens: the saved answer for `key` if fresh, else one SerpApi call within
+ *  the budget, the month's cap and the tester's daily cap for this kind. */
+async function serpCall(env, user, { key, kind, params, parse }) {
+  const q = key;
   const row = await env.DB.prepare('SELECT fetched_at, data FROM serp_cache WHERE q = ?').bind(q).first().catch(() => null);
   const saved = row ? { q, fetchedAt: row.fetched_at, ...JSON.parse(row.data) } : null;
   if (saved && Date.now() - Date.parse(row.fetched_at) < SERPAPI.cacheHours * 3600000) return { ...saved, cached: true };
@@ -788,17 +794,19 @@ async function serpLookup(env, user, raw, kind = 'search') {
   if (!env.SERPAPI_KEY) return stale('not set up');
   const spend = await monthSpend(async (sql, p) => (await env.DB.prepare(sql).bind(...p).all()).results);
   if (budgetLevel(spend.total) === 'hard') return stale('budget');
-  const mk = `serp:m:${spend.month}`, dk = `serp:${kind === 'product' ? 'p' : 'd'}:${user.id}:${melDay()}`;
+  const short = { product: 'p', lens: 'l' }[kind] || 'd';
+  const cap = { product: SERPAPI.productsPerUserPerDay, lens: SERPAPI.lensPerUserPerDay }[kind] || SERPAPI.perUserPerDay;
+  const mk = `serp:m:${spend.month}`, dk = `serp:${short}:${user.id}:${melDay()}`;
   const used = (await env.DB.prepare('SELECT key, n FROM api_quota WHERE key IN (?, ?)').bind(mk, dk).all()).results;
   const n = (k) => used.find((r) => r.key === k)?.n || 0;
   if (n(mk) >= SERPAPI.stopAtSearches) return stale('month');
-  if (!user.is_admin && n(dk) >= (kind === 'product' ? SERPAPI.productsPerUserPerDay : SERPAPI.perUserPerDay)) return stale('today');
+  if (!user.is_admin && n(dk) >= cap) return stale('today');
   // Count the lookup before making it, so two quick requests can't both slip past the cap.
   await env.DB.batch([
     env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(mk),
     env.DB.prepare('INSERT INTO api_quota (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1').bind(dk),
   ]);
-  const p = new URLSearchParams({ engine: 'google_shopping', q, gl: 'au', hl: 'en', google_domain: 'google.com.au', location: 'Melbourne,Victoria,Australia', api_key: env.SERPAPI_KEY });
+  const p = new URLSearchParams({ ...params, gl: 'au', hl: 'en', google_domain: 'google.com.au', api_key: env.SERPAPI_KEY });
   let data;
   try {
     const res = await fetch(`https://serpapi.com/search.json?${p}`);
@@ -809,10 +817,44 @@ async function serpLookup(env, user, raw, kind = 'search') {
       data = {};
     }
   } catch { return stale('error'); }
-  const out = { q, fetchedAt: nowIso(), results: serpResults(data) };
+  const out = { q, fetchedAt: nowIso(), results: parse(data) };
   await env.DB.prepare('INSERT INTO serp_cache (q, fetched_at, data) VALUES (?, ?, ?) ON CONFLICT(q) DO UPDATE SET fetched_at = excluded.fetched_at, data = excluded.data')
     .bind(q, out.fetchedAt, JSON.stringify({ results: out.results })).run();
   return { ...out, cached: false };
+}
+/** Google Lens "products" rows: shops selling what looks like the photo. Only rows with an Australian-dollar
+ *  price are kept; no name or price filter (the tester judges them), Google's order (most similar first). */
+export function lensResults(data) {
+  const out = [];
+  const seen = new Set();
+  for (const r of data.visual_matches || []) {
+    const pr = r.price || {};
+    const cur = String(pr.currency || '').trim();
+    if (cur && !/^(\$|A\$|AU\$|AUD)$/i.test(cur)) continue;
+    const price = typeof pr.extracted_value === 'number' ? Math.round(pr.extracted_value * 100) : toCents(pr.value);
+    if (!r.title || !price) continue;
+    const link = typeof r.link === 'string' && /^https:\/\//.test(r.link) ? r.link : null;
+    const k = `${r.source}|${r.title}|${price}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      title: String(r.title).slice(0, 160),
+      store: r.source ? String(r.source).slice(0, 60) : null,
+      priceCents: price,
+      link,
+      thumb: typeof r.thumbnail === 'string' && /^https:\/\//.test(r.thumbnail) ? r.thumbnail : null,
+      used: /\b(used|pre-?owned|refurbished|second[- ]hand)\b/i.test(r.title),
+      inStock: r.in_stock === false ? false : undefined,
+    });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+const lensKey = (id) => `lens:${id}`;
+/** Saved photo-search results for a product, without spending a lookup (null when there are none). */
+async function lensSaved(env, id) {
+  const row = await env.DB.prepare('SELECT fetched_at, data FROM serp_cache WHERE q = ?').bind(lensKey(id)).first().catch(() => null);
+  return row ? { fetchedAt: row.fetched_at, ...JSON.parse(row.data), cached: true } : null;
 }
 /** The same product at other online shops. Looks up the product's name; when that gives fewer than WEB_MIN
  *  rows, also a shorter search (no colour, no pack size), and sameOnline adds close matches if still short. */
@@ -838,7 +880,21 @@ route('GET', '/api/product/:id/web', async ({ env, params, user }) => {
   const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
   if (!r) throw new HttpError(404, 'Product not found');
   const { p, have, ...d } = await productWeb(env, user, r);
-  return json(d);
+  const lens = await lensSaved(env, p.id);
+  if (lens) lens.results = (lens.results || []).filter((x) => !have.includes(ourRetailer(x.store)));
+  return json({ ...d, canLens: /^https:\/\//.test(p.image || ''), lens });
+});
+// Product page: "Search by product photo" — Google Lens on the product's own photo, run only when a tester asks.
+// Results are saved for everyone for SERPAPI.cacheHours; the stores we already read for this product are left out.
+route('POST', '/api/product/:id/lens', async ({ env, params, user }) => {
+  const r = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
+  if (!r) throw new HttpError(404, 'Product not found');
+  const p = pub(r);
+  if (!/^https:\/\//.test(p.image || '')) throw new HttpError(400, "This product has no photo to search with");
+  const d = await serpCall(env, user, { key: lensKey(p.id), kind: 'lens', params: { engine: 'google_lens', url: p.image, type: 'products', country: 'au' }, parse: lensResults });
+  const canon = r.canonical_product_id || `c:${r.id}`;
+  const have = (await env.DB.prepare(`SELECT DISTINCT retailer FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(r.id, canon).all()).results.map((x) => x.retailer);
+  return json({ ...d, results: (d.results || []).filter((x) => !have.includes(ourRetailer(x.store))) });
 });
 // Home "Deals on your list": which of these products is the lowest price anywhere: our stores plus the product's
 // Google Shopping results (looked up now if not saved in the last 24 hours, the same as opening the product page),

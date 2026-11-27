@@ -28,6 +28,7 @@ export const SERPAPI = {
   stopAtSearches: 4900,    // keep a small margin for retries
   perUserPerDay: 60,       // Search page keyword lookups per tester a day (one tester can't use the month's searches by accident)
   productsPerUserPerDay: 200, // product refreshes (product page, Home) a tester can set off a day; saved results are shared, so most views cost nothing
+  lensPerUserPerDay: 30,   // "Search by product photo" (Google Lens) lookups a tester can run a day; saved results are shared
   cacheHours: 24,          // the same keyword is looked up at most once in this time
   reserveForTesters: 2500, // the pipeline (Kmart) stops while this many are left for testers' comparisons
 };
