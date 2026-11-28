@@ -764,6 +764,8 @@ label.r.friend input { width: 22px; height: 22px; flex: none; accent-color: var(
 /* ---- Home sections: full-width bands, alternating clear / white ---- */
 .hsec { display: block; margin: 0 -14px; padding: 2px 14px 16px; }
 .hsec[hidden] { display: none; }
+/* Home: search bar between the greeting and "Deals on your list"; sits above later sections so suggestions overlay them */
+.hsec.home-search { position: relative; z-index: 5; padding-top: 4px; padding-bottom: 14px; }
 .hsec.alt { background: #fff; }
 .hsec > .sec-head:first-child, .hsec > div > .sec-head:first-child { margin-top: 16px; }
 .hsec + .hsec { border-top: 1px solid rgba(91, 43, 224, .06); }

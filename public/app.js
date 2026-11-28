@@ -356,6 +356,7 @@ views.home = async () => {
     <section class="hsec hero"><h1>G'day ${esc(state.me.name.split(' ')[0])}</h1>
       <p class="lead small">${upd ? `Prices updated: ${upd}` : 'Waiting for the first price update.'}</p>
       ${!standalone && /iPhone|iPad/.test(navigator.userAgent) ? `<a class="notice info" style="display:block;text-decoration:none" href="#/install"><b>Add Fair Whack to your Home Screen</b> to get special alerts on iPhone →</a>` : ''}</section>
+    <section class="hsec home-search">${searchBox('')}</section>
     <section class="hsec"><div class="sec-head"><h2>Deals on your list</h2><span id="minepick"></span></div>
       <div id="mine"><div class="skeleton" style="height:120px"></div></div></section>
     <section class="hsec"><div id="sharedrail"></div></section>
@@ -367,13 +368,14 @@ views.home = async () => {
   // Sections alternate background (clear / white); empty ones are skipped so the stripes stay even.
   const stripe = () => {
     let i = 0;
-    app.querySelectorAll('.hsec:not(.hero)').forEach((sec) => {
+    app.querySelectorAll('.hsec:not(.hero):not(.home-search)').forEach((sec) => {
       const empty = !sec.textContent.trim() && !sec.querySelector('img, .skeleton');
       sec.hidden = empty;
       if (!empty) sec.classList.toggle('alt', i++ % 2 === 1);
     });
   };
   stripe();
+  bindSearchBox();
   api('/api/digest').then((d) => { keptHome.digest = JSON.stringify(d); renderMine($('#mine'), d); }).catch((e) => fail(e, $('#mine')));
   soc().then((m) => m.homeRail($('#sharedrail'))).catch(() => {}).finally(stripe);
   api('/api/bargains/stores').then((d) => bargainTiles($('#bargains'), d.stores.filter((s) => STORES.includes(s.id)))).catch((e) => fail(e, $('#bargains')));
