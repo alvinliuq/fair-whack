@@ -2,7 +2,7 @@
 import {
   SECTIONS, VEHICLE_FIELDS, AGE_BANDS, ADULT_BANDS, MEMBER_GENDERS, MAX_MEMBERS, sectionById, progress, answered,
 } from './household.js?v=8';
-import { attachAutocomplete, loadPlaces } from './maps.js?v=1';
+import { attachAutocomplete, loadPlaces } from './maps.js?v=2';
 
 // Save More modules. Add a new one here (e.g. investing) and it gets a card on More.
 export const MODULES = [

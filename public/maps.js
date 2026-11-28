@@ -1,6 +1,8 @@
 // Google Maps Platform for Fair Whack (FW2.0).
 // The key is meant to be public: Google limits it to fair-whack.pages.dev and to three APIs
 // (Maps JavaScript, Places (New), Routes). Change it in Google Cloud → APIs & Services → Credentials.
+import { tapList } from './tap.js?v=1';
+
 export const MAPS_KEY = 'AIzaSyBWIXYCMxjItfaN3fORkF50JGOOeCHkWLA';
 
 // Victoria, roughly. Suggestions are kept inside this box.
@@ -72,8 +74,9 @@ export function attachAutocomplete(input, onPick) {
     box.innerHTML = list.map((s, i) => `<button type="button" role="option" data-i="${i}"><b>${esc(s.placePrediction.mainText?.toString() || s.placePrediction.text.toString())}</b><span>${esc(s.placePrediction.secondaryText?.toString() || '')}</span></button>`).join('')
       + '<div class="ac-by">Powered by Google</div>';
     box.hidden = false;
-    box.querySelectorAll('button').forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); pick(Number(b.dataset.i)); }));
   };
+  // Chosen on lift (a drag scrolls instead), with a pressed shadow first — same feel as the search lists.
+  tapList(box, 'button[data-i]', (b) => pick(Number(b.dataset.i)), { onDrag: () => { if (document.activeElement === input) input.blur(); } });
   const pick = async (i) => {
     const s = items[i];
     close();
@@ -112,7 +115,12 @@ export function attachAutocomplete(input, onPick) {
       bs.forEach((b, i) => b.classList.toggle('on', i === active));
     } else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); pick(active); } else if (e.key === 'Escape') close();
   });
-  input.addEventListener('blur', () => setTimeout(close, 150));
+  // Close on a tap outside the box and its list (not on blur: dragging the list puts the keyboard away).
+  const outside = (e) => {
+    if (!input.isConnected) { document.removeEventListener('pointerdown', outside, true); return; }
+    if (e.target !== input && !box.contains(e.target)) close();
+  };
+  document.addEventListener('pointerdown', outside, true);
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

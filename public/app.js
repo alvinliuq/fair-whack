@@ -1,3 +1,4 @@
+import { tapList } from './tap.js?v=1';
 // Fair Whack beta — single-page app (no build step).
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
@@ -521,7 +522,8 @@ views.browse = async (q, store) => {
   app.innerHTML = `<a class="back" href="#/browse${gi >= 0 ? `?g=${gi}` : ''}">‹ ${gi >= 0 ? esc(browseGroups()[gi][0]) : 'Browse'}</a>
     <div class="store-head with-search">${storeLogo(store, 'big')}<div class="sh-t"><h1>${esc(RET[store])} <span class="small muted">${total.toLocaleString('en-AU')} products</span></h1>
       <form class="store-search" id="ssf" role="search" autocomplete="off"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
-        <input type="search" name="q" value="${esc(q.get('q') || '')}" placeholder="Search ${esc(RET[store])}" enterkeyhint="search" aria-label="Search ${esc(RET[store])}"></form></div></div>
+        <input type="search" name="q" value="${esc(q.get('q') || '')}" placeholder="Search ${esc(RET[store])}" enterkeyhint="search" aria-label="Search ${esc(RET[store])}" aria-autocomplete="list" aria-controls="ssugg">
+        <div class="ss-list" id="ssugg" role="listbox" hidden></div></form></div></div>
     <div id="browsebody">
     <div id="c1"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
     <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}" data-replace>${esc(l || newLabel)}</a>`).join('')}</div>
@@ -545,9 +547,29 @@ views.browse = async (q, store) => {
         : `<div class="empty"><b>Nothing at ${esc(RET[store])} for “${esc(v)}”</b><a href="#/search?q=${encodeURIComponent(v)}">Search every store →</a></div>`;
     } catch (e) { if (my === seq) fail(e, sres); }
   };
-  let t;
-  sf.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => runSearch(sf.q.value), 300); });
-  sf.onsubmit = (e) => { e.preventDefault(); clearTimeout(t); sf.q.blur(); runSearch(sf.q.value); };
+  // Typing shows suggestions from this store only (no recent searches); results come on Enter or a picked suggestion.
+  // Rows are chosen on lift, like the main search; the list closes on a pick, Enter or a tap outside, not on blur.
+  const sl = $('#ssugg');
+  let t, sseq = 0;
+  const closeSugg = () => { clearTimeout(t); ++sseq; sl.hidden = true; sl.innerHTML = ''; };
+  const submit = (v) => { closeSugg(); sf.q.blur(); runSearch(v); };
+  sf.q.addEventListener('input', () => {
+    clearTimeout(t);
+    const v = sf.q.value.trim();
+    if (!v) { closeSugg(); runSearch(''); return; }
+    if (v.length < 2) { closeSugg(); return; }
+    t = setTimeout(async () => {
+      const my = ++sseq;
+      const { suggestions } = await api(`/api/suggest${qs({ q: v, retailer: store })}`).catch(() => ({ suggestions: [] }));
+      if (my !== sseq || !sf.isConnected) return;
+      sl.innerHTML = suggestions.map((x) => `<div class="ss-row" role="option" tabindex="-1" data-v="${esc(x.text)}">${x.kind === 'brand' ? '<span class="tag">Brand</span>' : ''}<span class="ss-t">${esc(x.text)}</span></div>`).join('');
+      sl.hidden = !suggestions.length;
+    }, 200);
+  });
+  tapList(sl, '.ss-row', (row) => { sf.q.value = row.dataset.v; submit(row.dataset.v); }, { onDrag: () => { if (document.activeElement === sf.q) sf.q.blur(); } });
+  const outside = (e) => { if (!sf.isConnected) { document.removeEventListener('pointerdown', outside, true); return; } if (!sf.contains(e.target)) closeSugg(); };
+  document.addEventListener('pointerdown', outside, true);
+  sf.onsubmit = (e) => { e.preventDefault(); submit(sf.q.value); };
   if (q.get('q')) runSearch(q.get('q'));
   api(`/api/categories${qs({ retailer: store })}`).then((c) => {
     $('#c1').innerHTML = chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles' });
@@ -576,51 +598,129 @@ const ICON_BAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5a1 
 
 function searchBox(term) {
   return `<form id="sf" class="searchbox" role="search" autocomplete="off">
-    <div class="sb-field"><input type="search" name="q" value="${esc(term)}" placeholder="Search products or brands" enterkeyhint="search" aria-label="Search products or brands" aria-autocomplete="list" aria-controls="sugg">
-    <ul id="sugg" class="suggest" role="listbox" hidden></ul></div>
+    <div class="sb-field"><input type="search" name="q" value="${esc(term)}" placeholder="Search products or brands" enterkeyhint="search" aria-label="Search products or brands" aria-haspopup="dialog" readonly></div>
     <button type="button" class="sb-tool" id="sb-photo" aria-label="Search with a photo">${ICON_CAM}</button>
     <button type="button" class="sb-tool" id="sb-scan" aria-label="Scan a barcode">${ICON_BAR}</button></form>`;
 }
-// Home keeps its page between visits; the search bar always comes back empty and closed.
+// Home keeps its page between visits; the search bar always comes back empty, and the search screen closed.
 function resetHomeSearch() {
+  closeSearchLayer(true);
   const form = app.querySelector('.home-search #sf');
   if (!form) return;
   form.reset(); form.q.value = ''; form.q.blur();
-  const list = form.querySelector('#sugg');
-  list.hidden = true; list.innerHTML = '';
 }
 function bindSearchBox() {
-  const form = $('#sf'), input = form.q, list = $('#sugg');
+  const form = $('#sf'), input = form.q;
   $('#sb-photo').onclick = photoSearch;
   $('#sb-scan').onclick = () => openScanner().catch((e) => toast(e.message));
-  const go = (v) => { v = v.trim(); if (!v) return; list.hidden = true; input.blur(); fwGo(`#/search?q=${encodeURIComponent(v)}`); };
-  form.onsubmit = (e) => { e.preventDefault(); go(input.value); };
+  form.onsubmit = (e) => { e.preventDefault(); openSearchLayer(input); };
+  // The bar on the page only opens the full-screen search (opened from the tap itself so the keyboard comes up).
+  input.addEventListener('click', () => openSearchLayer(input));
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSearchLayer(input); } });
+}
+
+// ----- Full-screen search (eBay-style) -----
+// Empty box: up to 8 recent searches (✕ each, Clear all). Typing: suggestions from 2 characters (↖ fills the box).
+// A row is chosen only when the finger lifts without moving (a drag scrolls the list instead); it shows a pressed
+// state for a moment first. Dragging the list puts the keyboard away. Cancel / back closes it.
+const ICON_FILL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 17L7 7M7 15V7h8"/></svg>';
+const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+let sov = null;
+function closeSearchLayer(fromPop) {
+  if (!sov) return;
+  const s = sov; sov = null;
+  s.el.remove();
+  document.body.classList.remove('sov-open');
+  if (s.input) s.input.blur();
+  if (!fromPop && history.state && history.state.sov) history.back();
+}
+addEventListener('popstate', () => {
+  const s = sov;
+  if (!s) { if (pendingSearch) { const to = pendingSearch; pendingSearch = ''; fwGo(to); } return; }
+  closeSearchLayer(true);
+});
+let pendingSearch = '';
+function openSearchLayer(pageInput) {
+  if (sov) return;
+  pageInput.blur();
+  const el = document.createElement('div');
+  el.className = 'sov';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Search');
+  el.innerHTML = `<form class="sov-top" role="search" autocomplete="off">
+      <div class="sov-field"><svg class="sov-mag" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input type="search" name="q" placeholder="Search products or brands" enterkeyhint="search" aria-label="Search products or brands" aria-controls="sovl" aria-autocomplete="list">
+        <button type="button" class="sov-clear" aria-label="Clear" hidden>${ICON_X}</button></div>
+      <button type="button" class="sov-cancel">Cancel</button></form>
+    <div class="sov-list" id="sovl" role="listbox"></div>`;
+  document.body.append(el);
+  document.body.classList.add('sov-open');
+  const form = el.querySelector('form'), input = form.q, list = el.querySelector('.sov-list'), clr = el.querySelector('.sov-clear');
+  sov = { el, input: pageInput };
+  history.pushState({ ...(history.state || {}), sov: 1 }, '', location.href);
+  input.value = pageInput.value;
+  input.focus();
+
   let timer, seq = 0;
-  // Empty box: up to 8 recent searches. Once typing starts: suggestions (from 2 characters).
+  const go = (v) => {
+    v = v.trim(); if (!v) return;
+    input.blur();
+    pendingSearch = `#/search?q=${encodeURIComponent(v)}`;
+    // Leave the search screen's history step first, then open the results (popstate above).
+    if (history.state && history.state.sov) { const s = sov; sov = null; s.el.remove(); document.body.classList.remove('sov-open'); history.back(); }
+    else { closeSearchLayer(true); const to = pendingSearch; pendingSearch = ''; fwGo(to); }
+  };
   const showRecent = async () => {
     const my = ++seq;
-    const { history } = await api('/api/search/history').catch(() => ({ history: [] }));
-    if (my !== seq || input.value.trim() || document.activeElement !== input) return;
-    const recent = history.slice(0, 8);
-    list.innerHTML = recent.length ? `<li class="sugg-head" role="presentation">Recent</li>${recent.map((h) => `<li role="option" data-v="${esc(h)}"><span class="tag">↺</span><span>${esc(h)}</span></li>`).join('')}` : '';
-    list.hidden = !recent.length;
+    const { history: h } = await api('/api/search/history').catch(() => ({ history: [] }));
+    if (my !== seq || input.value.trim()) return;
+    const recent = h.slice(0, 8);
+    list.innerHTML = recent.length ? `<div class="sov-head"><span>Recent</span><button type="button" class="linkbtn" data-act="clear">Clear all</button></div>
+      ${recent.map((q) => `<div class="sov-row" role="option" data-v="${esc(q)}" data-act="go"><span class="sov-ic">↺</span><span class="sov-t">${esc(q)}</span>
+        <button type="button" class="sov-side" data-act="del" aria-label="Remove ${esc(q)}">${ICON_X}</button></div>`).join('')}`
+      : '<p class="sov-empty">Your recent searches will show here.</p>';
   };
-  input.addEventListener('focus', () => { if (!input.value.trim()) showRecent(); });
-  input.addEventListener('input', () => {
+  const showSuggest = (v) => {
     clearTimeout(timer);
-    const v = input.value.trim();
-    if (!v) { showRecent(); return; }
-    if (v.length < 2) { ++seq; list.hidden = true; return; }
     timer = setTimeout(async () => {
       const my = ++seq;
       const { suggestions } = await api(`/api/suggest?q=${encodeURIComponent(v)}`).catch(() => ({ suggestions: [] }));
       if (my !== seq) return;
-      list.innerHTML = suggestions.map((s) => `<li role="option" data-v="${esc(s.text)}">${s.kind === 'brand' ? '<span class="tag">Brand</span>' : '<span class="tag">⌕</span>'}<span>${esc(s.text)}</span></li>`).join('');
-      list.hidden = !suggestions.length;
+      list.innerHTML = suggestions.map((s) => `<div class="sov-row" role="option" data-v="${esc(s.text)}" data-act="go">
+        <span class="sov-ic">${s.kind === 'brand' ? '<span class="tag">Brand</span>' : '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'}</span><span class="sov-t">${esc(s.text)}</span>
+        <button type="button" class="sov-side" data-act="fill" aria-label="Put ${esc(s.text)} in the search box">${ICON_FILL}</button></div>`).join('');
     }, 180);
-  });
-  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-v]'); if (li) { e.preventDefault(); input.value = li.dataset.v; go(li.dataset.v); } });
-  input.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150));
+  };
+  const refresh = () => {
+    const v = input.value.trim();
+    clr.hidden = !input.value;
+    if (!v) { clearTimeout(timer); showRecent(); }
+    else if (v.length < 2) { clearTimeout(timer); ++seq; list.innerHTML = ''; }
+    else showSuggest(v);
+  };
+  input.addEventListener('input', refresh);
+  refresh();
+  form.onsubmit = (e) => { e.preventDefault(); go(input.value); };
+  clr.onclick = () => { input.value = ''; input.focus(); refresh(); };
+  el.querySelector('.sov-cancel').onclick = () => closeSearchLayer();
+
+  const act = async (t) => {
+    const row = t.closest('.sov-row');
+    const a = t.dataset.act;
+    if (a === 'go') go(row.dataset.v);
+    else if (a === 'fill') { input.value = `${row.dataset.v} `; input.focus(); refresh(); }
+    else if (a === 'del') {
+      row.remove();
+      await api(`/api/search/history?q=${encodeURIComponent(row.dataset.v)}`, { method: 'DELETE' }).catch(() => {});
+      if (!list.querySelector('.sov-row') && !input.value.trim()) showRecent();
+    } else if (a === 'clear') {
+      list.innerHTML = '<p class="sov-empty">Your recent searches will show here.</p>';
+      await api('/api/search/history', { method: 'DELETE' }).catch(() => {});
+    }
+  };
+  tapList(list, '[data-act]', act, { onDrag: () => { if (document.activeElement === input) input.blur(); } });
+  // Dragging the list puts the keyboard away so more rows show.
+  list.addEventListener('scroll', () => { if (document.activeElement === input) input.blur(); }, { passive: true });
 }
 
 views.search = async (q) => {
@@ -633,7 +733,7 @@ views.search = async (q) => {
   if (via) {
     $('#via').innerHTML = `<div class="via">${via.thumb ? `<img src="${via.thumb}" alt="">` : `<span class="sb-tool" style="width:40px;height:40px;border:0;background:#fff">${ICON_BAR}</span>`}
       <span>${via.kind === 'photo' ? 'From your photo' : `Barcode ${esc(via.code)}`}${via.label ? `: <b>${esc(via.label)}</b>` : ''}</span><span class="spacer"></span><button class="linkbtn" id="via-edit">Edit</button></div>`;
-    $('#via-edit').onclick = () => { const i = $('#sf input'); i.focus(); i.select(); };
+    $('#via-edit').onclick = () => openSearchLayer($('#sf input'));
   }
   if (!term) {
     body.innerHTML = `<h2>People are searching</h2><div id="hot" class="chips wrap"><span class="chip">…</span></div><div id="hist"></div>`;
@@ -1303,7 +1403,7 @@ async function maybeAskPush() {
 const logout = async () => { await api('/api/logout', { method: 'POST' }); state.me = null; state.saved = new Map(); state.savedTwins = new Map(); saveBack([]); location.replace('#/login'); };
 let profMod;
 async function prof() {
-  if (!profMod) { profMod = await import('/profile.js?v=14'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
+  if (!profMod) { profMod = await import('/profile.js?v=15'); profMod.init({ api, esc, toast, app, state, logout, setHomeStores: (stores) => saveHomePick({ ...homePick(), stores: stores.filter((r) => STORES.includes(r)) }) }); }
   return profMod;
 }
 views.more = async () => (await prof()).more();
@@ -1340,7 +1440,7 @@ views.bills = async (q) => (await prof()).modulePage('bills', q);
 views.fueltest = async () => (await prof()).modulePage('fueltest');
 let fuelMod;
 views.fuel = async (q) => {
-  if (!fuelMod) { fuelMod = await import('/fuel.js?v=6'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
+  if (!fuelMod) { fuelMod = await import('/fuel.js?v=7'); fuelMod.init({ api, esc, toast, app, state, sheet, profileChanged: () => profMod?.invalidate() }); }
   return fuelMod.page(q);
 };
 
@@ -1580,6 +1680,7 @@ async function route() {
   if (state.me) document.body.classList.remove('anon');
   const name = parts[0] || 'home';
   // Profile is required during the beta.
+  closeSearchLayer(true);
   if (state.me && state.needsProfile && name !== 'welcome' && name !== 'login') { fwGo('#/welcome'); return; }
   document.body.classList.toggle('onboarding', name === 'welcome' && state.needsProfile);
   document.body.classList.toggle('on-search', name === 'search');

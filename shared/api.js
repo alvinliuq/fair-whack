@@ -960,7 +960,10 @@ route('GET', '/api/suggest', async ({ env, url }) => {
   // A single trailing letter ("tim t") is ignored until a second letter is typed.
   const tokens = searchTokens(url.searchParams.get('q') || '', 5);
   if (!tokens.length) return json({ suggestions: [] });
-  const rows = await findProducts(env, tokens, 'name, brand', 160);
+  // Optional ?retailer= (Browse → a store → search): suggestions from that store only.
+  const retailer = url.searchParams.get('retailer');
+  const only = retailer && isActive(retailer) ? ` AND retailer = '${retailer}'` : ''; // checked by isActive
+  const rows = await findProducts(env, tokens, 'name, brand', only ? 1000 : 160, only);
   const first = tokens[0];
   const seen = new Set(), out = [];
   // Brands first (if typed text matches one), then product names; names starting with the text rank higher.

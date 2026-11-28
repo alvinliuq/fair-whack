@@ -1,6 +1,6 @@
 // FW2.0c Fuel: prices near you and along a route, on a Google map. Prices come from Google Places (fuelOptions).
 // Places content is used live and kept only in memory for a few minutes (Google terms: no storing).
-import { MAPS_KEY, loadPlaces, attachAutocomplete } from './maps.js?v=1';
+import { MAPS_KEY, loadPlaces, attachAutocomplete } from './maps.js?v=2';
 
 let ctx; // { api, esc, toast, app, state, sheet }
 export function init(c) { ctx = c; }
