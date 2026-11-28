@@ -581,6 +581,14 @@ function searchBox(term) {
     <button type="button" class="sb-tool" id="sb-photo" aria-label="Search with a photo">${ICON_CAM}</button>
     <button type="button" class="sb-tool" id="sb-scan" aria-label="Scan a barcode">${ICON_BAR}</button></form>`;
 }
+// Home keeps its page between visits; the search bar always comes back empty and closed.
+function resetHomeSearch() {
+  const form = app.querySelector('.home-search #sf');
+  if (!form) return;
+  form.reset(); form.q.value = ''; form.q.blur();
+  const list = form.querySelector('#sugg');
+  list.hidden = true; list.innerHTML = '';
+}
 function bindSearchBox() {
   const form = $('#sf'), input = form.q, list = $('#sugg');
   $('#sb-photo').onclick = photoSearch;
@@ -588,10 +596,21 @@ function bindSearchBox() {
   const go = (v) => { v = v.trim(); if (!v) return; list.hidden = true; input.blur(); fwGo(`#/search?q=${encodeURIComponent(v)}`); };
   form.onsubmit = (e) => { e.preventDefault(); go(input.value); };
   let timer, seq = 0;
+  // Empty box: up to 8 recent searches. Once typing starts: suggestions (from 2 characters).
+  const showRecent = async () => {
+    const my = ++seq;
+    const { history } = await api('/api/search/history').catch(() => ({ history: [] }));
+    if (my !== seq || input.value.trim() || document.activeElement !== input) return;
+    const recent = history.slice(0, 8);
+    list.innerHTML = recent.length ? `<li class="sugg-head" role="presentation">Recent</li>${recent.map((h) => `<li role="option" data-v="${esc(h)}"><span class="tag">↺</span><span>${esc(h)}</span></li>`).join('')}` : '';
+    list.hidden = !recent.length;
+  };
+  input.addEventListener('focus', () => { if (!input.value.trim()) showRecent(); });
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const v = input.value.trim();
-    if (v.length < 2) { list.hidden = true; return; }
+    if (!v) { showRecent(); return; }
+    if (v.length < 2) { ++seq; list.hidden = true; return; }
     timer = setTimeout(async () => {
       const my = ++seq;
       const { suggestions } = await api(`/api/suggest?q=${encodeURIComponent(v)}`).catch(() => ({ suggestions: [] }));
@@ -600,7 +619,7 @@ function bindSearchBox() {
       list.hidden = !suggestions.length;
     }, 180);
   });
-  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li'); if (li) { e.preventDefault(); input.value = li.dataset.v; go(li.dataset.v); } });
+  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-v]'); if (li) { e.preventDefault(); input.value = li.dataset.v; go(li.dataset.v); } });
   input.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150));
 }
 
@@ -1582,6 +1601,7 @@ async function route() {
   // Only after a change (list, alerts, settings, shares) does it quietly update the parts that changed.
   if (isHome && keptHome.nodes && Date.now() - keptHome.at < KEEP_MS && !q.toString()) {
     app.replaceChildren(...keptHome.nodes);
+    resetHomeSearch();
     keptHome.nodes = null; keptHome.leaving = true;
     refreshHearts();
     for (const [r, x] of keptHome.rails || []) r.scrollLeft = x;
@@ -1613,6 +1633,8 @@ async function route() {
   } catch (e) { fail(e); }
 }
 
+// Tapping Home while already on Home also clears the search bar (no hashchange fires then).
+document.querySelector('#tabs a[data-tab="home"]')?.addEventListener('click', () => resetHomeSearch());
 $('#me-btn').onclick = async () => { if (state.me) (await soc()).meSheet().catch((e) => toast(e.message)); };
 // "Same product in other stores" on My List opens the comparison for that item (one listener for the app).
 document.addEventListener('click', (e) => {

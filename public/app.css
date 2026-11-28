@@ -251,6 +251,8 @@ body.on-search .topsearch { visibility: hidden; }
 .suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; list-style: none; margin: 0; padding: 4px; background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(27,21,48,.16); max-height: 60vh; overflow: auto; }
 .suggest li { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 8px; font-size: 14.5px; cursor: pointer; }
 .suggest li:hover, .suggest li:active { background: #F1ECFF; }
+.suggest .sugg-head { padding: 8px 10px 4px; font-size: 12px; font-weight: 800; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; cursor: default; }
+.suggest .sugg-head:hover { background: none; }
 .suggest .tag { font-size: 11px; font-weight: 700; color: var(--ink-3); min-width: 34px; }
 .linkbtn { border: 0; background: none; color: var(--pine-2); font-weight: 600; font-size: 13px; cursor: pointer; padding: 0; }
 .hist .r { padding: 6px 0; }
