@@ -360,7 +360,7 @@ route('POST', '/api/bills/network', async ({ env, user, request }) => {
   return json({ ok: true });
 });
 
-route('GET', '/api/meta', async ({ env }) => json(await cached(env, 'meta', async () => {
+route('GET', '/api/meta', async ({ env }) => json(await cached(env, cacheKey('meta', ACTIVE_RETAILERS.join(',')), async () => { // key changes when a store is shown or hidden
   const rows = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS products, MAX(cur_captured_at) AS updated,
       SUM(CASE WHEN cur_is_special = 1 AND cur_captured_at >= ? THEN 1 ELSE 0 END) AS specials
       FROM retailer_product WHERE ${ACT} GROUP BY retailer`).bind(freshCut()).all()).results;
@@ -485,7 +485,7 @@ async function deals({ env, url, user }) {
 route('GET', '/api/deals', deals);
 
 /** Home "Bargains you're missing": one tile per store with specials. */
-route('GET', '/api/bargains/stores', async ({ env }) => json(await cached(env, 'bargain-stores', async () => {
+route('GET', '/api/bargains/stores', async ({ env }) => json(await cached(env, cacheKey('bargain-stores', ACTIVE_RETAILERS.join(',')), async () => {
   const rows = (await env.DB.prepare(`SELECT retailer, COUNT(*) AS n,
       MAX(CASE WHEN cur_was_cents > 0 AND COALESCE(discount_flag,'') != 'inflated' THEN (cur_was_cents - cur_price_cents) * 1.0 / cur_was_cents ELSE 0 END) AS best
       FROM retailer_product WHERE cur_is_special = 1 AND cur_captured_at >= ? AND ${ACT} GROUP BY retailer`).bind(freshCut()).all()).results;
