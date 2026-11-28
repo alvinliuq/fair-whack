@@ -1007,11 +1007,8 @@ body.sov-open { overflow: hidden; }
 .ss-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-row.pressed { background: #E4DBFF; box-shadow: 0 3px 12px rgba(91, 43, 224, .28); }
 
-/* Solid purple behind the iPhone status bar (no light fade at the very top); white status-bar icons come from black-translucent */
-html { background: var(--grape); }
-body { background: var(--paper); }
-body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); background: var(--grape); z-index: 30; pointer-events: none; }
-/* Home: search area is white, joined to the greeting, set apart from "Deals on your list" */
-.hsec.hero:has(+ .home-search) { border-bottom: 0; }
-.hsec.home-search { background: #fff; border-bottom: 1px solid rgba(91, 43, 224, .08); }
-.hsec.home-search + .hsec, .hsec.hero + .hsec.home-search { border-top: 0; }
+/* iOS 26 home-screen apps only paint the status-bar area in the header's colour when the header is position:fixed
+   (a sticky header gets a light fade instead). Body is padded by the header's measured height (--topbar-h, set in app.js). */
+.topbar { position: fixed; top: 0; left: 0; right: 0; }
+body { padding-top: var(--topbar-h, calc(66px + var(--safe-t))); }
+html { scroll-padding-top: var(--topbar-h, 66px); }

@@ -2,6 +2,10 @@ import { tapList } from './tap.js?v=1';
 // Fair Whack beta — single-page app (no build step).
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
+// The top bar is position:fixed (so iOS paints the status bar purple); pad the page by its live height.
+(() => { const tb = document.querySelector('.topbar'); if (!tb) return;
+  const set = () => document.documentElement.style.setProperty('--topbar-h', (getComputedStyle(tb).display === 'none' ? 0 : Math.round(tb.getBoundingClientRect().height)) + 'px');
+  set(); if (window.ResizeObserver) new ResizeObserver(set).observe(tb); })();
 // Store names and the stores shown: filled from /api/meta (stores that have products). These are the fallbacks.
 const RET = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'ALDI', jbhifi: 'JB Hi-Fi', costco: 'Costco', kmart: 'Kmart', bunnings: 'Bunnings', petbarn: 'Petbarn', bigw: 'BIG W', chemistwarehouse: 'Chemist Warehouse', thegoodguys: 'The Good Guys', target: 'Target', officeworks: 'Officeworks', ebgames: 'EB Games', peto: 'PetO', decathlon: 'Decathlon', harveynorman: 'Harvey Norman', petstock: 'PETstock', petcircle: 'Pet Circle' };
 const STORES = ['woolworths', 'coles'];
