@@ -1,7 +1,7 @@
 // List alerts (stage 7): ❤️ items pushed on their own, a Wednesday/Saturday summary for the whole list,
 // dedupe by product + promotion start, only fresh prices (seen in the last 8 days), at most 5 pushes a day.
 import { ALERTS } from './config.js';
-import { RETAILER_IDS, retailerName } from '../shared/retailers.js';
+import { SHOWN_RETAILER_IDS as RETAILER_IDS, retailerName } from '../shared/retailers.js';
 
 const money = (c) => `$${(c / 100).toFixed(2)}`;
 

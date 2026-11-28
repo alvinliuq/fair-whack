@@ -23,8 +23,12 @@ export const RETAILER_INFO = {
   // Third batch (27 Nov), read through Zyte.
   harveynorman:     { name: 'Harvey Norman',     kind: 'general', fallbackCategory: 'Electronics', color: '#C8102E' },
   petstock:         { name: 'PETstock',          kind: 'general', fallbackCategory: 'Pet', color: '#00843D' },
-  petcircle:        { name: 'Pet Circle',        kind: 'general', fallbackCategory: 'Pet', color: '#1B75BB' },
+  // Hidden 29 Nov: ~90% of its products came without photos and often without the brand. Data is still collected;
+  // remove `hidden` to show it again once the scraper is fixed.
+  petcircle:        { name: 'Pet Circle',        kind: 'general', fallbackCategory: 'Pet', color: '#1B75BB', hidden: true },
 };
 
 export const RETAILER_IDS = Object.keys(RETAILER_INFO);
+/** Stores shown in the app: every retailer except those marked `hidden` (their data is still collected). */
+export const SHOWN_RETAILER_IDS = RETAILER_IDS.filter((r) => !RETAILER_INFO[r].hidden);
 export const retailerName = (r) => RETAILER_INFO[r]?.name || r;

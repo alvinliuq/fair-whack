@@ -92,10 +92,10 @@ test('second batch (Zyte): listing items become products; Decathlon and EB Games
 
 test('third batch (Zyte): Harvey Norman plain HTML, PETstock and Pet Circle by browser; implausible prices dropped', async () => {
   const { ACTIVE_SOURCES, adaptItem } = await import('../pipeline/sources.js');
-  for (const r of ['harveynorman', 'petstock', 'petcircle']) {
-    assert.equal(ACTIVE_SOURCES[r].runner, 'zyte', r);
-    assert.ok(ACTIVE_RETAILERS.includes(r), `${r} shown in the app`);
-  }
+  for (const r of ['harveynorman', 'petstock', 'petcircle']) assert.equal(ACTIVE_SOURCES[r].runner, 'zyte', r);
+  for (const r of ['harveynorman', 'petstock']) assert.ok(ACTIVE_RETAILERS.includes(r), `${r} shown in the app`);
+  // Pet Circle is still collected but hidden from the app (29 Nov: most products had no photo).
+  assert.ok(!ACTIVE_RETAILERS.includes('petcircle'), 'petcircle hidden');
   assert.equal(ACTIVE_SOURCES.harveynorman.catalogue[0].input.extractFrom, 'httpResponseBody');
   assert.equal(ACTIVE_SOURCES.petstock.catalogue[0].input.extractFrom, 'browserHtml');
   assert.equal(ACTIVE_SOURCES.petcircle.catalogue[0].input.extractFrom, 'httpResponseBody');

@@ -1,11 +1,11 @@
 // Shared normalisation helpers. Used by the data pipeline (Node) and the API (Cloudflare Workers).
 // Pure functions only: no I/O.
 
-import { RETAILER_IDS, RETAILER_INFO } from './retailers.js';
+import { RETAILER_IDS, RETAILER_INFO, SHOWN_RETAILER_IDS } from './retailers.js';
 
 export const RETAILERS = RETAILER_IDS;
 // Stores shown in the app (stage 6: every retailer in shared/retailers.js; a store appears once it has products).
-export const ACTIVE_RETAILERS = RETAILER_IDS;
+export const ACTIVE_RETAILERS = SHOWN_RETAILER_IDS; // hidden stores (retailers.js) are left out
 
 const UPPER_WORDS = new Set(['bbq', 'led', 'tv', 'tvs', 'usb', 'diy', 'pc', 'hdmi', 'ac', 'dc', 'uv']);
 /** "power-tools" -> "Power Tools" (only for URL-style lowercase slugs; real names are left as they are). */
