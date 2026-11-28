@@ -372,15 +372,41 @@ route('GET', '/api/meta', async ({ env }) => json(await cached(env, 'meta', asyn
 })));
 
 /** Category options. scope=deals counts current specials only; scope=all counts every product (Browse). */
-route('GET', '/api/categories', async ({ env, url }) => {
+// scope: '' (everything), deals/special, half, new, mine (a store's filters; mine is personal and never cached).
+route('GET', '/api/categories', async ({ env, url, user }) => {
   const retailer = url.searchParams.get('retailer');
-  const deals = url.searchParams.get('scope') === 'deals';
+  let scope = url.searchParams.get('scope') || '';
+  if (scope === 'deals') scope = 'special';
+  if (!['', 'special', 'half', 'new', 'mine'].includes(scope)) scope = '';
   const store = retailer && isActive(retailer) ? retailer : null;
-  return json(await cached(env, cacheKey('categories', deals ? 'deals' : 'all', store), () => categoryCounts(env, store, deals)));
+  if (!store && !['', 'special'].includes(scope)) scope = '';
+  if (scope === 'mine') return json(await categoryCounts(env, store, scope, user));
+  return json(await cached(env, cacheKey('categories', scope === 'special' ? 'deals' : scope || 'all', store), () => categoryCounts(env, store, scope, user)));
 });
-async function categoryCounts(env, retailer, deals) {
-  const where = deals ? `cur_is_special = 1 AND cur_captured_at >= ? AND ${ACT}` : `cur_price_cents IS NOT NULL AND ${ACT}`;
-  const binds = deals ? [freshCut()] : [];
+/** WHERE for a store filter (Browse → a store): which products the filter shows. */
+const HALF = "(cur_promo_type = 'half_price' OR (cur_was_cents > 0 AND cur_price_cents * 2 <= cur_was_cents + 2))";
+async function filterWhere(env, scope, user) {
+  const where = ['cur_price_cents IS NOT NULL'], binds = [];
+  let nw = null;
+  if (scope === 'special' || scope === 'half') { where.push('cur_is_special = 1', 'cur_captured_at >= ?'); binds.push(freshCut()); }
+  if (scope === 'half') where.push(HALF);
+  if (scope === 'new') {
+    nw = await newWindow(env);
+    where.push('first_seen_at > ?'); binds.push(nw.since);
+    if (!nw.baseline) where.push('0'); // nothing counts as new until the starting range is in
+  }
+  if (scope === 'mine') {
+    // This store's products on the tester's lists, and this store's version of anything matched to them.
+    where.push(`(id IN (SELECT li.product_id FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ?)
+      OR canonical_product_id IN (SELECT p2.canonical_product_id FROM list_items li JOIN lists l ON l.id = li.list_id JOIN retailer_product p2 ON p2.id = li.product_id WHERE l.user_id = ? AND p2.canonical_product_id IS NOT NULL))`);
+    binds.push(user.id, user.id);
+  }
+  return { where, binds, nw };
+}
+async function categoryCounts(env, retailer, scope, user) {
+  const fw = await filterWhere(env, retailer ? scope : (scope === 'special' ? 'special' : ''), user);
+  const where = `${fw.where.join(' AND ')} AND ${ACT}`;
+  const binds = fw.binds;
   if (retailer) {
     const rows = (await env.DB.prepare(`SELECT cat1, cat2, COUNT(*) AS n FROM retailer_product WHERE ${where} AND retailer = ? GROUP BY cat1, cat2`).bind(...binds, retailer).all()).results;
     const top = new Map();
@@ -399,14 +425,17 @@ async function categoryCounts(env, retailer, deals) {
   return { retailer: null, categories: list };
 }
 
-const BROWSE_SORTS = ['new', 'popular', 'special', 'mine', 'saving', 'price_asc', 'price_desc'];
-/** "Most popular": page views + 3 x people who added it to a list, last 30 days. Ties (and no data yet) fall to the next order. */
+const BROWSE_SORTS = ['all', 'special', 'half', 'popular', 'new', 'mine', 'saving', 'price_asc', 'price_desc'];
+/**
+ * "Most popular", in strict order: people with it on a list, then times opened from search results (last 30 days).
+ * Callers add the discount (SAVING_ORDER) as the third key; ties and no data yet fall through to it.
+ */
 function popularOrder() {
-  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   return {
-    sql: `(SELECT COALESCE(SUM(v.views), 0) FROM product_views v WHERE v.product_id = retailer_product.id AND v.day >= ?)
-      + 3 * (SELECT COUNT(DISTINCT l.user_id) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.product_id = retailer_product.id AND li.created_at >= ?) DESC`,
-    binds: [since.slice(0, 10), since],
+    sql: `(SELECT COUNT(DISTINCT l.user_id) FROM list_items li JOIN lists l ON l.id = li.list_id WHERE li.product_id = retailer_product.id) DESC,
+      (SELECT COALESCE(SUM(v.search_opens), 0) FROM product_views v WHERE v.product_id = retailer_product.id AND v.day >= ?) DESC`,
+    binds: [since],
   };
 }
 
@@ -527,32 +556,37 @@ route('GET', '/api/browse', async ({ env, url, user }) => {
   const q = url.searchParams;
   const retailer = q.get('retailer');
   if (!isActive(retailer)) throw new HttpError(400, 'Choose a store');
-  const where = ['retailer = ?', 'cur_price_cents IS NOT NULL'];
-  const binds = [retailer];
+  const sort = BROWSE_SORTS.includes(q.get('sort')) ? q.get('sort') : 'all';
+  const fw = await filterWhere(env, ['special', 'half', 'new', 'mine'].includes(sort) ? sort : '', user);
+  const where = ['retailer = ?', ...fw.where];
+  const binds = [retailer, ...fw.binds];
   if (q.get('cat1')) { where.push('cat1 = ?'); binds.push(q.get('cat1')); }
   if (q.get('cat2')) { where.push('cat2 = ?'); binds.push(q.get('cat2')); }
-  const sort = BROWSE_SORTS.includes(q.get('sort')) ? q.get('sort') : 'popular';
-  const nw = await newWindow(env);
-  if (sort === 'new') {
-    where.push('first_seen_at > ?'); binds.push(nw.since);
-    if (!nw.baseline) where.push('0'); // nothing counts as new until the starting range is in
-  }
-  if (sort === 'special') { where.push('cur_is_special = 1', 'cur_captured_at >= ?'); binds.push(freshCut()); }
-  if (sort === 'mine') {
-    // This store's products on the tester's lists, and this store's version of anything matched to them.
-    where.push(`(id IN (SELECT li.product_id FROM list_items li JOIN lists l ON l.id = li.list_id WHERE l.user_id = ?)
-      OR canonical_product_id IN (SELECT p2.canonical_product_id FROM list_items li JOIN lists l ON l.id = li.list_id JOIN retailer_product p2 ON p2.id = li.product_id WHERE l.user_id = ? AND p2.canonical_product_id IS NOT NULL))`);
-    binds.push(user.id, user.id);
-  }
+  const nw = fw.nw || await newWindow(env);
   let order = {
     new: 'first_seen_at DESC, name',
     special: `${SAVING_ORDER}, name`,
+    half: `${SAVING_ORDER}, name`,
     saving: `${SAVING_ORDER}, name`,
     mine: 'name',
     price_asc: 'COALESCE(cur_price_cents, 1e12) ASC, name',
     price_desc: 'cur_price_cents DESC, name',
   }[sort];
-  if (sort === 'popular') { const pop = popularOrder(); order = `${pop.sql}, ${SAVING_ORDER}, name`; binds.push(...pop.binds); }
+  const ob = [];
+  if (sort === 'popular' || sort === 'all') {
+    const pop = popularOrder();
+    order = `${pop.sql}, ${SAVING_ORDER}, name`;
+    ob.push(...pop.binds);
+    if (sort === 'all' && !q.get('cat1')) {
+      // All products: by aisle, in the same order as the aisle chips; most popular first within each aisle.
+      const aisles = (await cached(env, cacheKey('categories', 'all', retailer), () => categoryCounts(env, retailer, '', user))).categories.map((c) => c.name);
+      if (aisles.length) {
+        order = `CASE COALESCE(cat1, 'Other') ${aisles.map(() => 'WHEN ? THEN ?').join(' ')} ELSE 999 END, ${order}`;
+        ob.unshift(...aisles.flatMap((n, i) => [n, i]));
+      }
+    }
+  }
+  binds.push(...ob);
   const page = pageOf(q);
   const run = async () => {
     const rows = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${page * PAGE}`).bind(...binds).all()).results;
@@ -1013,11 +1047,12 @@ route('GET', '/api/saved', async ({ env, user }) => {
   return json({ saved: rows, twins });
 });
 
-route('GET', '/api/product/:id', async ({ env, params, user }) => {
+route('GET', '/api/product/:id', async ({ env, params, user, url }) => {
   const p = await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE id = ?`).bind(params.id).first();
   if (!p) throw new HttpError(404, 'Product not found');
-  await env.DB.prepare(`INSERT INTO product_views (product_id, day, views) VALUES (?, ?, 1)
-      ON CONFLICT(product_id, day) DO UPDATE SET views = views + 1`).bind(p.id, nowIso().slice(0, 10)).run().catch(() => {});
+  const fs = url.searchParams.get('from') === 'search' ? 1 : 0; // opened from search results ("Most popular")
+  await env.DB.prepare(`INSERT INTO product_views (product_id, day, views, search_opens) VALUES (?, ?, 1, ?)
+      ON CONFLICT(product_id, day) DO UPDATE SET views = views + 1, search_opens = search_opens + excluded.search_opens`).bind(p.id, nowIso().slice(0, 10), fs).run().catch(() => {});
   const canon = p.canonical_product_id || `c:${p.id}`;
   const offers = (await env.DB.prepare(`SELECT ${COLS} FROM retailer_product WHERE (id = ? OR canonical_product_id = ?) AND ${ACT}`).bind(p.id, canon).all()).results.map(pub).sort(sortOffers);
   const sizes = p.family_id

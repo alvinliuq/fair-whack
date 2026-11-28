@@ -384,54 +384,6 @@ views.home = async () => {
   brd().then((m) => m.homeRail($('#brandzone'))).catch(() => {}).finally(stripe);
 };
 
-// ----- One store's specials (from a Bargains tile) -----
-views.deals = async (q, store) => {
-  if (!STORES.includes(store)) { fwGo('#/'); return; }
-  const f = { cat: q.get('cat') || '', sort: q.get('sort') === 'popular' ? 'popular' : '' };
-  const link = (patch) => `#/deals/${store}${qs({ ...f, ...patch })}`;
-  app.innerHTML = `
-    <a class="back" href="#/">‹ Home</a>
-    <div class="store-head">${storeLogo(store, 'big')}<div><h1>${esc(RET[store])}</h1><p class="lead small" id="dcount">Specials this week</p></div></div>
-    <div id="cats"></div>
-    <div class="row" style="margin:2px 0 4px"><span class="spacer"></span>
-      <div class="seg"><button data-sort="" class="${!f.sort ? 'on' : ''}">Biggest saving</button><button data-sort="popular" class="${f.sort === 'popular' ? 'on' : ''}">Most popular</button></div></div>
-    <p class="small muted" id="dlabel" style="margin:0 0 10px;text-align:right"></p>
-    <div id="res"></div>`;
-  const remember = () => history.replaceState(history.state, '', link({}));
-  const loadCats = () => api(`/api/categories${qs({ scope: 'deals', retailer: store })}`).then((c) => {
-    const total = c.categories.reduce((n, x) => n + x.count, 0);
-    $('#dcount').textContent = `${total.toLocaleString()} on special this week`;
-    $('#cats').innerHTML = chips(c.categories, f.cat, (name) => link({ cat: name }), { all: 'All', cls: 'scroll' });
-    $('#cats').querySelectorAll('a.chip').forEach((a) => (a.onclick = (e) => {
-      e.preventDefault();
-      f.cat = new URLSearchParams(a.getAttribute('href').split('?')[1] || '').get('cat') || '';
-      $('#cats').querySelectorAll('a.chip').forEach((x) => x.classList.toggle('on', x === a));
-      remember(); loadDeals();
-    }));
-  }).catch(() => {});
-  const loadDeals = async () => {
-    const res = $('#res');
-    if (!res) return;
-    res.style.minHeight = `${res.offsetHeight}px`;
-    const box = document.createElement('div');
-    res.replaceChildren(box);
-    const d = await pagedGrid(box, (page) => api(`/api/deals${qs({ retailer: store, category: f.cat, sort: f.sort || 'saving', page })}`),
-      '<b>No specials here right now</b>Try another category.');
-    if (box.isConnected) {
-      res.style.minHeight = '';
-      $('#dlabel').textContent = f.sort === 'popular' && d && d.popularReady === false ? 'Not enough views yet · biggest saving first' : '';
-    }
-  };
-  app.querySelectorAll('[data-sort]').forEach((b) => (b.onclick = () => {
-    if (f.sort === b.dataset.sort) return;
-    f.sort = b.dataset.sort;
-    app.querySelectorAll('[data-sort]').forEach((x) => x.classList.toggle('on', x === b));
-    remember(); loadDeals();
-  }));
-  loadCats();
-  await loadDeals();
-};
-
 // ----- Browse: stores in 8 groups, then a store's range -----
 const STORE_GROUPS = [
   ['Groceries', ['woolworths', 'coles', 'aldi', 'costco'], '🛒', '#E8F6EC'],
@@ -443,7 +395,8 @@ const STORE_GROUPS = [
   ['Office', ['officeworks'], '📎', '#E6F0FB'],
   ['Sports & Gaming', ['decathlon', 'ebgames'], '⚽', '#EEE7FB'],
 ];
-const BROWSE_SORTS = [['popular', 'Most popular'], ['new', null], ['special', 'On special'], ['mine', 'On my list']];
+// A store's filters. 'new' takes its label from the data ("New this week" / "New this month").
+const BROWSE_SORTS = [['all', 'All products'], ['special', 'On special'], ['half', 'Half price'], ['popular', 'Most popular'], ['new', null], ['mine', 'On my list']];
 
 /** Browse groups: 8 cards; tapping one lifts it and opens it into a panel of its stores. */
 function openGroup(card, [name, ids, icon, bg], count, gi, again) {
@@ -496,7 +449,8 @@ function browseGroups() {
     .map(([g, ids, icon, bg]) => [g, ids.filter((r) => STORES.includes(r)), icon, bg]).filter(([, ids]) => ids.length);
 }
 
-views.browse = async (q, store) => {
+views.browse = async (q, store, via = 'browse') => {
+  if (via === 'deals' && !STORES.includes(store)) { fwGo('#/'); return; }
   if (!STORES.includes(store)) {
     const meta = state.meta || {};
     const count = (r) => (meta.retailers || []).find((x) => x.retailer === r)?.products || 0;
@@ -515,26 +469,41 @@ views.browse = async (q, store) => {
     return;
   }
   const newLabel = state.meta?.newLabel || 'New this week';
-  const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: BROWSE_SORTS.some(([k]) => k === q.get('sort')) ? q.get('sort') : 'popular' };
-  const link = (patch) => `#/browse/${store}${qs({ ...f, ...patch })}`;
-  const total = (state.meta?.retailers || []).find((x) => x.retailer === store)?.products || 0;
+  // One store page for both ways in: Browse (default All products, back to the store group) and a Home "Bargains"
+  // tile (#/deals/<store>: default On special, back to Home, Home tab stays lit). Filters keep the way in.
+  const fromHome = via === 'deals';
+  const base = `#/${fromHome ? 'deals' : 'browse'}/${store}`;
+  const f = { cat1: q.get('cat1') || '', cat2: q.get('cat2') || '', sort: BROWSE_SORTS.some(([k]) => k === q.get('sort')) ? q.get('sort') : (fromHome ? 'special' : 'all') };
+  const link = (patch) => `${base}${qs({ ...f, ...patch })}`;
+  const meta = (state.meta?.retailers || []).find((x) => x.retailer === store);
+  const total = meta?.products || 0;
   const gi = browseGroups().findIndex(([, ids]) => ids.includes(store));
-  app.innerHTML = `<a class="back" href="#/browse${gi >= 0 ? `?g=${gi}` : ''}">‹ ${gi >= 0 ? esc(browseGroups()[gi][0]) : 'Browse'}</a>
-    <div class="store-head with-search">${storeLogo(store, 'big')}<div class="sh-t"><h1>${esc(RET[store])} <span class="small muted">${total.toLocaleString('en-AU')} products</span></h1>
+  const back = fromHome ? '<a class="back" href="#/">‹ Home</a>'
+    : `<a class="back" href="#/browse${gi >= 0 ? `?g=${gi}` : ''}">‹ ${gi >= 0 ? esc(browseGroups()[gi][0]) : 'Browse'}</a>`;
+  app.innerHTML = `${back}
+    <div class="store-head with-search">${storeLogo(store, 'big')}<div class="sh-t"><h1>${esc(RET[store])}</h1>
+      <p class="small muted sh-count" id="shcount">${total.toLocaleString('en-AU')} products</p>
       <form class="store-search" id="ssf" role="search" autocomplete="off"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
         <input type="search" name="q" value="${esc(q.get('q') || '')}" placeholder="Search ${esc(RET[store])}" enterkeyhint="search" aria-label="Search ${esc(RET[store])}" aria-autocomplete="list" aria-controls="ssugg">
         <div class="ss-list" id="ssugg" role="listbox" hidden></div></form></div></div>
     <div id="browsebody">
     <div id="c1"><div class="chips"><span class="chip">Loading aisles…</span></div></div><div id="c2"></div>
-    <div class="chips sorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}" data-replace>${esc(l || newLabel)}</a>`).join('')}</div>
+    <div class="chips sorts scroll" id="bsorts">${BROWSE_SORTS.map(([k, l]) => `<a class="chip ${k === 'new' ? 'ticket' : ''} ${f.sort === k ? 'on' : ''}" href="${link({ sort: k })}" data-replace>${esc(l || newLabel)}</a>`).join('')}</div>
     <p class="small muted" id="blabel" style="margin:0 0 8px"></p>
     <div id="res"></div></div><div id="searchres" hidden></div>`;
+  app.querySelector('#bsorts .chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  // Header: "12,340 products · 1,280 on special"
+  api(`/api/categories${qs({ retailer: store, scope: 'special' })}`).then((c) => {
+    const n = c.categories.reduce((a, x) => a + x.count, 0);
+    const el = $('#shcount');
+    if (el) el.textContent = `${total.toLocaleString('en-AU')} products${n ? ` · ${n.toLocaleString('en-AU')} on special` : ''}`;
+  }).catch(() => {});
   // Search this store: results replace the aisles until the box is cleared.
   const sf = $('#ssf'), sres = $('#searchres'), body = $('#browsebody');
   let seq = 0;
   const runSearch = async (v) => {
     v = v.trim();
-    history.replaceState(history.state, '', `#/browse/${store}${qs({ ...f, q: v })}`);
+    history.replaceState(history.state, '', `${base}${qs({ ...f, q: v })}`);
     if (v.length < 2) { sres.hidden = true; body.hidden = false; return; }
     const my = ++seq;
     body.hidden = true; sres.hidden = false;
@@ -571,8 +540,11 @@ views.browse = async (q, store) => {
   document.addEventListener('pointerdown', outside, true);
   sf.onsubmit = (e) => { e.preventDefault(); submit(sf.q.value); };
   if (q.get('q')) runSearch(q.get('q'));
-  api(`/api/categories${qs({ retailer: store })}`).then((c) => {
-    $('#c1').innerHTML = chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles' });
+  // Aisles follow the filter: only aisles with results, with how many in each.
+  const scope = { special: 'special', half: 'half', new: 'new', mine: 'mine' }[f.sort] || '';
+  api(`/api/categories${qs({ retailer: store, scope })}`).then((c) => {
+    if (!$('#c1')) return;
+    $('#c1').innerHTML = c.categories.length ? chips(c.categories, f.cat1, (name) => link({ cat1: name, cat2: '' }), { all: 'All aisles', cls: 'scroll' }) : '';
     const top = c.categories.find((x) => x.name === f.cat1);
     if (top && top.children.length > 1) $('#c2').innerHTML = chips(top.children, f.cat2, (name) => link({ cat2: name }), { all: `All ${f.cat1}`, cls: 'sub' });
     // Aisles and sorts swap the page in place: swiping back leaves the store, not the last aisle.
@@ -582,10 +554,15 @@ views.browse = async (q, store) => {
   const empty = {
     new: `<b>Nothing new ${newLabel.includes('month') ? 'this month' : 'this week'} yet</b>New arrivals show up after each Wednesday update.`,
     special: '<b>Nothing on special here right now</b>Try another aisle.',
+    half: '<b>Nothing at half price here right now</b>Try On special for smaller discounts.',
     mine: `<b>Nothing from your lists here</b>Tap ♡ on a ${esc(RET[store])} product to add it.`,
   }[f.sort] || '<b>No products here</b>Try another aisle.';
-  if (f.sort === 'popular') $('#blabel').textContent = 'Most viewed and listed in the last 30 days';
-  if (f.sort === 'special') $('#blabel').textContent = 'Biggest discount first';
+  $('#blabel').textContent = {
+    all: 'By aisle · most popular first in each aisle',
+    special: 'Biggest discount first',
+    half: 'Half price or better · biggest discount first',
+    popular: 'Most added to lists, then most opened from search (30 days), then biggest discount',
+  }[f.sort] || '';
   pagedGrid($('#res'), (page) => api(`/api/browse${qs({ retailer: store, cat1: f.cat1, cat2: f.cat2, sort: f.sort, page })}`), empty);
 };
 
@@ -974,7 +951,10 @@ function sparkline(history) {
 views.product = async (q, id) => {
   loading(1);
   try {
-    const d = await api(`/api/product/${encodeURIComponent(id)}`);
+    // Opened from search results: counts towards the product's search popularity ("Most popular").
+    const fromSearch = sessionStorage.getItem('fw.fromSearch') === id;
+    if (fromSearch) sessionStorage.removeItem('fw.fromSearch');
+    const d = await api(`/api/product/${encodeURIComponent(id)}${fromSearch ? '?from=search' : ''}`);
     const p = d.product;
     state.products.set(p.id, p);
     const on = !!savedFor(p.id);
@@ -1726,7 +1706,7 @@ async function route() {
     if (name === 'browse') return await views.browse(q, parts[1]);
     if (name === 'digest') return await views.home(q);
     if (name === 'profile') return await views.profile(q, parts[1]);
-    if (name === 'deals') return await views.deals(q, parts[1]);
+    if (name === 'deals') return await views.browse(q, parts[1], 'deals');
     if (name === 'same') return await views.same(q, decodeURIComponent(parts[1] || ''));
     if (name === 'brand' || name === 'admincampaign') return await views[name](q, decodeURIComponent(parts[1] || ''));
     if (name === 'add') return await (await soc()).addPage(decodeURIComponent(parts[1] || ''));
@@ -1736,6 +1716,15 @@ async function route() {
 
 // Tapping Home while already on Home also clears the search bar (no hashchange fires then).
 document.querySelector('#tabs a[data-tab="home"]')?.addEventListener('click', () => resetHomeSearch());
+// Remember a product opened from search results (Search & Compare, or a store's own search box).
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="#/p/"]');
+  if (!a) return;
+  const h = location.hash;
+  if (h.startsWith('#/search') || (a.closest('#searchres') && (h.startsWith('#/browse/') || h.startsWith('#/deals/')))) {
+    try { sessionStorage.setItem('fw.fromSearch', decodeURIComponent(a.getAttribute('href').slice(4).split('?')[0])); } catch { /* private mode */ }
+  }
+}, true);
 $('#me-btn').onclick = async () => { if (state.me) (await soc()).meSheet().catch((e) => toast(e.message)); };
 // "Same product in other stores" on My List opens the comparison for that item (one listener for the app).
 document.addEventListener('click', (e) => {
