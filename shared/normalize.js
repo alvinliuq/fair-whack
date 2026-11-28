@@ -7,9 +7,27 @@ export const RETAILERS = RETAILER_IDS;
 // Stores shown in the app (stage 6: every retailer in shared/retailers.js; a store appears once it has products).
 export const ACTIVE_RETAILERS = RETAILER_IDS;
 
+const UPPER_WORDS = new Set(['bbq', 'led', 'tv', 'tvs', 'usb', 'diy', 'pc', 'hdmi', 'ac', 'dc', 'uv']);
+/** "power-tools" -> "Power Tools" (only for URL-style lowercase slugs; real names are left as they are). */
+const tidyLevel = (x) => (/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(x)
+  ? x.split(/[-_]/).map((w) => (UPPER_WORDS.has(w) ? w.toUpperCase() : w === 'and' ? 'and' : w[0].toUpperCase() + w.slice(1))).join(' ')
+  : x);
+/**
+ * A store's category levels, whatever form the scraper gave them in:
+ * "Pantry > Breakfast", "|tools|power-tools|drills|" (Bunnings), "technology/office-supplies" -> ['Tools', 'Power Tools', 'Drills'].
+ */
+export function categoryLevels(path) {
+  const s = String(path || '').trim();
+  const parts = s.includes('>') ? s.split('>')
+    : s.includes('|') ? s.split('|')
+    : /^[a-z0-9_\-/]+$/.test(s) ? s.split('/') // "technology/office-supplies"
+    : [s];
+  return parts.map((x) => x.trim()).filter(Boolean).map(tidyLevel);
+}
+
 /** "Pantry > Breakfast > Cereal" -> { cat1: 'Pantry', cat2: 'Breakfast' } (the retailer's own levels). */
 export function splitCategory(path) {
-  const parts = String(path || '').split(' > ').map((x) => x.trim()).filter(Boolean);
+  const parts = categoryLevels(path);
   return { cat1: parts[0] || 'Other', cat2: parts[1] || null };
 }
 
@@ -231,7 +249,7 @@ const KEYWORDS = [
 ];
 
 export function mapCategory(categoryPath, name = '', retailer = '') {
-  const parts = String(categoryPath || '').split('>').map((x) => normText(x)).filter(Boolean);
+  const parts = categoryLevels(categoryPath).map((x) => normText(x)).filter(Boolean);
   const info = RETAILER_INFO[retailer];
   if (info && info.kind !== 'supermarket') {
     // Groceries sold by a general retailer (Costco, BIG W, Chemist Warehouse...) still use the grocery rules below.

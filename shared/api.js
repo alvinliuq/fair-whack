@@ -579,7 +579,9 @@ route('GET', '/api/browse', async ({ env, url, user }) => {
     ob.push(...pop.binds);
     if (sort === 'all' && !q.get('cat1')) {
       // All products: by aisle, in the same order as the aisle chips; most popular first within each aisle.
-      const aisles = (await cached(env, cacheKey('categories', 'all', retailer), () => categoryCounts(env, retailer, '', user))).categories.map((c) => c.name);
+      // D1 allows at most 100 bound values per query: 2 per aisle, so only the first 40 aisles are ordered by name,
+      // the rest follow by popularity (Bunnings once had 370 aisles and this query failed).
+      const aisles = (await cached(env, cacheKey('categories', 'all', retailer), () => categoryCounts(env, retailer, '', user))).categories.map((c) => c.name).slice(0, 40);
       if (aisles.length) {
         order = `CASE COALESCE(cat1, 'Other') ${aisles.map(() => 'WHEN ? THEN ?').join(' ')} ELSE 999 END, ${order}`;
         ob.unshift(...aisles.flatMap((n, i) => [n, i]));

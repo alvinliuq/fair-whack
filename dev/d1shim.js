@@ -8,7 +8,8 @@ const plain = (row) => (row ? { ...row } : row);
 
 class Stmt {
   constructor(db, sql, binds = []) { this.db = db; this.sql = sql; this.binds = binds; }
-  bind(...v) { return new Stmt(this.db, this.sql, fix(v)); }
+  // Cloudflare D1 refuses a query with more than 100 bound values ("too many SQL variables"); fail the same way here.
+  bind(...v) { if (v.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${v.length} bound, D1 allows 100)`); return new Stmt(this.db, this.sql, fix(v)); }
   async all() { return { results: this.db.prepare(this.sql).all(...this.binds).map(plain), success: true, meta: {} }; }
   async first(col) { const r = plain(this.db.prepare(this.sql).get(...this.binds)); return r == null ? null : col ? r[col] : r; }
   async run() { const r = this.db.prepare(this.sql).run(...this.binds); return { success: true, meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } }; }
