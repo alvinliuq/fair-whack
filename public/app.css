@@ -1006,9 +1006,3 @@ body.sov-open { overflow: hidden; }
 .ss-row .tag { font-size: 11px; font-weight: 700; color: var(--ink-3); background: var(--mist); border-radius: 6px; padding: 2px 6px; }
 .ss-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-row.pressed { background: #E4DBFF; box-shadow: 0 3px 12px rgba(91, 43, 224, .28); }
-
-/* iOS 26 home-screen apps only paint the status-bar area in the header's colour when the header is position:fixed
-   (a sticky header gets a light fade instead). Body is padded by the header's measured height (--topbar-h, set in app.js). */
-.topbar { position: fixed; top: 0; left: 0; right: 0; }
-body { padding-top: var(--topbar-h, calc(66px + var(--safe-t))); }
-html { scroll-padding-top: var(--topbar-h, 66px); }
